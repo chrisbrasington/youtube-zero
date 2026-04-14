@@ -817,7 +817,85 @@ $('btn-settings').addEventListener('click', () => {
 $('btn-save-key').addEventListener('click', saveApiKey);
 $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
 
+// ── Auto-refresh ──────────────────────────────────────────────────────────────
+
+const REFRESH_STEPS  = [5, 10, 15, 30, 60, 120, 240, 720, 1440]; // minutes
+const REFRESH_LABELS = ['5m','10m','15m','30m','1h','2h','4h','12h','24h'];
+
+let autoRefreshTimer  = null;
+let countdownTimer    = null;
+let nextRefreshAt     = null;
+
+function formatCountdown(totalSecs) {
+  if (totalSecs <= 0)  return '0s';
+  if (totalSecs < 60)  return `${totalSecs}s`;
+  const s = totalSecs % 60;
+  const m = Math.floor(totalSecs / 60) % 60;
+  const h = Math.floor(totalSecs / 3600);
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function updateCountdown() {
+  const el = $('auto-refresh-countdown');
+  if (!nextRefreshAt) { el.textContent = ''; return; }
+  const secs = Math.ceil(Math.max(0, nextRefreshAt - Date.now()) / 1000);
+  el.textContent = formatCountdown(secs);
+}
+
+function syncAutoRefresh() {
+  // Clear existing timers
+  clearTimeout(autoRefreshTimer);
+  clearInterval(countdownTimer);
+  autoRefreshTimer = countdownTimer = null;
+  nextRefreshAt = null;
+
+  const check = $('auto-refresh-check');
+  const idx   = parseInt($('auto-refresh-slider').value, 10);
+  $('auto-refresh-interval').textContent = REFRESH_LABELS[idx];
+
+  if (!check.checked) {
+    $('auto-refresh-countdown').textContent = '';
+    return;
+  }
+
+  const ms = REFRESH_STEPS[idx] * 60 * 1000;
+  nextRefreshAt = Date.now() + ms;
+
+  // Tick countdown every second
+  updateCountdown();
+  countdownTimer = setInterval(updateCountdown, 1000);
+
+  // Fire refresh, then re-schedule (so countdown resets cleanly after each run)
+  autoRefreshTimer = setTimeout(async () => {
+    await refreshAll();
+    syncAutoRefresh();
+  }, ms);
+}
+
+function loadAutoRefreshPrefs() {
+  const enabled = localStorage.getItem('arEnabled');
+  const idx     = localStorage.getItem('arIdx');
+  const check   = $('auto-refresh-check');
+  const slider  = $('auto-refresh-slider');
+  check.checked = enabled === null ? true : enabled === '1';
+  slider.value  = idx !== null ? idx : '3';
+  $('auto-refresh-interval').textContent = REFRESH_LABELS[parseInt(slider.value, 10)];
+}
+
+$('auto-refresh-check').addEventListener('change', () => {
+  localStorage.setItem('arEnabled', $('auto-refresh-check').checked ? '1' : '0');
+  syncAutoRefresh();
+});
+$('auto-refresh-slider').addEventListener('input', () => {
+  const idx = parseInt($('auto-refresh-slider').value, 10);
+  localStorage.setItem('arIdx', idx);
+  syncAutoRefresh();
+});
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 loadSettings();
+loadAutoRefreshPrefs();
+syncAutoRefresh();
 loadAll();

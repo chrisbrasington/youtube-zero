@@ -58,6 +58,92 @@ body.app {
   gap: 8px;
 }
 
+/* ── Auto-refresh control ────────────────────────────────────────────────── */
+
+.auto-refresh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-l);
+  border-radius: var(--r-sm);
+  background: var(--bg3);
+}
+
+.auto-refresh input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.auto-refresh-label {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#auto-refresh-check:not(:checked) ~ .auto-refresh-label,
+#auto-refresh-check:not(:checked) ~ #auto-refresh-slider,
+#auto-refresh-check:not(:checked) ~ #auto-refresh-interval,
+#auto-refresh-check:not(:checked) ~ #auto-refresh-countdown {
+  opacity: .35;
+  pointer-events: none;
+}
+
+#auto-refresh-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 3px;
+  background: var(--border-l);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+#auto-refresh-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+}
+#auto-refresh-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+}
+
+.auto-refresh-interval {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 26px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.auto-refresh-countdown {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  min-width: 34px;
+  white-space: nowrap;
+}
+
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
 .btn-primary {
