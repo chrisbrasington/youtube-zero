@@ -12,7 +12,10 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "youtube_zero.db")
+DB_PATH = os.environ.get(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "youtube_zero.db"),
+)
 YT_API = "https://www.googleapis.com/youtube/v3"
 
 
