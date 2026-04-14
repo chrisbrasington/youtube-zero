@@ -210,6 +210,32 @@ input::placeholder { color: var(--dim); }
   padding: 16px 20px;
 }
 
+/* ── Toolbar (sort toggle + status) ─────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  min-height: 26px;
+  gap: 8px;
+}
+
+.btn-sort {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all .15s;
+}
+.btn-sort:hover       { border-color: var(--border-l); color: var(--muted); }
+.btn-sort.active      { border-color: var(--blue); color: var(--blue); }
+
 /* ── Add channel bar ─────────────────────────────────────────────────────── */
 
 .add-bar {
@@ -336,6 +362,20 @@ input::placeholder { color: var(--dim); }
 .ch-btn:hover           { color: var(--text); }
 .ch-btn.refresh:hover   { color: var(--blue); }
 .ch-btn.delete:hover    { color: var(--accent); }
+.ch-btn.unread:hover    { color: var(--green); }
+
+/* ── Drag and drop ───────────────────────────────────────────────────────── */
+
+.channel-card[draggable="true"] { cursor: grab; }
+.channel-card[draggable="true"]:active { cursor: grabbing; }
+.channel-card.dragging {
+  opacity: .4;
+  outline: 2px dashed var(--border-l);
+}
+.channel-card.drag-over {
+  outline: 2px solid var(--accent);
+  background: rgba(255,68,68,.04);
+}
 
 .ch-caret {
   color: var(--dim);

@@ -82,9 +82,12 @@ const state = {
   channels: [],
   queue:    [],
   queueOpen:       false,
+  sortMode:        'manual',   // 'manual' | 'newest'
   manualExpand:    new Set(),  // channelIds user explicitly opened
   manualCollapse:  new Set(),  // channelIds user explicitly closed
 };
+
+let dragSrcId = null;
 
 // Map video_id → {video_id, channel_id, channel_name, title, thumbnail_url, published_at}
 // Populated during render so event handlers can look up data without inline JSON
@@ -108,6 +111,30 @@ function shouldCollapse(channel) {
   // Default: collapse when every video is read
   if (!channel.videos || channel.videos.length === 0) return false;
   return channel.videos.every(v => isRead(v, channel));
+}
+
+// ── Sort / display order ──────────────────────────────────────────────────────
+
+function displayChannels() {
+  if (state.sortMode === 'newest') {
+    return [...state.channels].sort((a, b) => {
+      const aTop = (a.videos || [])[0]?.published_at || '';
+      const bTop = (b.videos || [])[0]?.published_at || '';
+      return bTop.localeCompare(aTop);
+    });
+  }
+  return state.channels; // manual order preserved from server
+}
+
+function renderSortBtn() {
+  const btn = $('btn-sort');
+  if (state.sortMode === 'newest') {
+    btn.textContent = '↕ Newest first';
+    btn.classList.add('active');
+  } else {
+    btn.textContent = '↕ Manual order';
+    btn.classList.remove('active');
+  }
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -161,7 +188,7 @@ function renderChannels() {
   const totalUnread = state.channels.reduce((sum, ch) => sum + countUnread(ch), 0);
   const allClear = totalUnread === 0;
 
-  let html = state.channels.map(ch => renderChannel(ch)).join('');
+  let html = displayChannels().map(ch => renderChannel(ch)).join('');
 
   if (allClear) {
     html += '<div class="all-clear">✓ All caught up</div>';
@@ -185,8 +212,10 @@ function renderChannel(ch) {
       }
     </div>`;
 
+  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
+
   return `
-    <div class="channel-card" id="ch-${cid}">
+    <div class="channel-card" id="ch-${cid}" data-channel-id="${cid}" ${draggable}>
       <div class="channel-header"
            data-action="toggle-channel"
            data-channel-id="${cid}">
@@ -206,6 +235,10 @@ function renderChannel(ch) {
         </div>
         <div class="ch-right">
           ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
+          <button class="ch-btn unread"
+                  data-action="mark-unread"
+                  data-channel-id="${cid}"
+                  title="Mark all as unread">↺</button>
           <button class="ch-btn refresh"
                   data-action="refresh-channel"
                   data-channel-id="${cid}"
@@ -271,6 +304,7 @@ function render() {
   renderChannels();
   renderQueue();
   renderQueueBadge();
+  renderSortBtn();
 }
 
 // ── Data loading ──────────────────────────────────────────────────────────────
@@ -334,6 +368,28 @@ async function markRead(channelId) {
   } catch (e) {
     status('Error: ' + e.message, 'err');
   }
+}
+
+async function markUnread(channelId) {
+  try {
+    await api.post(`/api/channels/${channelId}/mark-unread`);
+    const ch = state.channels.find(c => c.channel_id === channelId);
+    if (ch) ch.read_before = null;
+    // Expand it so the newly unread videos are visible
+    state.manualExpand.add(channelId);
+    state.manualCollapse.delete(channelId);
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function persistOrder() {
+  try {
+    await api.post('/api/channels/reorder', {
+      ids: state.channels.map(c => c.channel_id),
+    });
+  } catch {}
 }
 
 async function refreshChannel(channelId) {
@@ -497,6 +553,14 @@ document.addEventListener('click', e => {
     return;
   }
 
+  // Mark channel unread
+  const markUnreadBtn = e.target.closest('[data-action="mark-unread"]');
+  if (markUnreadBtn) {
+    e.stopPropagation();
+    markUnread(markUnreadBtn.dataset.channelId);
+    return;
+  }
+
   // Refresh channel
   const refreshBtn = e.target.closest('[data-action="refresh-channel"]');
   if (refreshBtn) {
@@ -546,6 +610,48 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── Drag and drop (manual sort mode only) ────────────────────────────────────
+
+document.addEventListener('dragstart', e => {
+  const card = e.target.closest('.channel-card[draggable]');
+  if (!card) return;
+  dragSrcId = card.dataset.channelId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => card.classList.add('dragging'), 0);
+});
+
+document.addEventListener('dragend', e => {
+  document.querySelectorAll('.channel-card').forEach(c => {
+    c.classList.remove('dragging', 'drag-over');
+  });
+  dragSrcId = null;
+});
+
+document.addEventListener('dragover', e => {
+  const card = e.target.closest('.channel-card[draggable]');
+  if (!card || card.dataset.channelId === dragSrcId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.channel-card').forEach(c => c.classList.remove('drag-over'));
+  card.classList.add('drag-over');
+});
+
+document.addEventListener('drop', e => {
+  const card = e.target.closest('.channel-card[draggable]');
+  if (!card || !dragSrcId || card.dataset.channelId === dragSrcId) return;
+  e.preventDefault();
+
+  const srcIdx = state.channels.findIndex(c => c.channel_id === dragSrcId);
+  const dstIdx = state.channels.findIndex(c => c.channel_id === card.dataset.channelId);
+  if (srcIdx === -1 || dstIdx === -1) return;
+
+  const [moved] = state.channels.splice(srcIdx, 1);
+  state.channels.splice(dstIdx, 0, moved);
+
+  render();
+  persistOrder();
+});
+
 // ── Header button wiring ──────────────────────────────────────────────────────
 
 $('btn-add-channel').addEventListener('click', addChannel);
@@ -563,6 +669,11 @@ $('btn-close-queue').addEventListener('click', () => {
   state.queueOpen = false;
   $('queue-pane').classList.add('hidden');
   renderQueueBadge();
+});
+
+$('btn-sort').addEventListener('click', () => {
+  state.sortMode = state.sortMode === 'manual' ? 'newest' : 'manual';
+  render();
 });
 
 $('btn-settings').addEventListener('click', () => {

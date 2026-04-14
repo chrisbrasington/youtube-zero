@@ -48,6 +48,7 @@ def init_db():
                 uploads_playlist_id TEXT NOT NULL,
                 read_before TEXT,
                 last_refreshed TEXT,
+                sort_order INTEGER,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS videos (
@@ -72,6 +73,13 @@ def init_db():
             );
         """)
         c.commit()
+        # Migration: add sort_order to existing DBs
+        try:
+            c.execute("ALTER TABLE channels ADD COLUMN sort_order INTEGER")
+            c.execute("UPDATE channels SET sort_order = id WHERE sort_order IS NULL")
+            c.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 init_db()
@@ -225,6 +233,9 @@ class QueueAddReq(BaseModel):
 class ApiKeyReq(BaseModel):
     api_key: str
 
+class ReorderReq(BaseModel):
+    ids: list[str]  # channel_ids in new order
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -251,7 +262,7 @@ def settings_set_key(req: ApiKeyReq):
 def channels_list():
     with db() as c:
         chs = [dict(r) for r in c.execute(
-            "SELECT * FROM channels ORDER BY created_at"
+            "SELECT * FROM channels ORDER BY COALESCE(sort_order, id), created_at"
         ).fetchall()]
         queued_ids = {
             r["video_id"]
@@ -279,11 +290,14 @@ async def channels_add(req: AddChannelReq):
     info = await yt_get_channel(ltype, val, api_key)
     with db() as c:
         try:
+            max_order = c.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) FROM channels"
+            ).fetchone()[0]
             c.execute(
                 """INSERT INTO channels
-                   (channel_id, name, thumbnail_url, handle, uploads_playlist_id)
-                   VALUES (:channel_id, :name, :thumbnail_url, :handle, :uploads_playlist_id)""",
-                info,
+                   (channel_id, name, thumbnail_url, handle, uploads_playlist_id, sort_order)
+                   VALUES (:channel_id, :name, :thumbnail_url, :handle, :uploads_playlist_id, :sort_order)""",
+                {**info, "sort_order": max_order + 1},
             )
             c.commit()
         except sqlite3.IntegrityError:
@@ -304,6 +318,27 @@ def channels_delete(channel_id: str):
     with db() as c:
         c.execute("DELETE FROM channels WHERE channel_id=?", (channel_id,))
         c.execute("DELETE FROM videos WHERE channel_id=?", (channel_id,))
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/channels/reorder")
+def channels_reorder(req: ReorderReq):
+    with db() as c:
+        for i, cid in enumerate(req.ids):
+            c.execute(
+                "UPDATE channels SET sort_order=? WHERE channel_id=?", (i, cid)
+            )
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/channels/{channel_id}/mark-unread")
+def channels_mark_unread(channel_id: str):
+    with db() as c:
+        c.execute(
+            "UPDATE channels SET read_before=NULL WHERE channel_id=?", (channel_id,)
+        )
         c.commit()
     return {"ok": True}
 
