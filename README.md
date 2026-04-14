@@ -14,6 +14,8 @@ Inbox-zero for YouTube subscriptions. Add channels, see new videos, queue what y
 - **☢ Clear All** — nuclear dismiss everything, queue untouched
 - Dark theme, no JavaScript framework, no build step
 
+![](./.img/app.png)
+
 ## Quick start
 
 ### Local (venv)
