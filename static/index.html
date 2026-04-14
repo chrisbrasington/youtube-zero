@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Zero</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="app">
+
+  <header class="header">
+    <div class="header-left">
+      <h1 class="logo">▶ YouTube Zero</h1>
+    </div>
+    <div class="header-right">
+      <button class="btn-ghost" id="btn-refresh-all" title="Refresh all channels">
+        <span id="refresh-spinner" class="spinner hidden">↻</span>
+        <span id="refresh-label">↻ Refresh All</span>
+      </button>
+      <button class="btn-queue" id="btn-queue">
+        Queue <span class="queue-badge" id="queue-badge">0</span>
+      </button>
+      <button class="btn-danger" id="btn-clear-all" title="Mark everything as read">☢ Clear All</button>
+      <button class="btn-icon" id="btn-settings" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <div id="settings-panel" class="settings-panel hidden">
+    <div class="settings-inner">
+      <strong>YouTube Data API v3 Key</strong>
+      <div class="settings-row">
+        <input type="password" id="api-key-input" placeholder="AIza…" autocomplete="off">
+        <button class="btn-primary" id="btn-save-key">Save</button>
+      </div>
+      <div class="settings-hint">
+        <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">
+          Get free key
+        </a>
+        — Google Cloud Console → Enable YouTube Data API v3 → Credentials → API key
+      </div>
+      <div id="api-key-status" class="api-key-status"></div>
+    </div>
+  </div>
+
+  <div class="main-layout" id="main-layout">
+
+    <div class="channels-pane" id="channels-pane">
+      <div class="add-bar">
+        <input type="text" id="channel-input"
+               placeholder="Add channel: youtube.com/@handle, @RetroGameCorps, or channel name"
+               autocomplete="off">
+        <button class="btn-primary" id="btn-add-channel">Add</button>
+      </div>
+      <div id="status-msg" class="status-msg"></div>
+      <div id="channels-list"></div>
+    </div>
+
+    <div class="queue-pane hidden" id="queue-pane">
+      <div class="queue-header">
+        <span class="queue-title">Watch Queue</span>
+        <button class="btn-icon" id="btn-close-queue">✕</button>
+      </div>
+      <div id="queue-list" class="queue-list"></div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
