@@ -79,41 +79,42 @@ const api = {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  channels: [],
-  queue:    [],
-  queueOpen:       false,
-  sortMode:        'manual',   // 'manual' | 'newest'
-  manualExpand:    new Set(),  // channelIds user explicitly opened
-  manualCollapse:  new Set(),  // channelIds user explicitly closed
+  channels:    [],
+  queue:       [],
+  queueOpen:   false,
+  sortMode:    'manual',   // 'manual' | 'newest'
+  manualExpand: new Set(), // channelIds force-expanded to full list
 };
 
+// Drag state
 let dragSrcId = null;
 
-// Map video_id → {video_id, channel_id, channel_name, title, thumbnail_url, published_at}
-// Populated during render so event handlers can look up data without inline JSON
+// Player state
+const player = {
+  videoId:       null,
+  title:         '',
+  mode:          'normal',  // 'normal' | 'theater'
+  queueVideoId:  null,      // set when playing from queue
+};
+
+// video_id → queue-able metadata (populated during render)
 const videoMeta = new Map();
 
-// ── Read / collapse logic ─────────────────────────────────────────────────────
+// ── View mode logic ───────────────────────────────────────────────────────────
 
-function isRead(video, channel) {
-  if (!channel.read_before) return false;
-  return video.published_at <= channel.read_before;
+function viewMode(channel) {
+  // 'collapsed' = header only | 'compact' = header + unread strip | 'expanded' = full list
+  const id = channel.channel_id;
+  if (state.manualExpand.has(id)) return 'expanded';
+  const hasUnread = (channel.videos || []).some(v => !v.is_read);
+  return hasUnread ? 'compact' : 'collapsed';
 }
 
 function countUnread(channel) {
-  return (channel.videos || []).filter(v => !isRead(v, channel)).length;
+  return (channel.videos || []).filter(v => !v.is_read).length;
 }
 
-function shouldCollapse(channel) {
-  const id = channel.channel_id;
-  if (state.manualCollapse.has(id)) return true;
-  if (state.manualExpand.has(id))   return false;
-  // Default: collapse when every video is read
-  if (!channel.videos || channel.videos.length === 0) return false;
-  return channel.videos.every(v => isRead(v, channel));
-}
-
-// ── Sort / display order ──────────────────────────────────────────────────────
+// ── Sort ──────────────────────────────────────────────────────────────────────
 
 function displayChannels() {
   if (state.sortMode === 'newest') {
@@ -123,7 +124,7 @@ function displayChannels() {
       return bTop.localeCompare(aTop);
     });
   }
-  return state.channels; // manual order preserved from server
+  return state.channels;
 }
 
 function renderSortBtn() {
@@ -137,7 +138,179 @@ function renderSortBtn() {
   }
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+// ── Render: channels ─────────────────────────────────────────────────────────
+
+function renderChannels() {
+  const el = $('channels-list');
+
+  if (state.channels.length === 0) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <h3>No channels yet</h3>
+        <p>Add a YouTube channel above to get started.</p>
+      </div>`;
+    return;
+  }
+
+  const totalUnread = state.channels.reduce((sum, ch) => sum + countUnread(ch), 0);
+  let html = displayChannels().map(ch => renderChannel(ch)).join('');
+  if (totalUnread === 0) html += '<div class="all-clear">✓ All caught up</div>';
+  el.innerHTML = html;
+}
+
+function renderChannel(ch) {
+  const mode    = viewMode(ch);
+  const unread  = countUnread(ch);
+  const allDone = ch.videos.length > 0 && unread === 0;
+  const cid     = escAttr(ch.channel_id);
+  const refreshed = ch.last_refreshed ? timeAgo(ch.last_refreshed) : 'never';
+  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
+
+  let bodyHtml = '';
+  if (mode === 'compact') {
+    const unreadVids = ch.videos.filter(v => !v.is_read);
+    bodyHtml = `
+      <div class="video-strip">
+        ${unreadVids.map(v => renderVideoTile(v, ch)).join('')}
+      </div>`;
+  } else if (mode === 'expanded') {
+    bodyHtml = `
+      <div class="videos-list">
+        ${ch.videos.length === 0
+          ? '<div class="no-videos">No videos cached — click ↻ to refresh.</div>'
+          : ch.videos.map(v => renderVideoRow(v, ch)).join('')
+        }
+      </div>`;
+  }
+
+  return `
+    <div class="channel-card" id="ch-${cid}" data-channel-id="${cid}" ${draggable}>
+      <div class="channel-header" data-action="toggle-channel" data-channel-id="${cid}">
+        <div class="ch-check ${allDone ? 'done' : ''}"
+             data-action="mark-read"
+             data-channel-id="${cid}"
+             title="Mark all as read">✓</div>
+        <img class="ch-thumb"
+             src="${escAttr(ch.thumbnail_url || '')}"
+             alt="${escAttr(ch.name)}"
+             onerror="this.style.opacity='0'">
+        <div class="ch-info">
+          <div class="ch-name">${esc(ch.name)}</div>
+          <div class="ch-meta">${ch.handle ? '@' + esc(ch.handle) + ' · ' : ''}${esc(refreshed)}</div>
+        </div>
+        <div class="ch-right">
+          ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
+          <button class="ch-btn unread"
+                  data-action="mark-unread"
+                  data-channel-id="${cid}"
+                  title="Mark all as unread">↺</button>
+          <button class="ch-btn refresh"
+                  data-action="refresh-channel"
+                  data-channel-id="${cid}"
+                  title="Refresh">↻</button>
+          <button class="ch-btn delete"
+                  data-action="delete-channel"
+                  data-channel-id="${cid}"
+                  title="Remove">✕</button>
+          <span class="ch-caret ${mode === 'expanded' ? 'open' : ''}">▼</span>
+        </div>
+      </div>
+      ${bodyHtml}
+    </div>`;
+}
+
+// Compact tile (shown in the default strip)
+function renderVideoTile(video, channel) {
+  videoMeta.set(video.video_id, {
+    video_id:      video.video_id,
+    channel_id:    channel.channel_id,
+    channel_name:  channel.name,
+    title:         video.title,
+    thumbnail_url: video.thumbnail_url || '',
+    published_at:  video.published_at,
+  });
+
+  const vid     = escAttr(video.video_id);
+  const inQueue = video.in_queue;
+
+  return `
+    <div class="video-tile"
+         data-action="open-player"
+         data-video-id="${vid}"
+         data-title="${escAttr(video.title)}"
+         title="${escAttr(video.title)}">
+      <div class="tile-thumb-wrap">
+        <img class="tile-thumb"
+             src="${escAttr(video.thumbnail_url || '')}"
+             alt=""
+             onerror="this.style.display='none'">
+        ${video.duration ? `<span class="tile-dur">${esc(video.duration)}</span>` : ''}
+        <button class="tile-q-btn ${inQueue ? 'queued' : ''}"
+                data-action="toggle-queue"
+                data-video-id="${vid}"
+                data-in-queue="${inQueue ? '1' : '0'}"
+                title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
+          ${inQueue ? '✓' : '+'}
+        </button>
+      </div>
+      <div class="tile-info">
+        <div class="tile-title">${esc(video.title)}</div>
+        <div class="tile-age">${timeAgo(video.published_at)}</div>
+      </div>
+    </div>`;
+}
+
+// Full row (shown in expanded view)
+function renderVideoRow(video, channel) {
+  videoMeta.set(video.video_id, {
+    video_id:      video.video_id,
+    channel_id:    channel.channel_id,
+    channel_name:  channel.name,
+    title:         video.title,
+    thumbnail_url: video.thumbnail_url || '',
+    published_at:  video.published_at,
+  });
+
+  const vid     = escAttr(video.video_id);
+  const inQueue = video.in_queue;
+  const isRead  = video.is_read;
+
+  return `
+    <div class="video-row ${isRead ? 'read' : ''}">
+      <div class="v-thumb-wrap"
+           data-action="open-player"
+           data-video-id="${vid}"
+           data-title="${escAttr(video.title)}"
+           style="cursor:pointer">
+        <img class="v-thumb"
+             src="${escAttr(video.thumbnail_url || '')}"
+             alt=""
+             onerror="this.style.display='none'">
+        ${video.duration ? `<span class="v-dur">${esc(video.duration)}</span>` : ''}
+      </div>
+      <div class="v-info">
+        <a class="v-title"
+           href="https://www.youtube.com/watch?v=${vid}"
+           target="_blank" rel="noopener noreferrer">
+          ${esc(video.title)}
+        </a>
+        <div class="v-age">${timeAgo(video.published_at)}</div>
+      </div>
+      <button class="v-read-btn ${isRead ? 'is-read' : 'is-unread'}"
+              data-action="${isRead ? 'video-unread' : 'video-read'}"
+              data-video-id="${vid}"
+              title="${isRead ? 'Mark as unread' : 'Mark as read'}">●</button>
+      <button class="v-q-btn ${inQueue ? 'queued' : ''}"
+              data-action="toggle-queue"
+              data-video-id="${vid}"
+              data-in-queue="${inQueue ? '1' : '0'}"
+              title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
+        ${inQueue ? '✓' : '+'}
+      </button>
+    </div>`;
+}
+
+// ── Render: queue ─────────────────────────────────────────────────────────────
 
 function renderQueueBadge() {
   const n = state.queue.length;
@@ -161,9 +334,15 @@ function renderQueue() {
         <div class="q-title">${esc(item.title)}</div>
         <div class="q-channel">${esc(item.channel_name)}</div>
         <div class="q-actions">
-          <button class="btn-watch"
-                  data-action="watch"
-                  data-video-id="${escAttr(item.video_id)}">▶ Watch</button>
+          <button class="btn-play"
+                  data-action="play-from-queue"
+                  data-video-id="${escAttr(item.video_id)}"
+                  data-title="${escAttr(item.title)}">▶ Play</button>
+          <a class="btn-yt-open"
+             href="https://www.youtube.com/watch?v=${escAttr(item.video_id)}"
+             target="_blank" rel="noopener noreferrer"
+             data-action="watch-yt"
+             data-video-id="${escAttr(item.video_id)}">↗ YouTube</a>
           <button class="btn-remove"
                   data-action="remove-queue"
                   data-video-id="${escAttr(item.video_id)}">Remove</button>
@@ -173,138 +352,35 @@ function renderQueue() {
   `).join('');
 }
 
-function renderChannels() {
-  const el = $('channels-list');
+// ── Render: player ────────────────────────────────────────────────────────────
 
-  if (state.channels.length === 0) {
-    el.innerHTML = `
-      <div class="empty-state">
-        <h3>No channels yet</h3>
-        <p>Add a YouTube channel above to get started.</p>
-      </div>`;
+function renderPlayer() {
+  const overlay = $('player-overlay');
+  if (!player.videoId) {
+    overlay.classList.add('hidden');
+    $('player-frame').src = '';
     return;
   }
-
-  const totalUnread = state.channels.reduce((sum, ch) => sum + countUnread(ch), 0);
-  const allClear = totalUnread === 0;
-
-  let html = displayChannels().map(ch => renderChannel(ch)).join('');
-
-  if (allClear) {
-    html += '<div class="all-clear">✓ All caught up</div>';
-  }
-
-  el.innerHTML = html;
+  overlay.classList.remove('hidden');
+  $('player-title').textContent = player.title;
+  $('player-yt-link').href = `https://www.youtube.com/watch?v=${player.videoId}`;
+  $('player-box').className = `player-box${player.mode === 'theater' ? ' theater' : ''}`;
+  // Only set src if changed (avoids reloading video on re-render)
+  const frame = $('player-frame');
+  const newSrc = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0`;
+  if (frame.src !== newSrc) frame.src = newSrc;
+  $('btn-player-theater').textContent = player.mode === 'theater' ? '⬜ Normal' : '⬜ Theater';
+  $('btn-player-watched').classList.toggle('hidden', !player.queueVideoId);
 }
 
-function renderChannel(ch) {
-  const collapsed = shouldCollapse(ch);
-  const unread    = countUnread(ch);
-  const allDone   = (ch.videos || []).length > 0 && unread === 0;
-  const refreshed = ch.last_refreshed ? timeAgo(ch.last_refreshed) : 'never';
-  const cid       = escAttr(ch.channel_id);
-
-  const videosHtml = collapsed ? '' : `
-    <div class="videos-list">
-      ${(ch.videos || []).length === 0
-        ? '<div class="no-videos">No videos cached — click ↻ to refresh.</div>'
-        : (ch.videos || []).map(v => renderVideo(v, ch)).join('')
-      }
-    </div>`;
-
-  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
-
-  return `
-    <div class="channel-card" id="ch-${cid}" data-channel-id="${cid}" ${draggable}>
-      <div class="channel-header"
-           data-action="toggle-channel"
-           data-channel-id="${cid}">
-        <div class="ch-check ${allDone ? 'done' : ''}"
-             data-action="mark-read"
-             data-channel-id="${cid}"
-             title="Mark all as read">✓</div>
-        <img class="ch-thumb"
-             src="${escAttr(ch.thumbnail_url || '')}"
-             alt="${escAttr(ch.name)}"
-             onerror="this.style.opacity='0'">
-        <div class="ch-info">
-          <div class="ch-name">${esc(ch.name)}</div>
-          <div class="ch-meta">
-            ${ch.handle ? '@' + esc(ch.handle) + ' · ' : ''}refreshed ${esc(refreshed)}
-          </div>
-        </div>
-        <div class="ch-right">
-          ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
-          <button class="ch-btn unread"
-                  data-action="mark-unread"
-                  data-channel-id="${cid}"
-                  title="Mark all as unread">↺</button>
-          <button class="ch-btn refresh"
-                  data-action="refresh-channel"
-                  data-channel-id="${cid}"
-                  title="Refresh">↻</button>
-          <button class="ch-btn delete"
-                  data-action="delete-channel"
-                  data-channel-id="${cid}"
-                  title="Remove">✕</button>
-          <span class="ch-caret ${collapsed ? '' : 'open'}">▼</span>
-        </div>
-      </div>
-      ${videosHtml}
-    </div>`;
-}
-
-function renderVideo(video, channel) {
-  // Register for event delegation
-  videoMeta.set(video.video_id, {
-    video_id:      video.video_id,
-    channel_id:    channel.channel_id,
-    channel_name:  channel.name,
-    title:         video.title,
-    thumbnail_url: video.thumbnail_url || '',
-    published_at:  video.published_at,
-  });
-
-  const read    = isRead(video, channel);
-  const inQueue = video.in_queue;
-  const vid     = escAttr(video.video_id);
-  const ytUrl   = `https://www.youtube.com/watch?v=${vid}`;
-
-  return `
-    <div class="video-row ${read ? 'read' : ''}">
-      <a href="${ytUrl}" target="_blank" rel="noopener noreferrer">
-        <div class="v-thumb-wrap">
-          <img class="v-thumb"
-               src="${escAttr(video.thumbnail_url || '')}"
-               alt=""
-               onerror="this.style.display='none'">
-          ${video.duration ? `<span class="v-dur">${esc(video.duration)}</span>` : ''}
-        </div>
-      </a>
-      <div class="v-info">
-        <a class="v-title"
-           href="${ytUrl}"
-           target="_blank"
-           rel="noopener noreferrer">
-          ${esc(video.title)}
-        </a>
-        <div class="v-age">${timeAgo(video.published_at)}</div>
-      </div>
-      <button class="v-q-btn ${inQueue ? 'queued' : ''}"
-              data-action="toggle-queue"
-              data-video-id="${vid}"
-              data-in-queue="${inQueue ? '1' : '0'}"
-              title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
-        ${inQueue ? '✓' : '+'}
-      </button>
-    </div>`;
-}
+// ── Master render ─────────────────────────────────────────────────────────────
 
 function render() {
   renderChannels();
   renderQueue();
   renderQueueBadge();
   renderSortBtn();
+  renderPlayer();
 }
 
 // ── Data loading ──────────────────────────────────────────────────────────────
@@ -321,7 +397,7 @@ async function loadAll() {
   }
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
+// ── Actions: channels ─────────────────────────────────────────────────────────
 
 async function addChannel() {
   const input = $('channel-input').value.trim();
@@ -330,7 +406,6 @@ async function addChannel() {
   status('Adding…', 'loading');
   try {
     const ch = await api.post('/api/channels', { input });
-    // Merge into state (avoid full reload)
     state.channels.push(ch);
     $('channel-input').value = '';
     render();
@@ -349,7 +424,6 @@ async function deleteChannel(channelId) {
   try {
     await api.del(`/api/channels/${channelId}`);
     state.channels = state.channels.filter(c => c.channel_id !== channelId);
-    state.manualCollapse.delete(channelId);
     state.manualExpand.delete(channelId);
     render();
   } catch (e) {
@@ -357,12 +431,14 @@ async function deleteChannel(channelId) {
   }
 }
 
-async function markRead(channelId) {
+async function markChannelRead(channelId) {
   try {
     const res = await api.post(`/api/channels/${channelId}/mark-read`);
     const ch = state.channels.find(c => c.channel_id === channelId);
-    if (ch) ch.read_before = res.read_before;
-    state.manualCollapse.add(channelId);
+    if (ch) {
+      ch.read_before = res.read_before;
+      ch.videos.forEach(v => { v.is_read = true; });
+    }
     state.manualExpand.delete(channelId);
     render();
   } catch (e) {
@@ -370,26 +446,18 @@ async function markRead(channelId) {
   }
 }
 
-async function markUnread(channelId) {
+async function markChannelUnread(channelId) {
   try {
     await api.post(`/api/channels/${channelId}/mark-unread`);
     const ch = state.channels.find(c => c.channel_id === channelId);
-    if (ch) ch.read_before = null;
-    // Expand it so the newly unread videos are visible
-    state.manualExpand.add(channelId);
-    state.manualCollapse.delete(channelId);
+    if (ch) {
+      ch.read_before = null;
+      ch.videos.forEach(v => { v.is_read = false; });
+    }
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
   }
-}
-
-async function persistOrder() {
-  try {
-    await api.post('/api/channels/reorder', {
-      ids: state.channels.map(c => c.channel_id),
-    });
-  } catch {}
 }
 
 async function refreshChannel(channelId) {
@@ -415,7 +483,7 @@ async function refreshAll() {
     const res = await api.post('/api/refresh-all');
     state.channels = await api.get('/api/channels');
     render();
-    const ok = res.results.filter(r => !r.error).length;
+    const ok  = res.results.filter(r => !r.error).length;
     const err = res.results.filter(r =>  r.error).length;
     status(`Refreshed ${ok} channel${ok !== 1 ? 's' : ''}${err ? `, ${err} failed` : ''}`, 'ok');
     setTimeout(() => status(''), 4000);
@@ -434,7 +502,6 @@ async function clearAll() {
     await api.post('/api/clear-all');
     state.channels = await api.get('/api/channels');
     state.manualExpand.clear();
-    state.channels.forEach(ch => state.manualCollapse.add(ch.channel_id));
     render();
     status('All cleared', 'ok');
     setTimeout(() => status(''), 3000);
@@ -446,15 +513,32 @@ async function clearAll() {
 function toggleChannel(channelId) {
   const ch = state.channels.find(c => c.channel_id === channelId);
   if (!ch) return;
-  if (shouldCollapse(ch)) {
-    state.manualExpand.add(channelId);
-    state.manualCollapse.delete(channelId);
-  } else {
-    state.manualCollapse.add(channelId);
+  if (viewMode(ch) === 'expanded') {
     state.manualExpand.delete(channelId);
+  } else {
+    state.manualExpand.add(channelId);
   }
   render();
 }
+
+// ── Actions: per-video read state ─────────────────────────────────────────────
+
+async function toggleVideoRead(videoId, currentlyRead) {
+  const endpoint = currentlyRead ? 'unread' : 'read';
+  try {
+    await api.post(`/api/videos/${videoId}/${endpoint}`);
+    state.channels.forEach(ch =>
+      ch.videos.forEach(v => {
+        if (v.video_id === videoId) v.is_read = !currentlyRead;
+      })
+    );
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+// ── Actions: queue ────────────────────────────────────────────────────────────
 
 async function toggleQueue(meta, currentlyInQueue) {
   if (currentlyInQueue) {
@@ -468,7 +552,6 @@ async function addToQueue(meta) {
   try {
     await api.post('/api/queue', meta);
     state.queue = await api.get('/api/queue');
-    // Update in_queue flag in channel videos
     state.channels.forEach(ch =>
       ch.videos.forEach(v => { if (v.video_id === meta.video_id) v.in_queue = true; })
     );
@@ -491,8 +574,7 @@ async function removeFromQueue(videoId) {
   }
 }
 
-async function watchVideo(videoId) {
-  window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
+async function watchOnYouTube(videoId) {
   try {
     await api.post(`/api/queue/${videoId}/watched`);
     state.queue = state.queue.filter(q => q.video_id !== videoId);
@@ -500,9 +582,53 @@ async function watchVideo(videoId) {
       ch.videos.forEach(v => { if (v.video_id === videoId) v.in_queue = false; })
     );
     render();
-  } catch (e) {
-    status('Error: ' + e.message, 'err');
-  }
+  } catch {}
+}
+
+// ── Actions: player ───────────────────────────────────────────────────────────
+
+function openPlayer(videoId, title, queueVideoId = null) {
+  player.videoId      = videoId;
+  player.title        = title;
+  player.queueVideoId = queueVideoId;
+  renderPlayer();
+}
+
+function closePlayer() {
+  player.videoId      = null;
+  player.title        = '';
+  player.queueVideoId = null;
+  renderPlayer();
+}
+
+function setPlayerMode(mode) {
+  player.mode = mode;
+  renderPlayer();
+}
+
+async function playerMarkWatched() {
+  if (!player.queueVideoId) return;
+  const videoId = player.queueVideoId;
+  closePlayer();
+  try {
+    await api.post(`/api/queue/${videoId}/watched`);
+    state.queue = state.queue.filter(q => q.video_id !== videoId);
+    state.channels.forEach(ch =>
+      ch.videos.forEach(v => { if (v.video_id === videoId) v.in_queue = false; })
+    );
+    renderQueue();
+    renderQueueBadge();
+  } catch {}
+}
+
+// ── Actions: sort + persist order ────────────────────────────────────────────
+
+async function persistOrder() {
+  try {
+    await api.post('/api/channels/reorder', {
+      ids: state.channels.map(c => c.channel_id),
+    });
+  } catch {}
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -534,83 +660,79 @@ async function saveApiKey() {
 // ── Event delegation ──────────────────────────────────────────────────────────
 
 document.addEventListener('click', e => {
-  // Channel: toggle collapse (header click, but not sub-buttons)
-  const header = e.target.closest('[data-action="toggle-channel"]');
-  if (header && !e.target.closest('[data-action]')) {
-    toggleChannel(header.dataset.channelId);
-    return;
-  }
-  if (header && e.target === header) {
-    toggleChannel(header.dataset.channelId);
-    return;
+  // Close player backdrop
+  if (e.target.closest('[data-action="close-player-backdrop"]') &&
+      !e.target.closest('.player-box')) {
+    closePlayer(); return;
   }
 
-  // Mark channel read
+  // Mark channel read (circle check)
   const markReadBtn = e.target.closest('[data-action="mark-read"]');
-  if (markReadBtn) {
-    e.stopPropagation();
-    markRead(markReadBtn.dataset.channelId);
-    return;
-  }
+  if (markReadBtn) { e.stopPropagation(); markChannelRead(markReadBtn.dataset.channelId); return; }
 
-  // Mark channel unread
+  // Mark channel unread (↺)
   const markUnreadBtn = e.target.closest('[data-action="mark-unread"]');
-  if (markUnreadBtn) {
-    e.stopPropagation();
-    markUnread(markUnreadBtn.dataset.channelId);
-    return;
-  }
+  if (markUnreadBtn) { e.stopPropagation(); markChannelUnread(markUnreadBtn.dataset.channelId); return; }
 
   // Refresh channel
   const refreshBtn = e.target.closest('[data-action="refresh-channel"]');
-  if (refreshBtn) {
-    e.stopPropagation();
-    refreshChannel(refreshBtn.dataset.channelId);
-    return;
-  }
+  if (refreshBtn) { e.stopPropagation(); refreshChannel(refreshBtn.dataset.channelId); return; }
 
   // Delete channel
   const deleteBtn = e.target.closest('[data-action="delete-channel"]');
-  if (deleteBtn) {
-    e.stopPropagation();
-    deleteChannel(deleteBtn.dataset.channelId);
-    return;
-  }
+  if (deleteBtn) { e.stopPropagation(); deleteChannel(deleteBtn.dataset.channelId); return; }
 
-  // Toggle caret / header (clicks that land on the header area but not any button)
+  // Toggle channel collapse/expand (click anywhere on header, not buttons)
   const channelHeader = e.target.closest('.channel-header');
   if (channelHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check')) {
-    toggleChannel(channelHeader.dataset.channelId);
-    return;
+    toggleChannel(channelHeader.dataset.channelId); return;
   }
 
-  // Queue add/remove on video row
+  // Open player (tile click or row thumb click — not queue button)
+  const openEl = e.target.closest('[data-action="open-player"]');
+  if (openEl && !e.target.closest('[data-action="toggle-queue"]')) {
+    openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
+  }
+
+  // Per-video mark as read
+  const vReadBtn = e.target.closest('[data-action="video-read"]');
+  if (vReadBtn) { e.stopPropagation(); toggleVideoRead(vReadBtn.dataset.videoId, false); return; }
+
+  // Per-video mark as unread
+  const vUnreadBtn = e.target.closest('[data-action="video-unread"]');
+  if (vUnreadBtn) { e.stopPropagation(); toggleVideoRead(vUnreadBtn.dataset.videoId, true); return; }
+
+  // Queue toggle (+ / ✓ button on tile or row)
   const qBtn = e.target.closest('[data-action="toggle-queue"]');
   if (qBtn) {
     e.stopPropagation();
-    const videoId  = qBtn.dataset.videoId;
-    const inQueue  = qBtn.dataset.inQueue === '1';
-    const meta     = videoMeta.get(videoId);
+    const meta    = videoMeta.get(qBtn.dataset.videoId);
+    const inQueue = qBtn.dataset.inQueue === '1';
     if (meta) toggleQueue(meta, inQueue);
     return;
   }
 
-  // Watch from queue
-  const watchBtn = e.target.closest('[data-action="watch"]');
-  if (watchBtn) {
-    watchVideo(watchBtn.dataset.videoId);
+  // Play from queue
+  const playBtn = e.target.closest('[data-action="play-from-queue"]');
+  if (playBtn) {
+    openPlayer(playBtn.dataset.videoId, playBtn.dataset.title, playBtn.dataset.videoId);
+    return;
+  }
+
+  // Open in YouTube (queue item) + mark watched
+  const ytLink = e.target.closest('[data-action="watch-yt"]');
+  if (ytLink) {
+    // link already opens tab via href; just mark watched
+    watchOnYouTube(ytLink.dataset.videoId);
     return;
   }
 
   // Remove from queue
   const removeBtn = e.target.closest('[data-action="remove-queue"]');
-  if (removeBtn) {
-    removeFromQueue(removeBtn.dataset.videoId);
-    return;
-  }
+  if (removeBtn) { removeFromQueue(removeBtn.dataset.videoId); return; }
 });
 
-// ── Drag and drop (manual sort mode only) ────────────────────────────────────
+// ── Drag and drop (manual order only) ────────────────────────────────────────
 
 document.addEventListener('dragstart', e => {
   const card = e.target.closest('.channel-card[draggable]');
@@ -620,10 +742,10 @@ document.addEventListener('dragstart', e => {
   setTimeout(() => card.classList.add('dragging'), 0);
 });
 
-document.addEventListener('dragend', e => {
-  document.querySelectorAll('.channel-card').forEach(c => {
-    c.classList.remove('dragging', 'drag-over');
-  });
+document.addEventListener('dragend', () => {
+  document.querySelectorAll('.channel-card').forEach(c =>
+    c.classList.remove('dragging', 'drag-over')
+  );
   dragSrcId = null;
 });
 
@@ -640,26 +762,45 @@ document.addEventListener('drop', e => {
   const card = e.target.closest('.channel-card[draggable]');
   if (!card || !dragSrcId || card.dataset.channelId === dragSrcId) return;
   e.preventDefault();
-
   const srcIdx = state.channels.findIndex(c => c.channel_id === dragSrcId);
   const dstIdx = state.channels.findIndex(c => c.channel_id === card.dataset.channelId);
   if (srcIdx === -1 || dstIdx === -1) return;
-
   const [moved] = state.channels.splice(srcIdx, 1);
   state.channels.splice(dstIdx, 0, moved);
-
   render();
   persistOrder();
 });
 
-// ── Header button wiring ──────────────────────────────────────────────────────
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && player.videoId) { closePlayer(); return; }
+  if (e.key === 'f' && player.videoId && !e.target.matches('input')) {
+    $('player-frame').requestFullscreen?.();
+  }
+});
+
+// ── Player controls wiring ────────────────────────────────────────────────────
+
+$('btn-player-close').addEventListener('click', closePlayer);
+$('btn-player-theater').addEventListener('click', () => {
+  setPlayerMode(player.mode === 'theater' ? 'normal' : 'theater');
+});
+$('btn-player-fullscreen').addEventListener('click', () => {
+  $('player-frame').requestFullscreen?.().catch(() => {});
+});
+$('btn-player-watched').addEventListener('click', playerMarkWatched);
+
+// ── Header wiring ─────────────────────────────────────────────────────────────
 
 $('btn-add-channel').addEventListener('click', addChannel);
 $('channel-input').addEventListener('keydown', e => { if (e.key === 'Enter') addChannel(); });
-
 $('btn-refresh-all').addEventListener('click', refreshAll);
 $('btn-clear-all').addEventListener('click', clearAll);
-
+$('btn-sort').addEventListener('click', () => {
+  state.sortMode = state.sortMode === 'manual' ? 'newest' : 'manual';
+  render();
+});
 $('btn-queue').addEventListener('click', () => {
   state.queueOpen = !state.queueOpen;
   $('queue-pane').classList.toggle('hidden', !state.queueOpen);
@@ -670,12 +811,6 @@ $('btn-close-queue').addEventListener('click', () => {
   $('queue-pane').classList.add('hidden');
   renderQueueBadge();
 });
-
-$('btn-sort').addEventListener('click', () => {
-  state.sortMode = state.sortMode === 'manual' ? 'newest' : 'manual';
-  render();
-});
-
 $('btn-settings').addEventListener('click', () => {
   $('settings-panel').classList.toggle('hidden');
 });

@@ -68,6 +68,23 @@
 
   </div>
 
+  <!-- Player overlay -->
+  <div id="player-overlay" class="player-overlay hidden" data-action="close-player-backdrop">
+    <div id="player-box" class="player-box" onclick="event.stopPropagation()">
+      <div class="player-header">
+        <span id="player-title" class="player-title"></span>
+        <button class="btn-icon player-btn" id="btn-player-watched" title="Mark watched &amp; close">✓ Watched</button>
+        <a id="player-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
+        <button class="btn-icon player-btn" id="btn-player-theater" title="Toggle theater mode">⬜</button>
+        <button class="btn-icon player-btn" id="btn-player-fullscreen" title="Fullscreen">⛶</button>
+        <button class="btn-icon player-btn" id="btn-player-close" title="Close">✕</button>
+      </div>
+      <iframe id="player-frame" class="player-frame"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowfullscreen></iframe>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -71,15 +71,23 @@ def init_db():
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 watched_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS video_status (
+                video_id   TEXT PRIMARY KEY,
+                channel_id TEXT NOT NULL,
+                status     TEXT NOT NULL
+            );
         """)
         c.commit()
-        # Migration: add sort_order to existing DBs
-        try:
-            c.execute("ALTER TABLE channels ADD COLUMN sort_order INTEGER")
-            c.execute("UPDATE channels SET sort_order = id WHERE sort_order IS NULL")
-            c.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        # Migrations for existing DBs
+        for migration in [
+            "ALTER TABLE channels ADD COLUMN sort_order INTEGER",
+        ]:
+            try:
+                c.execute(migration)
+            except sqlite3.OperationalError:
+                pass
+        c.execute("UPDATE channels SET sort_order = id WHERE sort_order IS NULL")
+        c.commit()
 
 
 init_db()
@@ -275,9 +283,28 @@ def channels_list():
                 "SELECT * FROM videos WHERE channel_id=? ORDER BY published_at DESC LIMIT 10",
                 (ch["channel_id"],),
             ).fetchall()
-            ch["videos"] = [
-                {**dict(v), "in_queue": v["video_id"] in queued_ids} for v in vids
-            ]
+            overrides = {
+                r["video_id"]: r["status"]
+                for r in c.execute(
+                    "SELECT video_id, status FROM video_status WHERE channel_id=?",
+                    (ch["channel_id"],),
+                ).fetchall()
+            }
+            videos = []
+            for v in vids:
+                vid = dict(v)
+                override = overrides.get(vid["video_id"])
+                if override == "read":
+                    vid["is_read"] = True
+                elif override == "unread":
+                    vid["is_read"] = False
+                elif ch["read_before"]:
+                    vid["is_read"] = vid["published_at"] <= ch["read_before"]
+                else:
+                    vid["is_read"] = False
+                vid["in_queue"] = vid["video_id"] in queued_ids
+                videos.append(vid)
+            ch["videos"] = videos
     return chs
 
 
@@ -336,9 +363,8 @@ def channels_reorder(req: ReorderReq):
 @app.post("/api/channels/{channel_id}/mark-unread")
 def channels_mark_unread(channel_id: str):
     with db() as c:
-        c.execute(
-            "UPDATE channels SET read_before=NULL WHERE channel_id=?", (channel_id,)
-        )
+        c.execute("UPDATE channels SET read_before=NULL WHERE channel_id=?", (channel_id,))
+        c.execute("DELETE FROM video_status WHERE channel_id=?", (channel_id,))
         c.commit()
     return {"ok": True}
 
@@ -347,9 +373,8 @@ def channels_mark_unread(channel_id: str):
 def channels_mark_read(channel_id: str):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
-        c.execute(
-            "UPDATE channels SET read_before=? WHERE channel_id=?", (now, channel_id)
-        )
+        c.execute("UPDATE channels SET read_before=? WHERE channel_id=?", (now, channel_id))
+        c.execute("DELETE FROM video_status WHERE channel_id=?", (channel_id,))
         c.commit()
     return {"ok": True, "read_before": now}
 
@@ -368,6 +393,38 @@ async def channels_refresh(channel_id: str):
     videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
     save_videos(channel_id, videos)
     return {"ok": True, "count": len(videos)}
+
+
+@app.post("/api/videos/{video_id}/read")
+def video_mark_read(video_id: str):
+    with db() as c:
+        vid = c.execute(
+            "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
+        ).fetchone()
+        if not vid:
+            raise HTTPException(404, "Video not found")
+        c.execute(
+            "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?,?,?)",
+            (video_id, vid["channel_id"], "read"),
+        )
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/videos/{video_id}/unread")
+def video_mark_unread(video_id: str):
+    with db() as c:
+        vid = c.execute(
+            "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
+        ).fetchone()
+        if not vid:
+            raise HTTPException(404, "Video not found")
+        c.execute(
+            "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?,?,?)",
+            (video_id, vid["channel_id"], "unread"),
+        )
+        c.commit()
+    return {"ok": True}
 
 
 @app.post("/api/refresh-all")
