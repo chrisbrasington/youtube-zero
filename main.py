@@ -540,7 +540,11 @@ async def channels_add(req: AddChannelReq):
     with db() as c:
         try:
             max_order = c.execute(
-                "SELECT COALESCE(MAX(sort_order), -1) FROM channels"
+                """SELECT COALESCE(MAX(so), -1) FROM (
+                       SELECT sort_order AS so FROM channels WHERE folder_id IS NULL
+                       UNION ALL
+                       SELECT sort_order AS so FROM folders
+                   )"""
             ).fetchone()[0]
             c.execute(
                 """INSERT INTO channels
