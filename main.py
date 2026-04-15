@@ -462,7 +462,7 @@ async def signal_send(req: SignalSendReq):
     if not row:
         raise HTTPException(400, "Signal not configured")
     number = row["value"]
-    message = ""
+    message = f"https://www.youtube.com/watch?v={req.video_id}"
     preview = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
     payload: dict = {"message": message, "number": number, "recipients": [number]}
     if preview:
