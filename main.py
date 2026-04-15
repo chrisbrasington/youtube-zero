@@ -455,34 +455,36 @@ async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnai
     return None
 
 
+async def _signal_send_one(number: str, video_id: str, title: str, channel_name: str, thumbnail_url: str) -> str | None:
+    """Send one video to Signal. Returns error string or None on success."""
+    message = f"https://www.youtube.com/watch?v={video_id}"
+    preview = await _signal_preview(video_id, title, channel_name, thumbnail_url)
+    payload: dict = {"message": message, "number": number, "recipients": [number]}
+    if preview:
+        payload["link_preview"] = preview
+    print(f"[signal] sending {video_id} {'with' if preview else 'without'} preview")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=30)
+        except Exception as exc:
+            return str(exc)
+    print(f"[signal] send response: {r.status_code} {r.text[:300]}")
+    if r.status_code not in (200, 201):
+        return r.text[:200]
+    return None
+
+
 @app.post("/api/signal/send")
 async def signal_send(req: SignalSendReq):
     with db() as c:
         row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
     if not row:
         raise HTTPException(400, "Signal not configured")
-    number = row["value"]
-    message = f"https://www.youtube.com/watch?v={req.video_id}"
-    preview = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
-    payload: dict = {"message": message, "number": number, "recipients": [number]}
-    if preview:
-        payload["link_preview"] = preview
-        print(f"[signal] sending with link_preview for {req.video_id}")
-    else:
-        print(f"[signal] sending WITHOUT preview for {req.video_id}")
-    async with httpx.AsyncClient() as client:
-        try:
-            r = await client.post(
-                f"{SIGNAL_API_URL}/v2/send",
-                json=payload,
-                timeout=30,
-            )
-        except Exception as exc:
-            raise HTTPException(503, f"Signal API unavailable: {exc}")
-    print(f"[signal] send response: {r.status_code} {r.text[:300]}")
-    if r.status_code not in (200, 201):
-        raise HTTPException(500, f"Signal send failed: {r.text[:200]}")
+    err = await _signal_send_one(row["value"], req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
+    if err:
+        raise HTTPException(500, f"Signal send failed: {err}")
     return {"ok": True}
+
 
 @app.post("/api/signal/send-queue")
 async def signal_send_queue():
@@ -496,23 +498,13 @@ async def signal_send_queue():
         ).fetchall()]
     if not items:
         raise HTTPException(400, "Queue is empty")
-    n = len(items)
-    lines = [f"\U0001f4cb YouTube Queue ({n} video{'s' if n != 1 else ''})"]
-    for i, item in enumerate(items, 1):
-        lines.append(f"\n{i}. {item['title']} \u2014 {item['channel_name']}")
-        lines.append(f"   https://www.youtube.com/watch?v={item['video_id']}")
-    message = "\n".join(lines)
-    async with httpx.AsyncClient() as client:
-        try:
-            r = await client.post(
-                f"{SIGNAL_API_URL}/v2/send",
-                json={"message": message, "number": number, "recipients": [number]},
-                timeout=30,
-            )
-        except Exception as exc:
-            raise HTTPException(503, f"Signal API unavailable: {exc}")
-    if r.status_code not in (200, 201):
-        raise HTTPException(500, f"Signal send failed: {r.text[:200]}")
+    errors = []
+    for item in items:
+        err = await _signal_send_one(number, item["video_id"], item["title"], item["channel_name"], item.get("thumbnail_url") or "")
+        if err:
+            errors.append(f"{item['video_id']}: {err}")
+    if errors:
+        raise HTTPException(500, f"Some sends failed: {'; '.join(errors)}")
     return {"ok": True}
 
 
