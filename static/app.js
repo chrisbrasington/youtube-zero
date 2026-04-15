@@ -80,7 +80,7 @@ const api = {
 const state = {
   feed:             { folders: [], channels: [] },
   queue:            [],
-  queueOpen:        false,
+  queueOpen:        localStorage.getItem('queueOpen') === '1',
   sortMode:         'manual',
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
   manualExpand:     new Set(),
@@ -1629,11 +1629,13 @@ $('btn-sort').addEventListener('click', () => {
 });
 $('btn-queue').addEventListener('click', () => {
   state.queueOpen = !state.queueOpen;
+  localStorage.setItem('queueOpen', state.queueOpen ? '1' : '0');
   $('queue-pane').classList.toggle('hidden', !state.queueOpen);
   renderQueueBadge();
 });
 $('btn-close-queue').addEventListener('click', () => {
   state.queueOpen = false;
+  localStorage.setItem('queueOpen', '0');
   $('queue-pane').classList.add('hidden');
   renderQueueBadge();
 });
@@ -1725,6 +1727,7 @@ $('auto-refresh-slider').addEventListener('input', () => {
   loadAutoRefreshPrefs();
   syncAutoRefresh();
   updateQuota();
+  if (state.queueOpen) $('queue-pane').classList.remove('hidden');
   await loadAll();            // build UI with state from localStorage
   await loadSettings();       // reconcile DB → re-render only if value changed
   await loadSignalSettings(); // check Signal config, show/hide send buttons
