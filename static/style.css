@@ -1132,26 +1132,39 @@ input::placeholder { color: var(--dim); }
 /* ── Mobile / portrait ───────────────────────────────────────────────────── */
 
 @media (max-width: 600px) {
-  /* Header: single tight row */
+  /* Header: two rows on mobile */
   .header {
     padding: 8px 10px;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .header-left  { flex: 1; }
+  .header-right {
+    flex: 1;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  /* Auto-refresh drops to its own second row */
+  .auto-refresh {
+    order: 99;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 3px 0;
+    border: none;
+    background: transparent;
     gap: 6px;
   }
-  .header-right { gap: 5px; }
 
-  /* Hide verbose text labels, keep icons */
+  /* Hide verbose text labels on line 1, keep icons */
   .btn-label            { display: none; }
-  .auto-refresh-label   { display: none; }
-  .auto-refresh-interval{ display: none; }
-  .auto-refresh-countdown { display: none; }
   .quota-label          { display: none; }
   .all-clear-badge      { display: none; }
 
-  /* Slim the slider */
-  #auto-refresh-slider  { width: 60px; }
-
-  /* Tighter auto-refresh pill */
-  .auto-refresh { padding: 3px 6px; gap: 5px; }
+  /* Slim the slider — but show all auto-refresh labels since it has its own row */
+  #auto-refresh-slider  { width: 80px; }
 
   /* Shrink buttons */
   .btn-ghost, .btn-danger {
