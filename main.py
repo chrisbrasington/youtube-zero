@@ -436,19 +436,13 @@ def signal_delete():
 
 async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> dict | None:
     """Fetch thumbnail and build a signal-cli link_preview object. Returns None on any failure."""
-    # Prefer widescreen 16:9 thumbnail; fall back to stored URL
-    widescreen_url = f"https://i.ytimg.com/vi/{video_id}/hq720.jpg"
-    fetch_url = widescreen_url if video_id else thumbnail_url
-    if not fetch_url:
+    if not thumbnail_url:
         print(f"[signal] no thumbnail_url for {video_id}")
         return None
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(fetch_url, timeout=10, follow_redirects=True)
-        # hq720 not available for all videos — fall back to stored URL
-        if r.status_code != 200 and fetch_url != thumbnail_url and thumbnail_url:
             r = await client.get(thumbnail_url, timeout=10, follow_redirects=True)
-        print(f"[signal] thumbnail fetch {fetch_url} → {r.status_code} ({len(r.content)} bytes)")
+        print(f"[signal] thumbnail fetch {thumbnail_url} → {r.status_code} ({len(r.content)} bytes)")
         if r.status_code == 200:
             return {
                 "url": f"https://www.youtube.com/watch?v={video_id}",
@@ -468,9 +462,14 @@ async def signal_send(req: SignalSendReq):
     if not row:
         raise HTTPException(400, "Signal not configured")
     number = row["value"]
-    # Send only the URL — Signal client auto-generates rich preview natively
-    message = f"https://www.youtube.com/watch?v={req.video_id}"
+    message = f"\U0001f4fa {req.channel_name}\n{req.title}\nhttps://www.youtube.com/watch?v={req.video_id}"
+    preview = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
     payload: dict = {"message": message, "number": number, "recipients": [number]}
+    if preview:
+        payload["link_preview"] = preview
+        print(f"[signal] sending with link_preview for {req.video_id}")
+    else:
+        print(f"[signal] sending WITHOUT preview for {req.video_id}")
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(
