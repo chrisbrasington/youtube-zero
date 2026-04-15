@@ -1341,7 +1341,7 @@ document.addEventListener('click', e => {
 
   // Open player (tile or row thumb)
   const openEl = e.target.closest('[data-action="open-player"]');
-  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]')) {
+  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
     openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
   }
 
