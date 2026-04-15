@@ -61,6 +61,21 @@
         <input type="checkbox" id="hide-shorts-check">
         Hide Shorts <span class="settings-hint" style="display:inline">(videos under 1m 40s)</span>
       </label>
+      <hr class="settings-divider">
+      <strong>Signal — Notes to Self</strong>
+      <div class="settings-hint">
+        Requires <a href="https://github.com/bbernhard/signal-cli-rest-api" target="_blank" rel="noopener">signal-cli-rest-api</a> sidecar (included in compose.yaml).
+      </div>
+      <div class="settings-row">
+        <input type="tel" id="signal-number-input" placeholder="+1234567890" autocomplete="off">
+        <button class="btn-primary" id="btn-signal-link">Link Device</button>
+        <button class="btn-ghost" id="btn-signal-remove" style="display:none">Remove</button>
+      </div>
+      <div id="signal-status" class="api-key-status"></div>
+      <div id="signal-qr-wrap" class="hidden">
+        <div class="settings-hint" style="margin-bottom:6px">Open Signal → Settings → Linked Devices → Link New Device → scan:</div>
+        <img id="signal-qr-img" alt="Signal QR code" style="max-width:220px;border-radius:8px;display:block">
+      </div>
     </div>
   </div>
 
@@ -84,7 +99,10 @@
     <div class="queue-pane hidden" id="queue-pane">
       <div class="queue-header">
         <span class="queue-title">Watch Queue</span>
-        <button class="btn-icon" id="btn-close-queue">✕</button>
+        <div class="queue-header-actions">
+          <button class="btn-ghost hidden" id="btn-signal-queue" title="Send queue to Signal Notes to Self">✉ Signal</button>
+          <button class="btn-icon" id="btn-close-queue">✕</button>
+        </div>
       </div>
       <div id="queue-list" class="queue-list"></div>
     </div>

@@ -78,13 +78,14 @@ const api = {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  feed:        { folders: [], channels: [] },
-  queue:       [],
-  queueOpen:   false,
-  sortMode:    'manual',
-  hideShorts:  localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
-  manualExpand: new Set(),
-  folderExpand: new Set(),
+  feed:             { folders: [], channels: [] },
+  queue:            [],
+  queueOpen:        false,
+  sortMode:         'manual',
+  hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
+  manualExpand:     new Set(),
+  folderExpand:     new Set(),
+  signalConfigured: false,
 };
 
 function isShort(video) {
@@ -366,6 +367,12 @@ function renderVideoTile(video, channel, showChannel) {
                 title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
           ${inQueue ? '✓' : '+'}
         </button>
+        ${state.signalConfigured ? `<button class="tile-signal-btn"
+                data-action="signal-send"
+                data-video-id="${vid}"
+                data-title="${escAttr(video.title)}"
+                data-channel-name="${escAttr(channel.name)}"
+                title="Send to Signal Notes to Self">✉</button>` : ''}
       </div>
       <div class="tile-info">
         <div class="tile-title">${esc(video.title)}</div>
@@ -421,6 +428,12 @@ function renderVideoRow(video, channel) {
               title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
         ${inQueue ? '✓' : '+'}
       </button>
+      ${state.signalConfigured ? `<button class="v-signal-btn"
+              data-action="signal-send"
+              data-video-id="${vid}"
+              data-title="${escAttr(video.title)}"
+              data-channel-name="${escAttr(channel.name)}"
+              title="Send to Signal Notes to Self">✉</button>` : ''}
     </div>`;
 }
 
@@ -460,6 +473,12 @@ function renderQueue() {
           <button class="btn-remove"
                   data-action="remove-queue"
                   data-video-id="${escAttr(item.video_id)}">Remove</button>
+          ${state.signalConfigured ? `<button class="btn-signal"
+                  data-action="signal-send"
+                  data-video-id="${escAttr(item.video_id)}"
+                  data-title="${escAttr(item.title)}"
+                  data-channel-name="${escAttr(item.channel_name)}"
+                  title="Send to Signal Notes to Self">✉</button>` : ''}
         </div>
       </div>
     </div>
@@ -1109,6 +1128,99 @@ async function updateQuota() {
   } catch {}
 }
 
+// ── Signal ────────────────────────────────────────────────────────────────────
+
+async function loadSignalSettings() {
+  try {
+    const s = await api.get('/api/settings/signal');
+    state.signalConfigured = s.configured;
+    if (s.configured) {
+      $('signal-number-input').value = s.number;
+      $('signal-status').textContent = 'Linked — send buttons active.';
+      $('signal-status').className = 'api-key-status ok';
+      $('btn-signal-remove').style.display = '';
+      render(); // show signal buttons on all videos
+    }
+    updateSignalVisibility();
+  } catch {}
+}
+
+function updateSignalVisibility() {
+  const qBtn = $('btn-signal-queue');
+  if (qBtn) qBtn.classList.toggle('hidden', !state.signalConfigured);
+}
+
+async function linkSignal() {
+  const number = $('signal-number-input').value.trim();
+  if (!number) {
+    $('signal-status').textContent = 'Enter your Signal phone number first.';
+    $('signal-status').className = 'api-key-status err';
+    return;
+  }
+  $('signal-status').textContent = 'Saving…';
+  $('signal-status').className = 'api-key-status';
+  try {
+    await api.post('/api/settings/signal/link', { number });
+    state.signalConfigured = true;
+    $('btn-signal-remove').style.display = '';
+    updateSignalVisibility();
+    render();
+    // Load QR
+    $('signal-status').textContent = 'Loading QR code…';
+    const img = $('signal-qr-img');
+    img.onerror = () => {
+      $('signal-status').textContent = 'Failed to load QR — is signal-api service running?';
+      $('signal-status').className = 'api-key-status err';
+      $('signal-qr-wrap').classList.add('hidden');
+    };
+    img.onload = () => {
+      $('signal-status').textContent = 'Scan QR then send buttons activate on next refresh.';
+      $('signal-status').className = 'api-key-status ok';
+    };
+    img.src = `/api/settings/signal/qr?t=${Date.now()}`;
+    $('signal-qr-wrap').classList.remove('hidden');
+  } catch (e) {
+    $('signal-status').textContent = 'Error: ' + e.message;
+    $('signal-status').className = 'api-key-status err';
+  }
+}
+
+async function removeSignal() {
+  try {
+    await api.del('/api/settings/signal');
+    state.signalConfigured = false;
+    $('signal-number-input').value = '';
+    $('signal-status').textContent = '';
+    $('btn-signal-remove').style.display = 'none';
+    $('signal-qr-wrap').classList.add('hidden');
+    updateSignalVisibility();
+    render();
+  } catch (e) {
+    $('signal-status').textContent = 'Error: ' + e.message;
+    $('signal-status').className = 'api-key-status err';
+  }
+}
+
+async function signalSendVideo(videoId, title, channelName) {
+  try {
+    await api.post('/api/signal/send', { video_id: videoId, title, channel_name: channelName });
+    status('Sent to Signal ✓', 'ok');
+    setTimeout(() => status(''), 3000);
+  } catch (e) {
+    status('Signal error: ' + e.message, 'err');
+  }
+}
+
+async function signalSendQueue() {
+  try {
+    await api.post('/api/signal/send-queue', {});
+    status('Queue sent to Signal ✓', 'ok');
+    setTimeout(() => status(''), 3000);
+  } catch (e) {
+    status('Signal error: ' + e.message, 'err');
+  }
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
@@ -1207,9 +1319,17 @@ document.addEventListener('click', e => {
     toggleChannel(chHeader.dataset.channelId); return;
   }
 
+  // Signal send
+  const sigBtn = e.target.closest('[data-action="signal-send"]');
+  if (sigBtn) {
+    e.stopPropagation();
+    signalSendVideo(sigBtn.dataset.videoId, sigBtn.dataset.title, sigBtn.dataset.channelName);
+    return;
+  }
+
   // Open player (tile or row thumb)
   const openEl = e.target.closest('[data-action="open-player"]');
-  if (openEl && !e.target.closest('[data-action="toggle-queue"]')) {
+  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]')) {
     openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
   }
 
@@ -1497,6 +1617,10 @@ $('btn-settings').addEventListener('click', () => {
 });
 $('btn-save-key').addEventListener('click', saveApiKey);
 $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
+$('btn-signal-link').addEventListener('click', linkSignal);
+$('btn-signal-remove').addEventListener('click', removeSignal);
+$('btn-signal-queue').addEventListener('click', signalSendQueue);
+$('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('hide-shorts-check').addEventListener('change', async () => {
   state.hideShorts = $('hide-shorts-check').checked;
   localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
@@ -1575,6 +1699,7 @@ $('auto-refresh-slider').addEventListener('input', () => {
   loadAutoRefreshPrefs();
   syncAutoRefresh();
   updateQuota();
-  await loadAll();       // build UI with state from localStorage
-  await loadSettings();  // reconcile DB → re-render only if value changed
+  await loadAll();            // build UI with state from localStorage
+  await loadSettings();       // reconcile DB → re-render only if value changed
+  await loadSignalSettings(); // check Signal config, show/hide send buttons
 })();

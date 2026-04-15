@@ -4,8 +4,17 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/data  # database persisted to ./data/youtube_zero.db on the host
+      - ./data:/data:Z  # database persisted to ./data/youtube_zero.db on the host
     environment:
       DB_PATH: /data/youtube_zero.db
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      SIGNAL_API_URL: ${SIGNAL_API_URL:-http://signal-api:8080}
+    restart: unless-stopped
+
+  signal-api:
+    image: bbernhard/signal-cli-rest-api:latest
+    environment:
+      - MODE=json-rpc
+    volumes:
+      - ./signal-data:/home/.local/share/signal-cli:z
     restart: unless-stopped

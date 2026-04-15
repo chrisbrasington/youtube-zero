@@ -296,6 +296,12 @@ body.app {
   cursor: pointer;
   user-select: none;
 }
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--border-l);
+  margin: 10px 0;
+}
+
 .settings-toggle input[type="checkbox"] {
   width: 14px;
   height: 14px;
@@ -758,6 +764,8 @@ input::placeholder { color: var(--dim); }
 
 .queue-title { font-size: 14px; font-weight: 700; }
 
+.queue-header-actions { display: flex; align-items: center; gap: 6px; }
+
 .queue-list {
   overflow-y: auto;
   flex: 1;
@@ -832,6 +840,18 @@ input::placeholder { color: var(--dim); }
   transition: all .15s;
 }
 .btn-remove:hover { color: var(--accent); border-color: var(--accent); }
+
+.btn-signal {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--border-l);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-signal:hover { color: #3b82f6; border-color: #3b82f6; }
 
 .q-item.dragging  { opacity: .4; }
 .q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
@@ -908,6 +928,44 @@ input::placeholder { color: var(--dim); }
 .tile-q-btn:hover:not(.queued) { background: var(--accent); border-color: var(--accent); }
 .tile-q-btn.queued { background: rgba(74,222,128,.7); border-color: var(--green); font-size: 12px; }
 .tile-q-btn.queued:hover { background: rgba(255,68,68,.7); border-color: var(--accent); }
+
+.tile-signal-btn {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.3);
+  background: rgba(0,0,0,.55);
+  color: rgba(255,255,255,.8);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  z-index: 1;
+}
+.tile-signal-btn:hover { background: rgba(59,130,246,.85); border-color: #3b82f6; color: #fff; }
+
+.v-signal-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border-l);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  line-height: 1;
+}
+.v-signal-btn:hover { color: #3b82f6; border-color: #3b82f6; }
 
 .tile-info {
   padding: 5px 6px 6px;

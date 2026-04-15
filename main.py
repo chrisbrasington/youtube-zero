@@ -7,7 +7,7 @@ from typing import Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -20,6 +20,7 @@ DB_PATH = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "youtube_zero.db"),
 )
 YT_API = "https://www.googleapis.com/youtube/v3"
+SIGNAL_API_URL = os.environ.get("SIGNAL_API_URL", "http://signal-api:8080")
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -378,6 +379,109 @@ def settings_hide_shorts(req: HideShortsReq):
             ("1" if req.hide_shorts else "0",)
         )
         c.commit()
+    return {"ok": True}
+
+
+# ── Signal settings ───────────────────────────────────────────────────────────
+
+class SignalLinkReq(BaseModel):
+    number: str
+
+class SignalSendReq(BaseModel):
+    video_id: str
+    title: str
+    channel_name: str
+
+@app.get("/api/settings/signal")
+def signal_settings_get():
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
+    return {
+        "configured": bool(row),
+        "number": row["value"] if row else "",
+    }
+
+@app.post("/api/settings/signal/link")
+def signal_link(req: SignalLinkReq):
+    number = req.number.strip()
+    if not number:
+        raise HTTPException(400, "Phone number required")
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings VALUES ('signal_number', ?)", (number,))
+        c.commit()
+    return {"ok": True, "number": number}
+
+@app.get("/api/settings/signal/qr")
+async def signal_qr():
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(
+                f"{SIGNAL_API_URL}/v1/qrcodelink?device_name=youtube-zero",
+                timeout=30,
+            )
+        except Exception as exc:
+            raise HTTPException(503, f"Signal API unavailable: {exc}")
+    if r.status_code != 200:
+        raise HTTPException(503, "Signal API error — is the signal-api service running?")
+    return Response(content=r.content, media_type="image/png")
+
+@app.delete("/api/settings/signal")
+def signal_delete():
+    with db() as c:
+        c.execute("DELETE FROM settings WHERE key='signal_number'")
+        c.commit()
+    return {"ok": True}
+
+@app.post("/api/signal/send")
+async def signal_send(req: SignalSendReq):
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
+    if not row:
+        raise HTTPException(400, "Signal not configured")
+    number = row["value"]
+    message = f"\U0001f4fa {req.channel_name}\n{req.title}\nhttps://www.youtube.com/watch?v={req.video_id}"
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{SIGNAL_API_URL}/v2/send",
+                json={"message": message, "number": number, "recipients": [number]},
+                timeout=30,
+            )
+        except Exception as exc:
+            raise HTTPException(503, f"Signal API unavailable: {exc}")
+    if r.status_code not in (200, 201):
+        raise HTTPException(500, f"Signal send failed: {r.text[:200]}")
+    return {"ok": True}
+
+@app.post("/api/signal/send-queue")
+async def signal_send_queue():
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
+        if not row:
+            raise HTTPException(400, "Signal not configured")
+        number = row["value"]
+        items = [dict(r) for r in c.execute(
+            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY COALESCE(sort_order, id)"
+        ).fetchall()]
+    if not items:
+        raise HTTPException(400, "Queue is empty")
+    n = len(items)
+    lines = [f"\U0001f4cb YouTube Queue ({n} video{'s' if n != 1 else ''})"]
+    for i, item in enumerate(items, 1):
+        lines.append(f"\n{i}. {item['title']} \u2014 {item['channel_name']}")
+        lines.append(f"   https://www.youtube.com/watch?v={item['video_id']}")
+    message = "\n".join(lines)
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{SIGNAL_API_URL}/v2/send",
+                json={"message": message, "number": number, "recipients": [number]},
+                timeout=30,
+            )
+        except Exception as exc:
+            raise HTTPException(503, f"Signal API unavailable: {exc}")
+    if r.status_code not in (200, 201):
+        raise HTTPException(500, f"Signal send failed: {r.text[:200]}")
     return {"ok": True}
 
 
