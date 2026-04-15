@@ -245,7 +245,7 @@ function renderFolder(folder) {
   }
 
   const allDone = (folder.channels || []).length > 0 &&
-    (folder.channels || []).every(ch => (ch.videos || []).every(v => v.is_read));
+    (folder.channels || []).every(ch => countUnread(ch) === 0);
 
   return `
     <div class="folder-card" id="fl-${fid}" data-folder-id="${fid}" ${draggable}>
