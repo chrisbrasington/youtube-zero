@@ -851,6 +851,14 @@ def queue_reorder(req: ReorderReq):
     return {"ok": True}
 
 
+@app.delete("/api/queue")
+def queue_clear():
+    with db() as c:
+        c.execute("DELETE FROM queue WHERE watched_at IS NULL")
+        c.commit()
+    return {"ok": True}
+
+
 @app.delete("/api/queue/{video_id}")
 def queue_remove(video_id: str):
     with db() as c:

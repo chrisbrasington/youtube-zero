@@ -132,14 +132,14 @@ function findFolder(folderId) {
 function channelViewMode(channel) {
   const id = channel.channel_id;
   if (state.manualExpand.has(id)) return 'expanded';
-  return (channel.videos || []).some(v => !v.is_read) ? 'compact' : 'collapsed';
+  return (channel.videos || []).some(v => !v.is_read && !isShort(v)) ? 'compact' : 'collapsed';
 }
 
 function folderViewMode(folder) {
   const id = folder.id;
   if (state.folderExpand.has(id)) return 'expanded';
   const hasUnread = (folder.channels || []).some(ch =>
-    (ch.videos || []).some(v => !v.is_read)
+    (ch.videos || []).some(v => !v.is_read && !isShort(v))
   );
   return hasUnread ? 'compact' : 'collapsed';
 }
@@ -828,6 +828,19 @@ async function addToQueue(meta) {
     await api.post('/api/queue', meta);
     state.queue = await api.get('/api/queue');
     setInQueue(meta.video_id, true);
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function clearQueue() {
+  if (state.queue.length === 0) return;
+  try {
+    await api.del('/api/queue');
+    const clearedIds = state.queue.map(q => q.video_id);
+    state.queue = [];
+    clearedIds.forEach(id => setInQueue(id, false));
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -1632,6 +1645,7 @@ $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') sav
 $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
+$('btn-clear-queue').addEventListener('click', clearQueue);
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('hide-shorts-check').addEventListener('change', async () => {
   state.hideShorts = $('hide-shorts-check').checked;
