@@ -69,6 +69,7 @@ def init_db():
                 title TEXT NOT NULL,
                 thumbnail_url TEXT,
                 published_at TEXT,
+                sort_order INTEGER,
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 watched_at TEXT
             );
@@ -91,6 +92,7 @@ def init_db():
             "ALTER TABLE channels ADD COLUMN sort_order INTEGER",
             "ALTER TABLE channels ADD COLUMN folder_id INTEGER REFERENCES folders(id)",
             "ALTER TABLE folders ADD COLUMN icon TEXT DEFAULT '📁'",
+            "ALTER TABLE queue ADD COLUMN sort_order INTEGER",
         ]:
             try:
                 c.execute(migration)
@@ -625,7 +627,7 @@ def clear_all():
 def queue_list():
     with db() as c:
         items = c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY added_at"
+            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY COALESCE(sort_order, id)"
         ).fetchall()
     return [dict(i) for i in items]
 
@@ -634,15 +636,29 @@ def queue_list():
 def queue_add(req: QueueAddReq):
     with db() as c:
         try:
+            max_order = c.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) FROM queue WHERE watched_at IS NULL"
+            ).fetchone()[0]
+            data = req.model_dump()
+            data["sort_order"] = max_order + 1
             c.execute(
                 """INSERT INTO queue
-                   (video_id, channel_id, channel_name, title, thumbnail_url, published_at)
-                   VALUES (:video_id, :channel_id, :channel_name, :title, :thumbnail_url, :published_at)""",
-                req.model_dump(),
+                   (video_id, channel_id, channel_name, title, thumbnail_url, published_at, sort_order)
+                   VALUES (:video_id, :channel_id, :channel_name, :title, :thumbnail_url, :published_at, :sort_order)""",
+                data,
             )
             c.commit()
         except sqlite3.IntegrityError:
             pass
+    return {"ok": True}
+
+
+@app.post("/api/queue/reorder")
+def queue_reorder(req: ReorderReq):
+    with db() as c:
+        for i, vid in enumerate(req.ids):
+            c.execute("UPDATE queue SET sort_order=? WHERE video_id=?", (i, vid))
+        c.commit()
     return {"ok": True}
 
 

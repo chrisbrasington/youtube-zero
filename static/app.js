@@ -430,7 +430,7 @@ function renderQueue() {
     return;
   }
   el.innerHTML = state.queue.map(item => `
-    <div class="q-item">
+    <div class="q-item" draggable="true" data-drag-context="queue" data-video-id="${escAttr(item.video_id)}">
       <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
            onerror="this.src='data:image/svg+xml,<svg/>'">
       <div class="q-info">
@@ -1222,7 +1222,19 @@ function anyCard(el) {
   return el.closest('.channel-card') || el.closest('.folder-card');
 }
 
+let queueDragSrcId = null;
+
 document.addEventListener('dragstart', e => {
+  // Queue item drag
+  const qItem = e.target.closest('.q-item[draggable]');
+  if (qItem) {
+    queueDragSrcId = qItem.dataset.videoId;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => qItem.classList.add('dragging'), 0);
+    return;
+  }
+
+  // Feed drag
   const card = anyCard(e.target);
   if (!card) return;
   if (card.dataset.folderId) {
@@ -1240,13 +1252,26 @@ document.addEventListener('dragstart', e => {
 });
 
 document.addEventListener('dragend', () => {
-  document.querySelectorAll('.channel-card, .folder-card').forEach(c =>
+  document.querySelectorAll('.channel-card, .folder-card, .q-item').forEach(c =>
     c.classList.remove('dragging', 'drag-over', 'drag-into')
   );
   dragSrcId = dragSrcType = dragSrcFolderId = null;
+  queueDragSrcId = null;
 });
 
 document.addEventListener('dragover', e => {
+  // Queue reorder
+  if (queueDragSrcId) {
+    const target = e.target.closest('.q-item');
+    if (target && target.dataset.videoId !== queueDragSrcId) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.q-item').forEach(q => q.classList.remove('drag-over'));
+      target.classList.add('drag-over');
+    }
+    return;
+  }
+
   if (!dragSrcId) return;
 
   document.querySelectorAll('.drag-over, .drag-into').forEach(c =>
@@ -1254,18 +1279,18 @@ document.addEventListener('dragover', e => {
   );
 
   if (dragSrcType === 'channel') {
-    // Hovering over a folder card → "drop into folder" indicator
     const folderCard = e.target.closest('.folder-card');
     if (folderCard) {
       const targetFolderId = parseInt(folderCard.dataset.folderId, 10);
       if (targetFolderId !== dragSrcFolderId) {
+        // Different folder → drop-into highlight
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         folderCard.classList.add('drag-into');
+        return;
       }
-      return;
+      // Same folder → fall through to channel reorder below
     }
-    // Hovering over another channel → reorder
     const channelCard = e.target.closest('.channel-card');
     if (channelCard && channelCard.dataset.channelId !== dragSrcId) {
       e.preventDefault();
@@ -1290,26 +1315,39 @@ document.addEventListener('dragover', e => {
 });
 
 document.addEventListener('drop', e => {
+  // Queue reorder
+  if (queueDragSrcId) {
+    const target = e.target.closest('.q-item');
+    if (!target || target.dataset.videoId === queueDragSrcId) return;
+    e.preventDefault();
+    const si = state.queue.findIndex(q => q.video_id === queueDragSrcId);
+    const di = state.queue.findIndex(q => q.video_id === target.dataset.videoId);
+    if (si === -1 || di === -1) return;
+    const [m] = state.queue.splice(si, 1);
+    state.queue.splice(di, 0, m);
+    state.queue.forEach((q, i) => { q.sort_order = i; });
+    renderQueue();
+    api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }).catch(() => {});
+    return;
+  }
+
   if (!dragSrcId) return;
 
   if (dragSrcType === 'channel') {
-    // Drop onto folder → move channel into that folder
     const folderCard = e.target.closest('.folder-card');
     if (folderCard) {
-      e.preventDefault();
       const targetFolderId = parseInt(folderCard.dataset.folderId, 10);
       if (targetFolderId !== dragSrcFolderId) {
+        e.preventDefault();
         setFolder(dragSrcId, String(targetFolderId));
+        return;
       }
-      return;
+      // Same folder — fall through to channel reorder
     }
-
-    // Drop onto another channel → reorder within the same context
     const channelCard = e.target.closest('.channel-card');
     if (channelCard && channelCard.dataset.channelId !== dragSrcId) {
       e.preventDefault();
-      const targetId = channelCard.dataset.channelId;
-      reorderChannels(dragSrcId, targetId);
+      reorderChannels(dragSrcId, channelCard.dataset.channelId);
     }
     return;
   }
@@ -1336,7 +1374,6 @@ document.addEventListener('drop', e => {
 });
 
 function reorderChannels(srcId, dstId) {
-  // Find which list both channels live in (same folder or both standalone)
   const srcInFolder = state.feed.folders.find(f => f.channels.some(c => c.channel_id === srcId));
   const dstInFolder = state.feed.folders.find(f => f.channels.some(c => c.channel_id === dstId));
 
@@ -1346,7 +1383,7 @@ function reorderChannels(srcId, dstId) {
   } else if (!srcInFolder && !dstInFolder) {
     list = state.feed.channels;
   } else {
-    return; // different contexts — use dropdown to move between folders
+    return;
   }
 
   const si = list.findIndex(c => c.channel_id === srcId);
@@ -1354,8 +1391,9 @@ function reorderChannels(srcId, dstId) {
   if (si === -1 || di === -1) return;
   const [m] = list.splice(si, 1);
   list.splice(di, 0, m);
+  list.forEach((ch, i) => { ch.sort_order = i; });
   render();
-  persistFeedOrder();
+  api.post('/api/channels/reorder', { ids: list.map(c => c.channel_id) }).catch(() => {});
 }
 
 function applyFeedItemOrder(items, srcIdx, dstIdx) {

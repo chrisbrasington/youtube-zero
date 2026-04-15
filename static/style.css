@@ -735,6 +735,8 @@ input::placeholder { color: var(--dim); }
   border-radius: var(--r-sm);
   margin-bottom: 8px;
   background: var(--bg3);
+  cursor: grab;
+  transition: opacity .15s;
 }
 
 .q-thumb {
@@ -786,6 +788,9 @@ input::placeholder { color: var(--dim); }
   transition: all .15s;
 }
 .btn-remove:hover { color: var(--accent); border-color: var(--accent); }
+
+.q-item.dragging  { opacity: .4; }
+.q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
 
 /* ── Compact video strip (default channel view) ──────────────────────────── */
 
