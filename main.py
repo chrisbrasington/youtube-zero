@@ -616,6 +616,7 @@ def clear_all():
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
         c.execute("UPDATE channels SET read_before=?", (now,))
+        c.execute("DELETE FROM video_status")
         c.commit()
     return {"ok": True}
 

@@ -636,6 +636,7 @@ async function clearAll() {
     await api.post('/api/clear-all');
     state.feed = await api.get('/api/feed');
     state.manualExpand.clear();
+    state.folderExpand.clear();
     render();
     status('All cleared', 'ok');
     setTimeout(() => status(''), 3000);
