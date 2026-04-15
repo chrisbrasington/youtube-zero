@@ -82,9 +82,9 @@ const state = {
   queue:       [],
   queueOpen:   false,
   sortMode:    'manual',
-  hideShorts:  false,
-  manualExpand: new Set(),   // channel_ids force-expanded to full list
-  folderExpand: new Set(),   // folder ids force-expanded to show channels
+  hideShorts:  localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
+  manualExpand: new Set(),
+  folderExpand: new Set(),
 };
 
 function isShort(video) {
@@ -1118,7 +1118,8 @@ async function loadSettings() {
       $('api-key-status').textContent = `Key saved (${s.masked})`;
       $('api-key-status').className = 'api-key-status ok';
     }
-    state.hideShorts = s.hide_shorts ?? false;
+    state.hideShorts = !!s.hide_shorts;
+    localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
     $('hide-shorts-check').checked = state.hideShorts;
   } catch {}
 }
@@ -1492,6 +1493,7 @@ $('btn-save-key').addEventListener('click', saveApiKey);
 $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
 $('hide-shorts-check').addEventListener('change', async () => {
   state.hideShorts = $('hide-shorts-check').checked;
+  localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
   render();
   try { await api.post('/api/settings/hide-shorts', { hide_shorts: state.hideShorts }); } catch {}
 });
@@ -1562,10 +1564,8 @@ $('auto-refresh-slider').addEventListener('input', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-(async () => {
-  loadAutoRefreshPrefs();
-  await loadSettings();   // must complete before first render
-  syncAutoRefresh();
-  updateQuota();
-  loadAll();
-})();
+loadAutoRefreshPrefs();
+loadSettings();   // syncs DB → localStorage for next visit
+syncAutoRefresh();
+updateQuota();
+loadAll();
