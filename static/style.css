@@ -929,6 +929,26 @@ input::placeholder { color: var(--dim); }
 .tile-q-btn.queued { background: rgba(74,222,128,.7); border-color: var(--green); font-size: 12px; }
 .tile-q-btn.queued:hover { background: rgba(255,68,68,.7); border-color: var(--accent); }
 
+.tile-read-btn {
+  position: absolute;
+  top: 30px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.3);
+  background: rgba(0,0,0,.55);
+  color: rgba(255,255,255,.7);
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  z-index: 1;
+}
+.tile-read-btn:hover { background: rgba(74,222,128,.8); border-color: var(--green); color: #fff; }
+
 .tile-signal-btn {
   position: absolute;
   bottom: 4px;

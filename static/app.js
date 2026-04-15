@@ -367,6 +367,10 @@ function renderVideoTile(video, channel, showChannel) {
                 title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
           ${inQueue ? '✓' : '+'}
         </button>
+        <button class="tile-read-btn"
+                data-action="video-read"
+                data-video-id="${vid}"
+                title="Mark as read">●</button>
         ${state.signalConfigured ? `<button class="tile-signal-btn"
                 data-action="signal-send"
                 data-video-id="${vid}"
