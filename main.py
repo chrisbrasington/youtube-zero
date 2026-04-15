@@ -434,23 +434,23 @@ def signal_delete():
         c.commit()
     return {"ok": True}
 
-async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> list:
-    """Fetch thumbnail and build a signal-cli preview object. Returns [] on any failure."""
+async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> dict | None:
+    """Fetch thumbnail and build a signal-cli link_preview object. Returns None on any failure."""
     if not thumbnail_url:
-        return []
+        return None
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(thumbnail_url, timeout=10, follow_redirects=True)
         if r.status_code == 200:
-            return [{
+            return {
                 "url": f"https://www.youtube.com/watch?v={video_id}",
                 "title": title,
                 "description": channel_name,
-                "image": base64.b64encode(r.content).decode(),
-            }]
+                "base64_thumbnail": base64.b64encode(r.content).decode(),
+            }
     except Exception:
         pass
-    return []
+    return None
 
 
 @app.post("/api/signal/send")
@@ -461,12 +461,15 @@ async def signal_send(req: SignalSendReq):
         raise HTTPException(400, "Signal not configured")
     number = row["value"]
     message = f"\U0001f4fa {req.channel_name}\n{req.title}\nhttps://www.youtube.com/watch?v={req.video_id}"
-    previews = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
+    preview = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
+    payload: dict = {"message": message, "number": number, "recipients": [number]}
+    if preview:
+        payload["link_preview"] = preview
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(
                 f"{SIGNAL_API_URL}/v2/send",
-                json={"message": message, "number": number, "recipients": [number], "previews": previews},
+                json=payload,
                 timeout=30,
             )
         except Exception as exc:
