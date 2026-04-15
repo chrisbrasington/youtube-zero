@@ -537,7 +537,6 @@ async def channels_add(req: AddChannelReq):
         raise HTTPException(400, "No YouTube API key. Add one in settings (⚙).")
     ltype, val = parse_channel_input(req.input)
     info = await yt_get_channel(ltype, val, api_key)
-    assigned_order = None
     with db() as c:
         try:
             max_order = c.execute(
@@ -563,8 +562,8 @@ async def channels_add(req: AddChannelReq):
         **info,
         "videos": [{**v, "in_queue": False, "is_read": False} for v in videos],
         "read_before": None,
-        "last_refreshed": datetime.now(timezone.utc).isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "last_refreshed": (now := datetime.now(timezone.utc)).isoformat(),
+        "created_at": now.isoformat(),
         "folder_id": None,
         "sort_order": assigned_order,
     }
