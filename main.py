@@ -347,10 +347,14 @@ def quota_get():
 @app.get("/api/settings")
 def settings_get():
     with db() as c:
-        row = c.execute("SELECT value FROM settings WHERE key='api_key'").fetchone()
-    key = row["value"] if row else ""
+        rows = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM settings").fetchall()}
+    key = rows.get("api_key", "")
     masked = (key[:4] + "…" + key[-4:]) if len(key) > 8 else ("****" if key else "")
-    return {"has_api_key": bool(key), "masked": masked}
+    return {
+        "has_api_key": bool(key),
+        "masked": masked,
+        "hide_shorts": rows.get("hide_shorts", "0") == "1",
+    }
 
 
 @app.post("/api/settings/api-key")
@@ -358,6 +362,20 @@ def settings_set_key(req: ApiKeyReq):
     with db() as c:
         c.execute(
             "INSERT OR REPLACE INTO settings VALUES ('api_key', ?)", (req.api_key,)
+        )
+        c.commit()
+    return {"ok": True}
+
+
+class HideShortsReq(BaseModel):
+    hide_shorts: bool
+
+@app.post("/api/settings/hide-shorts")
+def settings_hide_shorts(req: HideShortsReq):
+    with db() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO settings VALUES ('hide_shorts', ?)",
+            ("1" if req.hide_shorts else "0",)
         )
         c.commit()
     return {"ok": True}

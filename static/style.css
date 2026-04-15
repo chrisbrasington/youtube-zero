@@ -287,6 +287,26 @@ body.app {
 .api-key-status.ok  { color: var(--green); }
 .api-key-status.err { color: var(--accent); }
 
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.settings-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
 /* ── Inputs ──────────────────────────────────────────────────────────────── */
 
 input[type="text"],

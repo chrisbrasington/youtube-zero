@@ -82,9 +82,19 @@ const state = {
   queue:       [],
   queueOpen:   false,
   sortMode:    'manual',
+  hideShorts:  false,
   manualExpand: new Set(),   // channel_ids force-expanded to full list
   folderExpand: new Set(),   // folder ids force-expanded to show channels
 };
+
+function isShort(video) {
+  if (!state.hideShorts || !video.duration) return false;
+  const parts = video.duration.split(':').map(Number);
+  const secs = parts.length === 3
+    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+    : parts[0] * 60 + (parts[1] || 0);
+  return secs < 60;
+}
 
 let dragSrcId       = null;
 let dragSrcType     = null;   // 'folder' | 'channel'
@@ -134,7 +144,7 @@ function folderViewMode(folder) {
 }
 
 function countUnread(channel) {
-  return (channel.videos || []).filter(v => !v.is_read).length;
+  return (channel.videos || []).filter(v => !v.is_read && !isShort(v)).length;
 }
 
 function folderUnreadCount(folder) {
@@ -221,7 +231,7 @@ function renderFolder(folder) {
 
   let bodyHtml = '';
   if (mode === 'compact') {
-    const mixedVids = folderMixedStrip(folder);
+    const mixedVids = folderMixedStrip(folder).filter(v => !isShort(v));
     bodyHtml = `
       <div class="video-strip">
         ${mixedVids.map(v => renderVideoTile(v, v._channel, true)).join('')}
@@ -280,17 +290,18 @@ function renderChannel(ch, nested) {
 
   let bodyHtml = '';
   if (mode === 'compact') {
-    const unreadVids = ch.videos.filter(v => !v.is_read);
+    const unreadVids = ch.videos.filter(v => !v.is_read && !isShort(v));
     bodyHtml = `
       <div class="video-strip">
         ${unreadVids.map(v => renderVideoTile(v, ch, false)).join('')}
       </div>`;
   } else if (mode === 'expanded') {
+    const visibleVids = ch.videos.filter(v => !isShort(v));
     bodyHtml = `
       <div class="videos-list">
-        ${ch.videos.length === 0
+        ${visibleVids.length === 0
           ? '<div class="no-videos">No videos cached — click ↻ to refresh.</div>'
-          : ch.videos.map(v => renderVideoRow(v, ch)).join('')
+          : visibleVids.map(v => renderVideoRow(v, ch)).join('')
         }
       </div>`;
   }
@@ -1107,6 +1118,8 @@ async function loadSettings() {
       $('api-key-status').textContent = `Key saved (${s.masked})`;
       $('api-key-status').className = 'api-key-status ok';
     }
+    state.hideShorts = s.hide_shorts ?? false;
+    $('hide-shorts-check').checked = state.hideShorts;
   } catch {}
 }
 
@@ -1477,6 +1490,11 @@ $('btn-settings').addEventListener('click', () => {
 });
 $('btn-save-key').addEventListener('click', saveApiKey);
 $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
+$('hide-shorts-check').addEventListener('change', async () => {
+  state.hideShorts = $('hide-shorts-check').checked;
+  render();
+  try { await api.post('/api/settings/hide-shorts', { hide_shorts: state.hideShorts }); } catch {}
+});
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 
