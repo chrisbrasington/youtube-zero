@@ -537,6 +537,7 @@ async def channels_add(req: AddChannelReq):
         raise HTTPException(400, "No YouTube API key. Add one in settings (⚙).")
     ltype, val = parse_channel_input(req.input)
     info = await yt_get_channel(ltype, val, api_key)
+    assigned_order = None
     with db() as c:
         try:
             max_order = c.execute(
@@ -546,11 +547,12 @@ async def channels_add(req: AddChannelReq):
                        SELECT sort_order AS so FROM folders
                    )"""
             ).fetchone()[0]
+            assigned_order = max_order + 1
             c.execute(
                 """INSERT INTO channels
                    (channel_id, name, thumbnail_url, handle, uploads_playlist_id, sort_order)
                    VALUES (:channel_id, :name, :thumbnail_url, :handle, :uploads_playlist_id, :sort_order)""",
-                {**info, "sort_order": max_order + 1},
+                {**info, "sort_order": assigned_order},
             )
             c.commit()
         except sqlite3.IntegrityError:
@@ -564,7 +566,7 @@ async def channels_add(req: AddChannelReq):
         "last_refreshed": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "folder_id": None,
-        "sort_order": None,
+        "sort_order": assigned_order,
     }
 
 
