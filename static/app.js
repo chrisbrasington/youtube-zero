@@ -1118,9 +1118,13 @@ async function loadSettings() {
       $('api-key-status').textContent = `Key saved (${s.masked})`;
       $('api-key-status').className = 'api-key-status ok';
     }
-    state.hideShorts = !!s.hide_shorts;
-    localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
-    $('hide-shorts-check').checked = state.hideShorts;
+    const serverVal = !!s.hide_shorts;
+    $('hide-shorts-check').checked = serverVal;
+    if (serverVal !== state.hideShorts) {
+      state.hideShorts = serverVal;
+      localStorage.setItem('hideShorts', serverVal ? '1' : '0');
+      render();  // DB differed from localStorage cache — re-render
+    }
   } catch {}
 }
 
@@ -1564,8 +1568,10 @@ $('auto-refresh-slider').addEventListener('input', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-loadAutoRefreshPrefs();
-loadSettings();   // syncs DB → localStorage for next visit
-syncAutoRefresh();
-updateQuota();
-loadAll();
+(async () => {
+  loadAutoRefreshPrefs();
+  syncAutoRefresh();
+  updateQuota();
+  await loadAll();       // build UI with state from localStorage
+  await loadSettings();  // reconcile DB → re-render only if value changed
+})();
