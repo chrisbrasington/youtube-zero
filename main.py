@@ -472,8 +472,9 @@ async def signal_send(req: SignalSendReq):
     preview = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
     payload: dict = {"message": message, "number": number, "recipients": [number]}
     if preview:
-        payload["link_preview"] = preview
-        print(f"[signal] sending with link_preview for {req.video_id}")
+        # Send as attachment for full widescreen aspect ratio (link_preview crops to square)
+        payload["base64_attachments"] = [preview["base64_thumbnail"]]
+        print(f"[signal] sending with attachment for {req.video_id}")
     else:
         print(f"[signal] sending WITHOUT preview for {req.video_id}")
     async with httpx.AsyncClient() as client:
