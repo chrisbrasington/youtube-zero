@@ -683,15 +683,11 @@ input::placeholder { color: var(--dim); }
 .empty-state h3 { font-size: 18px; color: var(--dim); margin-bottom: 8px; }
 .empty-state p  { font-size: 13px; color: var(--muted); }
 
-.all-clear {
-  text-align: center;
-  padding: 32px 20px;
-  border: 1px dashed var(--border-l);
-  border-radius: var(--r);
-  color: var(--green);
-  font-size: 15px;
+.all-clear-badge {
+  font-size: 12px;
   font-weight: 600;
-  margin-top: 8px;
+  color: var(--green);
+  opacity: .8;
 }
 
 /* ── Queue pane ──────────────────────────────────────────────────────────── */

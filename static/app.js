@@ -180,6 +180,7 @@ function renderFeed() {
   const items = topLevelItems();
 
   if (items.length === 0) {
+    $('all-clear-badge').classList.add('hidden');
     el.innerHTML = `
       <div class="empty-state">
         <h3>No channels yet</h3>
@@ -192,12 +193,11 @@ function renderFeed() {
     n + (type === 'folder' ? folderUnreadCount(item) : countUnread(item)), 0
   );
 
-  const allClear = totalUnread === 0 ? '<div class="all-clear">✓ All caught up</div>' : '';
-  const html = items.map(({ type, item }) =>
+  $('all-clear-badge').classList.toggle('hidden', totalUnread !== 0);
+
+  el.innerHTML = items.map(({ type, item }) =>
     type === 'folder' ? renderFolder(item) : renderChannel(item, false)
   ).join('');
-
-  el.innerHTML = allClear + html;
 }
 
 // ── Render: folder ────────────────────────────────────────────────────────────

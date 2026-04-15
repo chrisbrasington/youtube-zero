@@ -13,11 +13,8 @@ RUN uv pip install --system --no-cache -r requirements.txt
 # Copy application
 COPY . .
 
-# Non-root user + persistent data dir
-RUN useradd --system --no-create-home app \
-    && mkdir -p /data \
-    && chown app:app /data
-USER app
+# Ensure data directory exists (bind mount target)
+RUN mkdir -p /data
 
 EXPOSE 8000
 
