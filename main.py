@@ -468,15 +468,9 @@ async def signal_send(req: SignalSendReq):
     if not row:
         raise HTTPException(400, "Signal not configured")
     number = row["value"]
-    message = f"\U0001f4fa {req.channel_name}\n{req.title}\nhttps://www.youtube.com/watch?v={req.video_id}"
-    preview = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
+    # Send only the URL — Signal client auto-generates rich preview natively
+    message = f"https://www.youtube.com/watch?v={req.video_id}"
     payload: dict = {"message": message, "number": number, "recipients": [number]}
-    if preview:
-        # Send as attachment for full widescreen aspect ratio (link_preview crops to square)
-        payload["base64_attachments"] = [preview["base64_thumbnail"]]
-        print(f"[signal] sending with attachment for {req.video_id}")
-    else:
-        print(f"[signal] sending WITHOUT preview for {req.video_id}")
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(
