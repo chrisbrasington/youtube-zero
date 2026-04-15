@@ -437,10 +437,12 @@ def signal_delete():
 async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> dict | None:
     """Fetch thumbnail and build a signal-cli link_preview object. Returns None on any failure."""
     if not thumbnail_url:
+        print(f"[signal] no thumbnail_url for {video_id}")
         return None
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(thumbnail_url, timeout=10, follow_redirects=True)
+        print(f"[signal] thumbnail fetch {thumbnail_url} → {r.status_code} ({len(r.content)} bytes)")
         if r.status_code == 200:
             return {
                 "url": f"https://www.youtube.com/watch?v={video_id}",
@@ -448,8 +450,8 @@ async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnai
                 "description": channel_name,
                 "base64_thumbnail": base64.b64encode(r.content).decode(),
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[signal] thumbnail fetch error: {exc}")
     return None
 
 
@@ -465,6 +467,9 @@ async def signal_send(req: SignalSendReq):
     payload: dict = {"message": message, "number": number, "recipients": [number]}
     if preview:
         payload["link_preview"] = preview
+        print(f"[signal] sending with link_preview for {req.video_id}")
+    else:
+        print(f"[signal] sending WITHOUT preview for {req.video_id}")
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(
@@ -474,6 +479,7 @@ async def signal_send(req: SignalSendReq):
             )
         except Exception as exc:
             raise HTTPException(503, f"Signal API unavailable: {exc}")
+    print(f"[signal] send response: {r.status_code} {r.text[:300]}")
     if r.status_code not in (200, 201):
         raise HTTPException(500, f"Signal send failed: {r.text[:200]}")
     return {"ok": True}
