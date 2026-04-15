@@ -80,6 +80,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS folders (
                 id         INTEGER PRIMARY KEY,
                 name       TEXT NOT NULL,
+                icon       TEXT NOT NULL DEFAULT '📁',
                 sort_order INTEGER,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
@@ -89,6 +90,7 @@ def init_db():
         for migration in [
             "ALTER TABLE channels ADD COLUMN sort_order INTEGER",
             "ALTER TABLE channels ADD COLUMN folder_id INTEGER REFERENCES folders(id)",
+            "ALTER TABLE folders ADD COLUMN icon TEXT DEFAULT '📁'",
         ]:
             try:
                 c.execute(migration)
@@ -394,6 +396,17 @@ def folders_delete(folder_id: int):
 def folders_rename(folder_id: int, req: RenameReq):
     with db() as c:
         c.execute("UPDATE folders SET name=? WHERE id=?", (req.name, folder_id))
+        c.commit()
+    return {"ok": True}
+
+
+class SetIconReq(BaseModel):
+    icon: str
+
+@app.post("/api/folders/{folder_id}/set-icon")
+def folders_set_icon(folder_id: int, req: SetIconReq):
+    with db() as c:
+        c.execute("UPDATE folders SET icon=? WHERE id=?", (req.icon, folder_id))
         c.commit()
     return {"ok": True}
 

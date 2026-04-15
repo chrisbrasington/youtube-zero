@@ -192,12 +192,12 @@ function renderFeed() {
     n + (type === 'folder' ? folderUnreadCount(item) : countUnread(item)), 0
   );
 
-  let html = items.map(({ type, item }) =>
+  const allClear = totalUnread === 0 ? '<div class="all-clear">✓ All caught up</div>' : '';
+  const html = items.map(({ type, item }) =>
     type === 'folder' ? renderFolder(item) : renderChannel(item, false)
   ).join('');
 
-  if (totalUnread === 0) html += '<div class="all-clear">✓ All caught up</div>';
-  el.innerHTML = html;
+  el.innerHTML = allClear + html;
 }
 
 // ── Render: folder ────────────────────────────────────────────────────────────
@@ -243,7 +243,10 @@ function renderFolder(folder) {
              data-action="mark-folder-read"
              data-folder-id="${fid}"
              title="Mark all as read">✓</div>
-        <span class="folder-icon">📁</span>
+        <button class="folder-icon-btn"
+                data-action="open-icon-picker"
+                data-folder-id="${fid}"
+                title="Change icon">${esc(folder.icon || '📁')}</button>
         <span class="folder-name">${esc(folder.name)}</span>
         <div class="folder-right">
           ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
@@ -820,6 +823,154 @@ async function persistFeedOrder() {
   try { await api.post('/api/feed/reorder', { items }); } catch {}
 }
 
+// ── Icon picker ───────────────────────────────────────────────────────────────
+
+// [emoji, 'space-separated search keywords']
+const EMOJI_SET = [
+  // Folders / organization
+  ['📁','folder files default'],['🗂️','folder tabs organize'],['🗃️','file cabinet archive'],
+  ['📂','folder open'],['🗄️','cabinet storage files'],['📌','pin bookmark'],
+  ['🔖','bookmark save'],['📋','clipboard list'],['📎','paperclip attach'],
+  // Gaming
+  ['🎮','gaming game controller play'],['🕹️','joystick arcade retro gaming'],
+  ['👾','alien space invaders retro gaming'],['🏆','trophy winner achievement gaming'],
+  ['🎯','target dart gaming aim'],['🎲','dice board game'],['♟️','chess strategy'],
+  ['🃏','cards poker game'],['🎳','bowling game'],['🎰','slot machine casino'],
+  ['👑','crown king winner'],['⚔️','sword battle rpg fight'],['🛡️','shield defense rpg'],
+  ['🗡️','dagger rpg battle'],['🏹','bow arrow rpg'],['🧩','puzzle game'],
+  ['🀄','mahjong game'],['🎪','carnival fun games'],
+  // Video / streaming
+  ['📺','tv television watch stream'],['🎬','film clapper movie video'],
+  ['🎥','camera movie film video'],['📹','video camera record'],
+  ['🎞️','film strip movie'],['📽️','projector film cinema'],['🎦','cinema movie watch'],
+  ['▶️','play button stream watch'],['📡','satellite broadcast stream'],
+  // Music / audio
+  ['🎵','music note song'],['🎶','music notes songs'],['🎸','guitar music rock'],
+  ['🎹','piano keyboard music'],['🎺','trumpet music brass'],['🥁','drums music beat'],
+  ['🎷','saxophone music jazz'],['🎻','violin music classical'],['🎤','microphone sing vocal'],
+  ['🎧','headphones music listen'],['📻','radio music broadcast'],['🔊','speaker volume sound'],
+  // Tech / coding
+  ['💻','laptop computer coding tech'],['🖥️','desktop monitor computer'],
+  ['📱','phone mobile smartphone'],['⌨️','keyboard typing code'],['🖱️','mouse computer'],
+  ['🔧','wrench tool fix repair'],['⚙️','gear settings config'],['🤖','robot ai automation'],
+  ['💾','disk save data retro'],['🔌','plug power electric'],['🖨️','printer tech'],
+  ['💡','lightbulb idea tech'],['🔋','battery power'],['📲','phone download tech'],
+  ['🧑‍💻','developer coder programmer tech'],['👨‍💻','programmer developer code'],
+  // Science / research
+  ['🔬','microscope science lab research'],['🧬','dna biology science'],
+  ['🧪','flask chemistry science lab'],['🔭','telescope astronomy space'],
+  ['🌡️','thermometer temperature science'],['⚗️','beaker chemistry lab'],
+  ['🧫','petri dish biology lab'],['🧲','magnet physics science'],
+  ['⚛️','atom physics nuclear science'],['🔩','bolt screw engineering'],
+  // Nature / outdoors
+  ['🌿','plant nature green leaf'],['🌲','tree forest nature'],['🌊','wave ocean water sea'],
+  ['🔥','fire flame hot'],['⭐','star favorite'],['🌙','moon night'],['☀️','sun day bright'],
+  ['🌸','cherry blossom flower spring'],['🍀','clover lucky green'],['🌈','rainbow color'],
+  ['⚡','lightning bolt electric energy'],['❄️','snowflake cold winter ice'],
+  ['🍃','leaf nature plant green'],['🌺','flower bloom nature'],['🌻','sunflower bright'],
+  // Space
+  ['🚀','rocket space launch'],['🛸','ufo space alien'],['🌍','earth globe world'],
+  ['🌕','moon lunar space'],['🌌','galaxy space stars'],['🪐','planet saturn space'],
+  ['🛰️','satellite space orbit'],['☄️','comet meteor space'],
+  // Sports / fitness
+  ['⚽','soccer football sport'],['🏀','basketball sport'],['🏈','football american sport'],
+  ['⚾','baseball sport'],['🎾','tennis sport'],['🏐','volleyball sport'],
+  ['🎱','billiards pool sport'],['🏊','swimming sport'],['🚴','cycling bike sport'],
+  ['🏋️','weightlifting gym fitness'],['🤸','gymnastics sport fitness'],
+  ['🥊','boxing sport fight'],['🏄','surfing sport wave'],['⛷️','skiing sport winter'],
+  ['🧗','climbing sport fitness'],['🏇','horse racing sport'],
+  // Food / drink
+  ['🍕','pizza food'],['🍔','burger food'],['🍜','noodles ramen food'],
+  ['🍣','sushi japanese food'],['☕','coffee drink morning'],['🍺','beer drink'],
+  ['🥤','drink soda juice'],['🍰','cake dessert sweet'],['🍩','donut sweet food'],
+  ['🌮','taco mexican food'],['🍎','apple fruit food'],['🥑','avocado food healthy'],
+  // Travel / places
+  ['✈️','airplane travel fly'],['🚗','car drive travel'],['🚂','train rail travel'],
+  ['🏠','home house building'],['🏖️','beach vacation travel'],['🗺️','map travel'],
+  ['🧭','compass navigate travel'],['🗼','tower paris travel'],['🏔️','mountain hiking travel'],
+  ['🌆','city skyline urban'],['🏝️','island tropical vacation'],
+  // Art / creative
+  ['🎨','palette art paint design'],['✏️','pencil draw write'],['📝','note write memo'],
+  ['📚','books read study learn'],['🖼️','picture art frame gallery'],
+  ['🎭','theater drama art'],['🖌️','brush paint art'],['📸','photo camera photography'],
+  ['🖊️','pen write ink'],['📐','ruler drawing design'],
+  // Business / finance
+  ['💼','briefcase business work'],['📊','chart graph data analytics'],
+  ['💰','money finance wealth'],['📈','growth chart up business'],
+  ['🏦','bank finance money'],['📉','chart down finance'],['🤝','handshake deal business'],
+  ['📣','megaphone announce marketing'],['💳','card payment finance'],
+  // Animals
+  ['🐱','cat pet animal'],['🐶','dog pet animal'],['🦊','fox animal'],
+  ['🦁','lion animal'],['🐺','wolf animal'],['🦅','eagle bird'],
+  ['🐉','dragon fantasy'],['🦄','unicorn fantasy magic'],['🐻','bear animal'],
+  ['🐼','panda animal cute'],['🦋','butterfly nature insect'],['🐬','dolphin ocean animal'],
+  // Misc / symbols
+  ['❤️','heart love favorite'],['💜','purple heart'],['💙','blue heart'],
+  ['🔑','key unlock access'],['🎁','gift present surprise'],['🎉','party celebrate'],
+  ['🌐','globe web internet'],['💫','spark star special'],['✨','sparkle magic shine'],
+  ['🎊','confetti celebrate party'],['🔐','lock secure private'],['⚠️','warning alert'],
+  ['✅','check done complete'],['🚩','flag marker location'],['🏷️','tag label'],
+];
+
+let pickerFolderId = null;
+
+function showIconPicker(folderId, anchorEl) {
+  pickerFolderId = folderId;
+  const picker = $('icon-picker');
+  $('icon-search').value = '';
+  renderIconGrid('');
+  picker.classList.remove('hidden');
+
+  // Position below anchor, clamp to viewport
+  const rect   = anchorEl.getBoundingClientRect();
+  const pw     = 284;
+  const left   = Math.min(rect.left, window.innerWidth - pw - 8);
+  let   top    = rect.bottom + 4;
+  if (top + 320 > window.innerHeight) top = rect.top - 324;
+  picker.style.left = `${Math.max(4, left)}px`;
+  picker.style.top  = `${Math.max(4, top)}px`;
+
+  $('icon-search').focus();
+}
+
+function hideIconPicker() {
+  $('icon-picker').classList.add('hidden');
+  pickerFolderId = null;
+}
+
+function renderIconGrid(query) {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? EMOJI_SET.filter(([, kw]) => kw.includes(q))
+    : EMOJI_SET;
+  $('icon-grid').innerHTML = filtered
+    .map(([emoji]) =>
+      `<button class="icon-btn" data-action="pick-icon" data-emoji="${escAttr(emoji)}">${emoji}</button>`
+    ).join('');
+}
+
+async function setFolderIcon(folderId, icon) {
+  try {
+    await api.post(`/api/folders/${folderId}/set-icon`, { icon });
+    const folder = findFolder(folderId);
+    if (folder) folder.icon = icon;
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+$('icon-search').addEventListener('input', e => renderIconGrid(e.target.value));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && pickerFolderId) { hideIconPicker(); return; }
+});
+// Close picker on outside click
+document.addEventListener('mousedown', e => {
+  if (pickerFolderId && !e.target.closest('#icon-picker') && !e.target.closest('[data-action="open-icon-picker"]')) {
+    hideIconPicker();
+  }
+});
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
@@ -857,9 +1008,18 @@ document.addEventListener('click', e => {
 
   // Folder: toggle
   const fHeader = e.target.closest('.folder-header');
-  if (fHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check')) {
+  if (fHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check') &&
+      !e.target.closest('.folder-icon-btn')) {
     toggleFolder(parseInt(fHeader.dataset.folderId, 10)); return;
   }
+
+  // Icon picker: open
+  const iconBtn = e.target.closest('[data-action="open-icon-picker"]');
+  if (iconBtn) { e.stopPropagation(); showIconPicker(parseInt(iconBtn.dataset.folderId, 10), iconBtn); return; }
+
+  // Icon picker: pick
+  const pickBtn = e.target.closest('[data-action="pick-icon"]');
+  if (pickBtn) { setFolderIcon(pickerFolderId, pickBtn.dataset.emoji); hideIconPicker(); return; }
 
   // Folder: mark all read
   const mfrBtn = e.target.closest('[data-action="mark-folder-read"]');
