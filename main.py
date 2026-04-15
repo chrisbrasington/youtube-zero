@@ -3,6 +3,7 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -76,11 +77,18 @@ def init_db():
                 channel_id TEXT NOT NULL,
                 status     TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS folders (
+                id         INTEGER PRIMARY KEY,
+                name       TEXT NOT NULL,
+                sort_order INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         c.commit()
         # Migrations for existing DBs
         for migration in [
             "ALTER TABLE channels ADD COLUMN sort_order INTEGER",
+            "ALTER TABLE channels ADD COLUMN folder_id INTEGER REFERENCES folders(id)",
         ]:
             try:
                 c.execute(migration)
@@ -225,6 +233,37 @@ def save_videos(channel_id: str, videos: list):
         c.commit()
 
 
+# ── DB helpers ────────────────────────────────────────────────────────────────
+
+def _channel_videos(c, channel_id: str, read_before, queued_ids: set) -> list:
+    vids = c.execute(
+        "SELECT * FROM videos WHERE channel_id=? ORDER BY published_at DESC LIMIT 10",
+        (channel_id,),
+    ).fetchall()
+    overrides = {
+        r["video_id"]: r["status"]
+        for r in c.execute(
+            "SELECT video_id, status FROM video_status WHERE channel_id=?",
+            (channel_id,),
+        ).fetchall()
+    }
+    videos = []
+    for v in vids:
+        vid = dict(v)
+        ov = overrides.get(vid["video_id"])
+        if ov == "read":
+            vid["is_read"] = True
+        elif ov == "unread":
+            vid["is_read"] = False
+        elif read_before:
+            vid["is_read"] = vid["published_at"] <= read_before
+        else:
+            vid["is_read"] = False
+        vid["in_queue"] = vid["video_id"] in queued_ids
+        videos.append(vid)
+    return videos
+
+
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
 class AddChannelReq(BaseModel):
@@ -242,7 +281,23 @@ class ApiKeyReq(BaseModel):
     api_key: str
 
 class ReorderReq(BaseModel):
-    ids: list[str]  # channel_ids in new order
+    ids: list[str]
+
+class FolderReq(BaseModel):
+    name: str
+
+class RenameReq(BaseModel):
+    name: str
+
+class SetFolderReq(BaseModel):
+    folder_id: Optional[int] = None
+
+class FeedReorderItem(BaseModel):
+    type: str   # 'folder' | 'channel'
+    id: str     # folder int id or channel_id string
+
+class FeedReorderReq(BaseModel):
+    items: list[FeedReorderItem]
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -273,39 +328,101 @@ def channels_list():
             "SELECT * FROM channels ORDER BY COALESCE(sort_order, id), created_at"
         ).fetchall()]
         queued_ids = {
-            r["video_id"]
-            for r in c.execute(
+            r["video_id"] for r in c.execute(
                 "SELECT video_id FROM queue WHERE watched_at IS NULL"
             ).fetchall()
         }
         for ch in chs:
-            vids = c.execute(
-                "SELECT * FROM videos WHERE channel_id=? ORDER BY published_at DESC LIMIT 10",
-                (ch["channel_id"],),
-            ).fetchall()
-            overrides = {
-                r["video_id"]: r["status"]
-                for r in c.execute(
-                    "SELECT video_id, status FROM video_status WHERE channel_id=?",
-                    (ch["channel_id"],),
-                ).fetchall()
-            }
-            videos = []
-            for v in vids:
-                vid = dict(v)
-                override = overrides.get(vid["video_id"])
-                if override == "read":
-                    vid["is_read"] = True
-                elif override == "unread":
-                    vid["is_read"] = False
-                elif ch["read_before"]:
-                    vid["is_read"] = vid["published_at"] <= ch["read_before"]
-                else:
-                    vid["is_read"] = False
-                vid["in_queue"] = vid["video_id"] in queued_ids
-                videos.append(vid)
-            ch["videos"] = videos
+            ch["videos"] = _channel_videos(c, ch["channel_id"], ch["read_before"], queued_ids)
     return chs
+
+
+@app.get("/api/feed")
+def get_feed():
+    with db() as c:
+        queued_ids = {
+            r["video_id"] for r in c.execute(
+                "SELECT video_id FROM queue WHERE watched_at IS NULL"
+            ).fetchall()
+        }
+        folders = [dict(r) for r in c.execute(
+            "SELECT * FROM folders ORDER BY COALESCE(sort_order, id)"
+        ).fetchall()]
+        for folder in folders:
+            chs = [dict(r) for r in c.execute(
+                "SELECT * FROM channels WHERE folder_id=? ORDER BY COALESCE(sort_order, id)",
+                (folder["id"],),
+            ).fetchall()]
+            for ch in chs:
+                ch["videos"] = _channel_videos(c, ch["channel_id"], ch["read_before"], queued_ids)
+            folder["channels"] = chs
+        standalone = [dict(r) for r in c.execute(
+            "SELECT * FROM channels WHERE folder_id IS NULL ORDER BY COALESCE(sort_order, id)"
+        ).fetchall()]
+        for ch in standalone:
+            ch["videos"] = _channel_videos(c, ch["channel_id"], ch["read_before"], queued_ids)
+    return {"folders": folders, "channels": standalone}
+
+
+# ── Folder CRUD ───────────────────────────────────────────────────────────────
+
+@app.post("/api/folders")
+def folders_create(req: FolderReq):
+    with db() as c:
+        max_order = c.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM folders"
+        ).fetchone()[0]
+        c.execute(
+            "INSERT INTO folders (name, sort_order) VALUES (?, ?)",
+            (req.name, max_order + 1),
+        )
+        folder_id = c.lastrowid
+        c.commit()
+    return {"id": folder_id, "name": req.name, "sort_order": max_order + 1, "channels": []}
+
+
+@app.delete("/api/folders/{folder_id}")
+def folders_delete(folder_id: int):
+    with db() as c:
+        c.execute("UPDATE channels SET folder_id=NULL WHERE folder_id=?", (folder_id,))
+        c.execute("DELETE FROM folders WHERE id=?", (folder_id,))
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/folders/{folder_id}/rename")
+def folders_rename(folder_id: int, req: RenameReq):
+    with db() as c:
+        c.execute("UPDATE folders SET name=? WHERE id=?", (req.name, folder_id))
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/channels/{channel_id}/set-folder")
+def channels_set_folder(channel_id: str, req: SetFolderReq):
+    with db() as c:
+        c.execute(
+            "UPDATE channels SET folder_id=? WHERE channel_id=?",
+            (req.folder_id, channel_id),
+        )
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/feed/reorder")
+def feed_reorder(req: FeedReorderReq):
+    with db() as c:
+        for i, item in enumerate(req.items):
+            if item.type == "folder":
+                c.execute(
+                    "UPDATE folders SET sort_order=? WHERE id=?", (i, int(item.id))
+                )
+            else:
+                c.execute(
+                    "UPDATE channels SET sort_order=? WHERE channel_id=?", (i, item.id)
+                )
+        c.commit()
+    return {"ok": True}
 
 
 @app.post("/api/channels")
@@ -333,10 +450,12 @@ async def channels_add(req: AddChannelReq):
     save_videos(info["channel_id"], videos)
     return {
         **info,
-        "videos": [{**v, "in_queue": False} for v in videos],
+        "videos": [{**v, "in_queue": False, "is_read": False} for v in videos],
         "read_before": None,
         "last_refreshed": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "folder_id": None,
+        "sort_order": None,
     }
 
 

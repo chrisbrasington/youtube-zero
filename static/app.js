@@ -30,8 +30,7 @@ function timeAgo(iso) {
   if (d < 7)  return `${d}d ago`;
   const w = Math.floor(d / 7);
   if (w < 5)  return `${w}w ago`;
-  const mo = Math.floor(d / 30);
-  return `${mo}mo ago`;
+  return `${Math.floor(d / 30)}mo ago`;
 }
 
 function status(msg, type = '') {
@@ -79,34 +78,57 @@ const api = {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  channels:    [],
+  feed:        { folders: [], channels: [] },
   queue:       [],
   queueOpen:   false,
-  sortMode:    'manual',   // 'manual' | 'newest'
-  manualExpand: new Set(), // channelIds force-expanded to full list
+  sortMode:    'manual',
+  manualExpand: new Set(),   // channel_ids force-expanded to full list
+  folderExpand: new Set(),   // folder ids force-expanded to show channels
 };
 
-// Drag state
-let dragSrcId = null;
+let dragSrcId   = null;
+let dragSrcType = null;  // 'folder' | 'channel'
 
-// Player state
 const player = {
-  videoId:       null,
-  title:         '',
-  mode:          'normal',  // 'normal' | 'theater'
-  queueVideoId:  null,      // set when playing from queue
+  videoId:      null,
+  title:        '',
+  mode:         'normal',
+  queueVideoId: null,
 };
 
-// video_id → queue-able metadata (populated during render)
 const videoMeta = new Map();
 
-// ── View mode logic ───────────────────────────────────────────────────────────
+// ── State accessors ───────────────────────────────────────────────────────────
 
-function viewMode(channel) {
-  // 'collapsed' = header only | 'compact' = header + unread strip | 'expanded' = full list
+function allChannels() {
+  return [
+    ...state.feed.channels,
+    ...state.feed.folders.flatMap(f => f.channels),
+  ];
+}
+
+function findChannel(channelId) {
+  return allChannels().find(c => c.channel_id === channelId);
+}
+
+function findFolder(folderId) {
+  return state.feed.folders.find(f => f.id === folderId);
+}
+
+// ── View mode ─────────────────────────────────────────────────────────────────
+
+function channelViewMode(channel) {
   const id = channel.channel_id;
   if (state.manualExpand.has(id)) return 'expanded';
-  const hasUnread = (channel.videos || []).some(v => !v.is_read);
+  return (channel.videos || []).some(v => !v.is_read) ? 'compact' : 'collapsed';
+}
+
+function folderViewMode(folder) {
+  const id = folder.id;
+  if (state.folderExpand.has(id)) return 'expanded';
+  const hasUnread = (folder.channels || []).some(ch =>
+    (ch.videos || []).some(v => !v.is_read)
+  );
   return hasUnread ? 'compact' : 'collapsed';
 }
 
@@ -114,64 +136,142 @@ function countUnread(channel) {
   return (channel.videos || []).filter(v => !v.is_read).length;
 }
 
+function folderUnreadCount(folder) {
+  return (folder.channels || []).reduce((n, ch) => n + countUnread(ch), 0);
+}
+
 // ── Sort ──────────────────────────────────────────────────────────────────────
 
-function displayChannels() {
+function mostRecentUnread(item) {
+  // Works for both folders and standalone channels
+  const vids = item.channels
+    ? item.channels.flatMap(ch => ch.videos || [])
+    : (item.videos || []);
+  const unread = vids.filter(v => !v.is_read);
+  return unread.length ? unread.reduce(
+    (best, v) => v.published_at > best ? v.published_at : best, ''
+  ) : '';
+}
+
+function topLevelItems() {
+  const items = [
+    ...state.feed.folders.map(f  => ({ type: 'folder',  item: f,  sort_order: f.sort_order  ?? f.id })),
+    ...state.feed.channels.map(c => ({ type: 'channel', item: c,  sort_order: c.sort_order  ?? 0   })),
+  ];
   if (state.sortMode === 'newest') {
-    return [...state.channels].sort((a, b) => {
-      const aTop = (a.videos || [])[0]?.published_at || '';
-      const bTop = (b.videos || [])[0]?.published_at || '';
-      return bTop.localeCompare(aTop);
-    });
+    items.sort((a, b) => mostRecentUnread(b.item).localeCompare(mostRecentUnread(a.item)));
+  } else {
+    items.sort((a, b) => a.sort_order - b.sort_order);
   }
-  return state.channels;
+  return items;
 }
 
 function renderSortBtn() {
   const btn = $('btn-sort');
-  if (state.sortMode === 'newest') {
-    btn.textContent = '↕ Newest first';
-    btn.classList.add('active');
-  } else {
-    btn.textContent = '↕ Manual order';
-    btn.classList.remove('active');
-  }
+  btn.textContent  = state.sortMode === 'newest' ? '↕ Newest first' : '↕ Manual order';
+  btn.className    = 'btn-sort' + (state.sortMode === 'newest' ? ' active' : '');
 }
 
-// ── Render: channels ─────────────────────────────────────────────────────────
+// ── Render: feed ──────────────────────────────────────────────────────────────
 
-function renderChannels() {
+function renderFeed() {
   const el = $('channels-list');
+  const items = topLevelItems();
 
-  if (state.channels.length === 0) {
+  if (items.length === 0) {
     el.innerHTML = `
       <div class="empty-state">
         <h3>No channels yet</h3>
-        <p>Add a YouTube channel above to get started.</p>
+        <p>Add a YouTube channel or create a folder above.</p>
       </div>`;
     return;
   }
 
-  const totalUnread = state.channels.reduce((sum, ch) => sum + countUnread(ch), 0);
-  let html = displayChannels().map(ch => renderChannel(ch)).join('');
+  const totalUnread = items.reduce((n, { type, item }) =>
+    n + (type === 'folder' ? folderUnreadCount(item) : countUnread(item)), 0
+  );
+
+  let html = items.map(({ type, item }) =>
+    type === 'folder' ? renderFolder(item) : renderChannel(item, false)
+  ).join('');
+
   if (totalUnread === 0) html += '<div class="all-clear">✓ All caught up</div>';
   el.innerHTML = html;
 }
 
-function renderChannel(ch) {
-  const mode    = viewMode(ch);
+// ── Render: folder ────────────────────────────────────────────────────────────
+
+function folderMixedStrip(folder) {
+  // All unread videos across channels, sorted newest first
+  const vids = folder.channels.flatMap(ch =>
+    ch.videos
+      .filter(v => !v.is_read)
+      .map(v => ({ ...v, _channel: ch }))
+  );
+  vids.sort((a, b) => b.published_at.localeCompare(a.published_at));
+  return vids;
+}
+
+function renderFolder(folder) {
+  const mode    = folderViewMode(folder);
+  const unread  = folderUnreadCount(folder);
+  const fid     = escAttr(String(folder.id));
+  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
+
+  let bodyHtml = '';
+  if (mode === 'compact') {
+    const mixedVids = folderMixedStrip(folder);
+    bodyHtml = `
+      <div class="video-strip">
+        ${mixedVids.map(v => renderVideoTile(v, v._channel, true)).join('')}
+      </div>`;
+  } else if (mode === 'expanded') {
+    bodyHtml = `
+      <div class="folder-channels">
+        ${(folder.channels || []).map(ch => renderChannel(ch, true)).join('')}
+      </div>`;
+  }
+
+  return `
+    <div class="folder-card" id="fl-${fid}" data-folder-id="${fid}" ${draggable}>
+      <div class="folder-header" data-action="toggle-folder" data-folder-id="${fid}">
+        <span class="folder-icon">📁</span>
+        <span class="folder-name">${esc(folder.name)}</span>
+        <div class="folder-right">
+          ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
+          <button class="ch-btn" data-action="rename-folder" data-folder-id="${fid}" title="Rename">✏</button>
+          <button class="ch-btn delete" data-action="delete-folder" data-folder-id="${fid}" title="Delete folder">✕</button>
+          <span class="ch-caret ${mode === 'expanded' ? 'open' : ''}">▼</span>
+        </div>
+      </div>
+      ${bodyHtml}
+    </div>`;
+}
+
+// ── Render: channel ───────────────────────────────────────────────────────────
+
+function renderChannel(ch, nested) {
+  const mode    = channelViewMode(ch);
   const unread  = countUnread(ch);
   const allDone = ch.videos.length > 0 && unread === 0;
   const cid     = escAttr(ch.channel_id);
   const refreshed = ch.last_refreshed ? timeAgo(ch.last_refreshed) : 'never';
-  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
+  const draggable = (!nested && state.sortMode === 'manual') ? 'draggable="true"' : '';
+
+  // Folder select options
+  const folderOptions = [
+    `<option value="">No folder</option>`,
+    ...state.feed.folders.map(f =>
+      `<option value="${escAttr(String(f.id))}" ${ch.folder_id === f.id ? 'selected' : ''}>${esc(f.name)}</option>`
+    ),
+  ].join('');
 
   let bodyHtml = '';
   if (mode === 'compact') {
     const unreadVids = ch.videos.filter(v => !v.is_read);
     bodyHtml = `
       <div class="video-strip">
-        ${unreadVids.map(v => renderVideoTile(v, ch)).join('')}
+        ${unreadVids.map(v => renderVideoTile(v, ch, false)).join('')}
       </div>`;
   } else if (mode === 'expanded') {
     bodyHtml = `
@@ -184,34 +284,26 @@ function renderChannel(ch) {
   }
 
   return `
-    <div class="channel-card" id="ch-${cid}" data-channel-id="${cid}" ${draggable}>
+    <div class="channel-card ${nested ? 'nested' : ''}" id="ch-${cid}"
+         data-channel-id="${cid}" ${draggable}>
       <div class="channel-header" data-action="toggle-channel" data-channel-id="${cid}">
         <div class="ch-check ${allDone ? 'done' : ''}"
-             data-action="mark-read"
-             data-channel-id="${cid}"
+             data-action="mark-read" data-channel-id="${cid}"
              title="Mark all as read">✓</div>
-        <img class="ch-thumb"
-             src="${escAttr(ch.thumbnail_url || '')}"
-             alt="${escAttr(ch.name)}"
-             onerror="this.style.opacity='0'">
+        <img class="ch-thumb" src="${escAttr(ch.thumbnail_url || '')}"
+             alt="${escAttr(ch.name)}" onerror="this.style.opacity='0'">
         <div class="ch-info">
           <div class="ch-name">${esc(ch.name)}</div>
           <div class="ch-meta">${ch.handle ? '@' + esc(ch.handle) + ' · ' : ''}${esc(refreshed)}</div>
         </div>
         <div class="ch-right">
           ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
-          <button class="ch-btn unread"
-                  data-action="mark-unread"
-                  data-channel-id="${cid}"
-                  title="Mark all as unread">↺</button>
-          <button class="ch-btn refresh"
-                  data-action="refresh-channel"
-                  data-channel-id="${cid}"
-                  title="Refresh">↻</button>
-          <button class="ch-btn delete"
-                  data-action="delete-channel"
-                  data-channel-id="${cid}"
-                  title="Remove">✕</button>
+          <select class="ch-folder-select"
+                  data-action="set-folder" data-channel-id="${cid}"
+                  title="Move to folder">${folderOptions}</select>
+          <button class="ch-btn unread" data-action="mark-unread" data-channel-id="${cid}" title="Mark all as unread">↺</button>
+          <button class="ch-btn refresh" data-action="refresh-channel" data-channel-id="${cid}" title="Refresh">↻</button>
+          <button class="ch-btn delete" data-action="delete-channel" data-channel-id="${cid}" title="Remove">✕</button>
           <span class="ch-caret ${mode === 'expanded' ? 'open' : ''}">▼</span>
         </div>
       </div>
@@ -219,8 +311,9 @@ function renderChannel(ch) {
     </div>`;
 }
 
-// Compact tile (shown in the default strip)
-function renderVideoTile(video, channel) {
+// ── Render: video tile ────────────────────────────────────────────────────────
+
+function renderVideoTile(video, channel, showChannel) {
   videoMeta.set(video.video_id, {
     video_id:      video.video_id,
     channel_id:    channel.channel_id,
@@ -240,9 +333,7 @@ function renderVideoTile(video, channel) {
          data-title="${escAttr(video.title)}"
          title="${escAttr(video.title)}">
       <div class="tile-thumb-wrap">
-        <img class="tile-thumb"
-             src="${escAttr(video.thumbnail_url || '')}"
-             alt=""
+        <img class="tile-thumb" src="${escAttr(video.thumbnail_url || '')}" alt=""
              onerror="this.style.display='none'">
         ${video.duration ? `<span class="tile-dur">${esc(video.duration)}</span>` : ''}
         <button class="tile-q-btn ${inQueue ? 'queued' : ''}"
@@ -255,12 +346,14 @@ function renderVideoTile(video, channel) {
       </div>
       <div class="tile-info">
         <div class="tile-title">${esc(video.title)}</div>
+        ${showChannel ? `<div class="tile-age" style="color:var(--accent);font-size:10px">${esc(channel.name)}</div>` : ''}
         <div class="tile-age">${timeAgo(video.published_at)}</div>
       </div>
     </div>`;
 }
 
-// Full row (shown in expanded view)
+// ── Render: video row (expanded) ──────────────────────────────────────────────
+
 function renderVideoRow(video, channel) {
   videoMeta.set(video.video_id, {
     video_id:      video.video_id,
@@ -282,9 +375,7 @@ function renderVideoRow(video, channel) {
            data-video-id="${vid}"
            data-title="${escAttr(video.title)}"
            style="cursor:pointer">
-        <img class="v-thumb"
-             src="${escAttr(video.thumbnail_url || '')}"
-             alt=""
+        <img class="v-thumb" src="${escAttr(video.thumbnail_url || '')}" alt=""
              onerror="this.style.display='none'">
         ${video.duration ? `<span class="v-dur">${esc(video.duration)}</span>` : ''}
       </div>
@@ -365,10 +456,9 @@ function renderPlayer() {
   $('player-title').textContent = player.title;
   $('player-yt-link').href = `https://www.youtube.com/watch?v=${player.videoId}`;
   $('player-box').className = `player-box${player.mode === 'theater' ? ' theater' : ''}`;
-  // Only set src if changed (avoids reloading video on re-render)
   const frame = $('player-frame');
-  const newSrc = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0`;
-  if (frame.src !== newSrc) frame.src = newSrc;
+  const src = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0`;
+  if (frame.src !== src) frame.src = src;
   $('btn-player-theater').textContent = player.mode === 'theater' ? '⬜ Normal' : '⬜ Theater';
   $('btn-player-watched').classList.toggle('hidden', !player.queueVideoId);
 }
@@ -376,19 +466,19 @@ function renderPlayer() {
 // ── Master render ─────────────────────────────────────────────────────────────
 
 function render() {
-  renderChannels();
+  renderFeed();
   renderQueue();
   renderQueueBadge();
   renderSortBtn();
   renderPlayer();
 }
 
-// ── Data loading ──────────────────────────────────────────────────────────────
+// ── Load ──────────────────────────────────────────────────────────────────────
 
 async function loadAll() {
   try {
-    [state.channels, state.queue] = await Promise.all([
-      api.get('/api/channels'),
+    [state.feed, state.queue] = await Promise.all([
+      api.get('/api/feed'),
       api.get('/api/queue'),
     ]);
     render();
@@ -406,7 +496,7 @@ async function addChannel() {
   status('Adding…', 'loading');
   try {
     const ch = await api.post('/api/channels', { input });
-    state.channels.push(ch);
+    state.feed.channels.push(ch);
     $('channel-input').value = '';
     render();
     status(`Added ${ch.name}`, 'ok');
@@ -419,11 +509,14 @@ async function addChannel() {
 }
 
 async function deleteChannel(channelId) {
-  const ch = state.channels.find(c => c.channel_id === channelId);
+  const ch = findChannel(channelId);
   if (!ch || !confirm(`Remove "${ch.name}"?`)) return;
   try {
     await api.del(`/api/channels/${channelId}`);
-    state.channels = state.channels.filter(c => c.channel_id !== channelId);
+    state.feed.channels = state.feed.channels.filter(c => c.channel_id !== channelId);
+    state.feed.folders.forEach(f => {
+      f.channels = f.channels.filter(c => c.channel_id !== channelId);
+    });
     state.manualExpand.delete(channelId);
     render();
   } catch (e) {
@@ -434,7 +527,7 @@ async function deleteChannel(channelId) {
 async function markChannelRead(channelId) {
   try {
     const res = await api.post(`/api/channels/${channelId}/mark-read`);
-    const ch = state.channels.find(c => c.channel_id === channelId);
+    const ch = findChannel(channelId);
     if (ch) {
       ch.read_before = res.read_before;
       ch.videos.forEach(v => { v.is_read = true; });
@@ -449,7 +542,7 @@ async function markChannelRead(channelId) {
 async function markChannelUnread(channelId) {
   try {
     await api.post(`/api/channels/${channelId}/mark-unread`);
-    const ch = state.channels.find(c => c.channel_id === channelId);
+    const ch = findChannel(channelId);
     if (ch) {
       ch.read_before = null;
       ch.videos.forEach(v => { v.is_read = false; });
@@ -464,7 +557,7 @@ async function refreshChannel(channelId) {
   status('Refreshing…', 'loading');
   try {
     await api.post(`/api/channels/${channelId}/refresh`);
-    state.channels = await api.get('/api/channels');
+    state.feed = await api.get('/api/feed');
     render();
     status('Refreshed', 'ok');
     setTimeout(() => status(''), 2000);
@@ -481,7 +574,7 @@ async function refreshAll() {
   status('Refreshing all channels…', 'loading');
   try {
     const res = await api.post('/api/refresh-all');
-    state.channels = await api.get('/api/channels');
+    state.feed = await api.get('/api/feed');
     render();
     const ok  = res.results.filter(r => !r.error).length;
     const err = res.results.filter(r =>  r.error).length;
@@ -500,7 +593,7 @@ async function clearAll() {
   if (!confirm('☢ Nuclear clear: mark ALL channels as read?\n\nYour queue is unaffected.')) return;
   try {
     await api.post('/api/clear-all');
-    state.channels = await api.get('/api/channels');
+    state.feed = await api.get('/api/feed');
     state.manualExpand.clear();
     render();
     status('All cleared', 'ok');
@@ -511,12 +604,80 @@ async function clearAll() {
 }
 
 function toggleChannel(channelId) {
-  const ch = state.channels.find(c => c.channel_id === channelId);
+  const ch = findChannel(channelId);
   if (!ch) return;
-  if (viewMode(ch) === 'expanded') {
+  if (channelViewMode(ch) === 'expanded') {
     state.manualExpand.delete(channelId);
   } else {
     state.manualExpand.add(channelId);
+  }
+  render();
+}
+
+async function setFolder(channelId, folderId) {
+  const numericId = folderId ? parseInt(folderId, 10) : null;
+  try {
+    await api.post(`/api/channels/${channelId}/set-folder`, { folder_id: numericId });
+    state.feed = await api.get('/api/feed');
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+// ── Actions: folders ──────────────────────────────────────────────────────────
+
+async function createFolder() {
+  const name = prompt('Folder name:')?.trim();
+  if (!name) return;
+  try {
+    const folder = await api.post('/api/folders', { name });
+    state.feed.folders.push(folder);
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function deleteFolder(folderId) {
+  const folder = findFolder(folderId);
+  if (!folder) return;
+  const chanCount = folder.channels.length;
+  const msg = chanCount
+    ? `Delete folder "${folder.name}"? Its ${chanCount} channel${chanCount !== 1 ? 's' : ''} will move to root.`
+    : `Delete folder "${folder.name}"?`;
+  if (!confirm(msg)) return;
+  try {
+    await api.del(`/api/folders/${folderId}`);
+    state.feed = await api.get('/api/feed');
+    state.folderExpand.delete(folderId);
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function renameFolder(folderId) {
+  const folder = findFolder(folderId);
+  if (!folder) return;
+  const name = prompt('New folder name:', folder.name)?.trim();
+  if (!name || name === folder.name) return;
+  try {
+    await api.post(`/api/folders/${folderId}/rename`, { name });
+    folder.name = name;
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+function toggleFolder(folderId) {
+  const folder = findFolder(folderId);
+  if (!folder) return;
+  if (folderViewMode(folder) === 'expanded') {
+    state.folderExpand.delete(folderId);
+  } else {
+    state.folderExpand.add(folderId);
   }
   render();
 }
@@ -527,10 +688,8 @@ async function toggleVideoRead(videoId, currentlyRead) {
   const endpoint = currentlyRead ? 'unread' : 'read';
   try {
     await api.post(`/api/videos/${videoId}/${endpoint}`);
-    state.channels.forEach(ch =>
-      ch.videos.forEach(v => {
-        if (v.video_id === videoId) v.is_read = !currentlyRead;
-      })
+    allChannels().forEach(ch =>
+      ch.videos.forEach(v => { if (v.video_id === videoId) v.is_read = !currentlyRead; })
     );
     render();
   } catch (e) {
@@ -539,6 +698,12 @@ async function toggleVideoRead(videoId, currentlyRead) {
 }
 
 // ── Actions: queue ────────────────────────────────────────────────────────────
+
+function setInQueue(videoId, val) {
+  allChannels().forEach(ch =>
+    ch.videos.forEach(v => { if (v.video_id === videoId) v.in_queue = val; })
+  );
+}
 
 async function toggleQueue(meta, currentlyInQueue) {
   if (currentlyInQueue) {
@@ -552,9 +717,7 @@ async function addToQueue(meta) {
   try {
     await api.post('/api/queue', meta);
     state.queue = await api.get('/api/queue');
-    state.channels.forEach(ch =>
-      ch.videos.forEach(v => { if (v.video_id === meta.video_id) v.in_queue = true; })
-    );
+    setInQueue(meta.video_id, true);
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -565,9 +728,7 @@ async function removeFromQueue(videoId) {
   try {
     await api.del(`/api/queue/${videoId}`);
     state.queue = state.queue.filter(q => q.video_id !== videoId);
-    state.channels.forEach(ch =>
-      ch.videos.forEach(v => { if (v.video_id === videoId) v.in_queue = false; })
-    );
+    setInQueue(videoId, false);
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -578,9 +739,7 @@ async function watchOnYouTube(videoId) {
   try {
     await api.post(`/api/queue/${videoId}/watched`);
     state.queue = state.queue.filter(q => q.video_id !== videoId);
-    state.channels.forEach(ch =>
-      ch.videos.forEach(v => { if (v.video_id === videoId) v.in_queue = false; })
-    );
+    setInQueue(videoId, false);
     render();
   } catch {}
 }
@@ -595,40 +754,31 @@ function openPlayer(videoId, title, queueVideoId = null) {
 }
 
 function closePlayer() {
-  player.videoId      = null;
-  player.title        = '';
-  player.queueVideoId = null;
-  renderPlayer();
-}
-
-function setPlayerMode(mode) {
-  player.mode = mode;
+  player.videoId = player.title = player.queueVideoId = null;
   renderPlayer();
 }
 
 async function playerMarkWatched() {
   if (!player.queueVideoId) return;
-  const videoId = player.queueVideoId;
+  const vid = player.queueVideoId;
   closePlayer();
   try {
-    await api.post(`/api/queue/${videoId}/watched`);
-    state.queue = state.queue.filter(q => q.video_id !== videoId);
-    state.channels.forEach(ch =>
-      ch.videos.forEach(v => { if (v.video_id === videoId) v.in_queue = false; })
-    );
+    await api.post(`/api/queue/${vid}/watched`);
+    state.queue = state.queue.filter(q => q.video_id !== vid);
+    setInQueue(vid, false);
     renderQueue();
     renderQueueBadge();
   } catch {}
 }
 
-// ── Actions: sort + persist order ────────────────────────────────────────────
+// ── Actions: sort + persist ───────────────────────────────────────────────────
 
-async function persistOrder() {
-  try {
-    await api.post('/api/channels/reorder', {
-      ids: state.channels.map(c => c.channel_id),
-    });
-  } catch {}
+async function persistFeedOrder() {
+  const items = topLevelItems().map(({ type, item }) => ({
+    type,
+    id: type === 'folder' ? String(item.id) : item.channel_id,
+  }));
+  try { await api.post('/api/feed/reorder', { items }); } catch {}
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -660,131 +810,198 @@ async function saveApiKey() {
 // ── Event delegation ──────────────────────────────────────────────────────────
 
 document.addEventListener('click', e => {
-  // Close player backdrop
+  // Player backdrop
   if (e.target.closest('[data-action="close-player-backdrop"]') &&
       !e.target.closest('.player-box')) {
     closePlayer(); return;
   }
 
-  // Mark channel read (circle check)
-  const markReadBtn = e.target.closest('[data-action="mark-read"]');
-  if (markReadBtn) { e.stopPropagation(); markChannelRead(markReadBtn.dataset.channelId); return; }
-
-  // Mark channel unread (↺)
-  const markUnreadBtn = e.target.closest('[data-action="mark-unread"]');
-  if (markUnreadBtn) { e.stopPropagation(); markChannelUnread(markUnreadBtn.dataset.channelId); return; }
-
-  // Refresh channel
-  const refreshBtn = e.target.closest('[data-action="refresh-channel"]');
-  if (refreshBtn) { e.stopPropagation(); refreshChannel(refreshBtn.dataset.channelId); return; }
-
-  // Delete channel
-  const deleteBtn = e.target.closest('[data-action="delete-channel"]');
-  if (deleteBtn) { e.stopPropagation(); deleteChannel(deleteBtn.dataset.channelId); return; }
-
-  // Toggle channel collapse/expand (click anywhere on header, not buttons)
-  const channelHeader = e.target.closest('.channel-header');
-  if (channelHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check')) {
-    toggleChannel(channelHeader.dataset.channelId); return;
+  // Folder: toggle
+  const fToggle = e.target.closest('[data-action="toggle-folder"]');
+  if (fToggle && !e.target.closest('.ch-btn') && !e.target.closest('.folder-right')) {
+    toggleFolder(parseInt(fToggle.dataset.folderId, 10)); return;
+  }
+  const fHeader = e.target.closest('.folder-header');
+  if (fHeader && !e.target.closest('.ch-btn')) {
+    toggleFolder(parseInt(fHeader.dataset.folderId, 10)); return;
   }
 
-  // Open player (tile click or row thumb click — not queue button)
+  // Folder: rename
+  const renameBtn = e.target.closest('[data-action="rename-folder"]');
+  if (renameBtn) { e.stopPropagation(); renameFolder(parseInt(renameBtn.dataset.folderId, 10)); return; }
+
+  // Folder: delete
+  const delFolderBtn = e.target.closest('[data-action="delete-folder"]');
+  if (delFolderBtn) { e.stopPropagation(); deleteFolder(parseInt(delFolderBtn.dataset.folderId, 10)); return; }
+
+  // Channel: mark read
+  const mrBtn = e.target.closest('[data-action="mark-read"]');
+  if (mrBtn) { e.stopPropagation(); markChannelRead(mrBtn.dataset.channelId); return; }
+
+  // Channel: mark unread
+  const muBtn = e.target.closest('[data-action="mark-unread"]');
+  if (muBtn) { e.stopPropagation(); markChannelUnread(muBtn.dataset.channelId); return; }
+
+  // Channel: refresh
+  const refBtn = e.target.closest('[data-action="refresh-channel"]');
+  if (refBtn) { e.stopPropagation(); refreshChannel(refBtn.dataset.channelId); return; }
+
+  // Channel: delete
+  const delBtn = e.target.closest('[data-action="delete-channel"]');
+  if (delBtn) { e.stopPropagation(); deleteChannel(delBtn.dataset.channelId); return; }
+
+  // Channel: toggle expand
+  const chHeader = e.target.closest('.channel-header');
+  if (chHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check') &&
+      !e.target.closest('.ch-folder-select')) {
+    toggleChannel(chHeader.dataset.channelId); return;
+  }
+
+  // Open player (tile or row thumb)
   const openEl = e.target.closest('[data-action="open-player"]');
   if (openEl && !e.target.closest('[data-action="toggle-queue"]')) {
     openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
   }
 
-  // Per-video mark as read
-  const vReadBtn = e.target.closest('[data-action="video-read"]');
-  if (vReadBtn) { e.stopPropagation(); toggleVideoRead(vReadBtn.dataset.videoId, false); return; }
+  // Per-video read/unread
+  const vr = e.target.closest('[data-action="video-read"]');
+  if (vr) { e.stopPropagation(); toggleVideoRead(vr.dataset.videoId, false); return; }
+  const vu = e.target.closest('[data-action="video-unread"]');
+  if (vu) { e.stopPropagation(); toggleVideoRead(vu.dataset.videoId, true); return; }
 
-  // Per-video mark as unread
-  const vUnreadBtn = e.target.closest('[data-action="video-unread"]');
-  if (vUnreadBtn) { e.stopPropagation(); toggleVideoRead(vUnreadBtn.dataset.videoId, true); return; }
-
-  // Queue toggle (+ / ✓ button on tile or row)
+  // Queue toggle
   const qBtn = e.target.closest('[data-action="toggle-queue"]');
   if (qBtn) {
     e.stopPropagation();
-    const meta    = videoMeta.get(qBtn.dataset.videoId);
-    const inQueue = qBtn.dataset.inQueue === '1';
-    if (meta) toggleQueue(meta, inQueue);
+    const meta   = videoMeta.get(qBtn.dataset.videoId);
+    const inQ    = qBtn.dataset.inQueue === '1';
+    if (meta) toggleQueue(meta, inQ);
     return;
   }
 
   // Play from queue
   const playBtn = e.target.closest('[data-action="play-from-queue"]');
   if (playBtn) {
-    openPlayer(playBtn.dataset.videoId, playBtn.dataset.title, playBtn.dataset.videoId);
-    return;
+    openPlayer(playBtn.dataset.videoId, playBtn.dataset.title, playBtn.dataset.videoId); return;
   }
 
-  // Open in YouTube (queue item) + mark watched
+  // YouTube link (mark watched)
   const ytLink = e.target.closest('[data-action="watch-yt"]');
-  if (ytLink) {
-    // link already opens tab via href; just mark watched
-    watchOnYouTube(ytLink.dataset.videoId);
-    return;
-  }
+  if (ytLink) { watchOnYouTube(ytLink.dataset.videoId); return; }
 
   // Remove from queue
-  const removeBtn = e.target.closest('[data-action="remove-queue"]');
-  if (removeBtn) { removeFromQueue(removeBtn.dataset.videoId); return; }
+  const rmBtn = e.target.closest('[data-action="remove-queue"]');
+  if (rmBtn) { removeFromQueue(rmBtn.dataset.videoId); return; }
 });
 
-// ── Drag and drop (manual order only) ────────────────────────────────────────
+// Move-to-folder select (change event)
+document.addEventListener('change', e => {
+  const sel = e.target.closest('[data-action="set-folder"]');
+  if (sel) {
+    e.stopPropagation();
+    setFolder(sel.dataset.channelId, sel.value || null);
+  }
+});
+
+// ── Drag and drop (top-level items only) ─────────────────────────────────────
+
+function dragTargetEl(el) {
+  return el.closest('.channel-card:not(.nested)') || el.closest('.folder-card');
+}
 
 document.addEventListener('dragstart', e => {
-  const card = e.target.closest('.channel-card[draggable]');
+  const card = dragTargetEl(e.target);
   if (!card) return;
-  dragSrcId = card.dataset.channelId;
+  dragSrcId   = card.dataset.channelId || card.dataset.folderId;
+  dragSrcType = card.dataset.folderId ? 'folder' : 'channel';
   e.dataTransfer.effectAllowed = 'move';
   setTimeout(() => card.classList.add('dragging'), 0);
 });
 
 document.addEventListener('dragend', () => {
-  document.querySelectorAll('.channel-card').forEach(c =>
+  document.querySelectorAll('.channel-card, .folder-card').forEach(c =>
     c.classList.remove('dragging', 'drag-over')
   );
-  dragSrcId = null;
+  dragSrcId = dragSrcType = null;
 });
 
 document.addEventListener('dragover', e => {
-  const card = e.target.closest('.channel-card[draggable]');
-  if (!card || card.dataset.channelId === dragSrcId) return;
+  const card = dragTargetEl(e.target);
+  if (!card) return;
+  const targetId = card.dataset.channelId || card.dataset.folderId;
+  if (targetId === dragSrcId) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('.channel-card').forEach(c => c.classList.remove('drag-over'));
+  document.querySelectorAll('.channel-card, .folder-card').forEach(c =>
+    c.classList.remove('drag-over')
+  );
   card.classList.add('drag-over');
 });
 
 document.addEventListener('drop', e => {
-  const card = e.target.closest('.channel-card[draggable]');
-  if (!card || !dragSrcId || card.dataset.channelId === dragSrcId) return;
+  const card = dragTargetEl(e.target);
+  if (!card || !dragSrcId) return;
+  const targetId = card.dataset.channelId || card.dataset.folderId;
+  if (targetId === dragSrcId) return;
   e.preventDefault();
-  const srcIdx = state.channels.findIndex(c => c.channel_id === dragSrcId);
-  const dstIdx = state.channels.findIndex(c => c.channel_id === card.dataset.channelId);
+
+  // Build mutable top-level list and swap
+  const items = topLevelItems();
+  const srcIdx = items.findIndex(({ type, item }) => {
+    const id = type === 'folder' ? String(item.id) : item.channel_id;
+    return id === dragSrcId;
+  });
+  const dstIdx = items.findIndex(({ type, item }) => {
+    const id = type === 'folder' ? String(item.id) : item.channel_id;
+    return id === targetId;
+  });
   if (srcIdx === -1 || dstIdx === -1) return;
-  const [moved] = state.channels.splice(srcIdx, 1);
-  state.channels.splice(dstIdx, 0, moved);
+
+  // Apply reorder to state arrays
+  const srcEntry = items[srcIdx];
+  if (srcEntry.type === 'folder') {
+    const fi = state.feed.folders.findIndex(f => f.id === srcEntry.item.id);
+    const di = items[dstIdx];
+    let target;
+    if (di.type === 'folder') {
+      target = state.feed.folders.findIndex(f => f.id === di.item.id);
+      const [m] = state.feed.folders.splice(fi, 1);
+      state.feed.folders.splice(target, 0, m);
+    } else {
+      // Moving folder past a standalone channel — just re-sort by new items order
+      applyFeedItemOrder(items, srcIdx, dstIdx);
+    }
+  } else {
+    applyFeedItemOrder(items, srcIdx, dstIdx);
+  }
+
   render();
-  persistOrder();
+  persistFeedOrder();
 });
+
+function applyFeedItemOrder(items, srcIdx, dstIdx) {
+  const [moved] = items.splice(srcIdx, 1);
+  items.splice(dstIdx, 0, moved);
+  // Rebuild arrays from new order
+  state.feed.folders  = items.filter(i => i.type === 'folder').map(i => i.item);
+  state.feed.channels = items.filter(i => i.type === 'channel').map(i => i.item);
+}
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && player.videoId) { closePlayer(); return; }
-  if (e.key === 'f' && player.videoId && !e.target.matches('input')) {
+  if (e.key === 'f' && player.videoId && !e.target.matches('input,textarea')) {
     $('player-frame').requestFullscreen?.();
   }
 });
 
-// ── Player controls wiring ────────────────────────────────────────────────────
+// ── Player controls ───────────────────────────────────────────────────────────
 
 $('btn-player-close').addEventListener('click', closePlayer);
 $('btn-player-theater').addEventListener('click', () => {
-  setPlayerMode(player.mode === 'theater' ? 'normal' : 'theater');
+  player.mode = player.mode === 'theater' ? 'normal' : 'theater';
+  renderPlayer();
 });
 $('btn-player-fullscreen').addEventListener('click', () => {
   $('player-frame').requestFullscreen?.().catch(() => {});
@@ -795,6 +1012,7 @@ $('btn-player-watched').addEventListener('click', playerMarkWatched);
 
 $('btn-add-channel').addEventListener('click', addChannel);
 $('channel-input').addEventListener('keydown', e => { if (e.key === 'Enter') addChannel(); });
+$('btn-new-folder').addEventListener('click', createFolder);
 $('btn-refresh-all').addEventListener('click', refreshAll);
 $('btn-clear-all').addEventListener('click', clearAll);
 $('btn-sort').addEventListener('click', () => {
@@ -819,16 +1037,16 @@ $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') sav
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 
-const REFRESH_STEPS  = [5, 10, 15, 30, 60, 120, 240, 720, 1440]; // minutes
+const REFRESH_STEPS  = [5, 10, 15, 30, 60, 120, 240, 720, 1440];
 const REFRESH_LABELS = ['5m','10m','15m','30m','1h','2h','4h','12h','24h'];
 
-let autoRefreshTimer  = null;
-let countdownTimer    = null;
-let nextRefreshAt     = null;
+let autoRefreshTimer = null;
+let countdownTimer   = null;
+let nextRefreshAt    = null;
 
 function formatCountdown(totalSecs) {
-  if (totalSecs <= 0)  return '0s';
-  if (totalSecs < 60)  return `${totalSecs}s`;
+  if (totalSecs <= 0) return '0s';
+  if (totalSecs < 60) return `${totalSecs}s`;
   const s = totalSecs % 60;
   const m = Math.floor(totalSecs / 60) % 60;
   const h = Math.floor(totalSecs / 3600);
@@ -839,12 +1057,10 @@ function formatCountdown(totalSecs) {
 function updateCountdown() {
   const el = $('auto-refresh-countdown');
   if (!nextRefreshAt) { el.textContent = ''; return; }
-  const secs = Math.ceil(Math.max(0, nextRefreshAt - Date.now()) / 1000);
-  el.textContent = formatCountdown(secs);
+  el.textContent = formatCountdown(Math.ceil(Math.max(0, nextRefreshAt - Date.now()) / 1000));
 }
 
 function syncAutoRefresh() {
-  // Clear existing timers
   clearTimeout(autoRefreshTimer);
   clearInterval(countdownTimer);
   autoRefreshTimer = countdownTimer = null;
@@ -854,19 +1070,12 @@ function syncAutoRefresh() {
   const idx   = parseInt($('auto-refresh-slider').value, 10);
   $('auto-refresh-interval').textContent = REFRESH_LABELS[idx];
 
-  if (!check.checked) {
-    $('auto-refresh-countdown').textContent = '';
-    return;
-  }
+  if (!check.checked) { $('auto-refresh-countdown').textContent = ''; return; }
 
   const ms = REFRESH_STEPS[idx] * 60 * 1000;
   nextRefreshAt = Date.now() + ms;
-
-  // Tick countdown every second
   updateCountdown();
   countdownTimer = setInterval(updateCountdown, 1000);
-
-  // Fire refresh, then re-schedule (so countdown resets cleanly after each run)
   autoRefreshTimer = setTimeout(async () => {
     await refreshAll();
     syncAutoRefresh();
@@ -876,11 +1085,9 @@ function syncAutoRefresh() {
 function loadAutoRefreshPrefs() {
   const enabled = localStorage.getItem('arEnabled');
   const idx     = localStorage.getItem('arIdx');
-  const check   = $('auto-refresh-check');
-  const slider  = $('auto-refresh-slider');
-  check.checked = enabled === null ? true : enabled === '1';
-  slider.value  = idx !== null ? idx : '3';
-  $('auto-refresh-interval').textContent = REFRESH_LABELS[parseInt(slider.value, 10)];
+  $('auto-refresh-check').checked = enabled === null ? true : enabled === '1';
+  $('auto-refresh-slider').value  = idx !== null ? idx : '3';
+  $('auto-refresh-interval').textContent = REFRESH_LABELS[parseInt($('auto-refresh-slider').value, 10)];
 }
 
 $('auto-refresh-check').addEventListener('change', () => {
@@ -888,8 +1095,7 @@ $('auto-refresh-check').addEventListener('change', () => {
   syncAutoRefresh();
 });
 $('auto-refresh-slider').addEventListener('input', () => {
-  const idx = parseInt($('auto-refresh-slider').value, 10);
-  localStorage.setItem('arIdx', idx);
+  localStorage.setItem('arIdx', $('auto-refresh-slider').value);
   syncAutoRefresh();
 });
 

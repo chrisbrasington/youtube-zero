@@ -41,7 +41,25 @@ Or pass your key directly:
 YOUTUBE_API_KEY=AIza... docker compose up --build
 ```
 
-Data persists in a named volume (`yt_data`). The key can also be saved via the UI.
+Data persists in a named Docker volume (`yt_data`). The key can also be saved via the UI.
+
+### Save database to a host directory
+
+By default the DB lives in a named volume. To map it to a host path instead, edit `compose.yaml`:
+
+```yaml
+services:
+  youtube-zero:
+    volumes:
+      - ./data:/data        # host path : container path
+```
+
+```bash
+mkdir -p data
+docker compose up --build
+```
+
+The database will be at `./data/youtube_zero.db` on your host.
 
 ## YouTube API key
 
@@ -55,7 +73,19 @@ Cost: adding a channel ≈ 3 units, refreshing a channel ≈ 2 units.
 
 ## Usage
 
-### Channel list
+### Folders
+
+| Action | How |
+|--------|-----|
+| Create folder | **📁 New Folder** button → enter name |
+| Rename folder | Click **✏** on folder header |
+| Delete folder | Click **✕** on folder header (channels move to root) |
+| Move channel into folder | Use the folder **select dropdown** on the channel header |
+| Move channel to root | Select **No folder** in the dropdown |
+| Expand folder (show channels) | Click anywhere on folder header |
+| Collapsed folder view | Mixed tile strip of all unread videos, newest first |
+
+### Channels
 
 | Action | How |
 |--------|-----|
@@ -66,7 +96,7 @@ Cost: adding a channel ≈ 3 units, refreshing a channel ≈ 2 units.
 | Mark channel read | Click the circle ◎ left of the channel avatar |
 | Mark channel unread | Click **↺** in the channel header |
 | Refresh videos | **↻** per-channel or **↻ Refresh All** |
-| Reorder channels | Drag and drop (in manual order mode) |
+| Reorder channels/folders | Drag and drop (in manual order mode) |
 | Sort by newest | Click **↕ Manual order** to toggle **↕ Newest first** |
 | Nuclear clear | **☢ Clear All** — marks every channel read |
 
