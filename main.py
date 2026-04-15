@@ -1,3 +1,4 @@
+import base64
 import os
 import re
 import sqlite3
@@ -391,6 +392,7 @@ class SignalSendReq(BaseModel):
     video_id: str
     title: str
     channel_name: str
+    thumbnail_url: Optional[str] = None
 
 @app.get("/api/settings/signal")
 def signal_settings_get():
@@ -432,6 +434,25 @@ def signal_delete():
         c.commit()
     return {"ok": True}
 
+async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> list:
+    """Fetch thumbnail and build a signal-cli preview object. Returns [] on any failure."""
+    if not thumbnail_url:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(thumbnail_url, timeout=10, follow_redirects=True)
+        if r.status_code == 200:
+            return [{
+                "url": f"https://www.youtube.com/watch?v={video_id}",
+                "title": title,
+                "description": channel_name,
+                "image": base64.b64encode(r.content).decode(),
+            }]
+    except Exception:
+        pass
+    return []
+
+
 @app.post("/api/signal/send")
 async def signal_send(req: SignalSendReq):
     with db() as c:
@@ -440,11 +461,12 @@ async def signal_send(req: SignalSendReq):
         raise HTTPException(400, "Signal not configured")
     number = row["value"]
     message = f"\U0001f4fa {req.channel_name}\n{req.title}\nhttps://www.youtube.com/watch?v={req.video_id}"
+    previews = await _signal_preview(req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(
                 f"{SIGNAL_API_URL}/v2/send",
-                json={"message": message, "number": number, "recipients": [number]},
+                json={"message": message, "number": number, "recipients": [number], "previews": previews},
                 timeout=30,
             )
         except Exception as exc:

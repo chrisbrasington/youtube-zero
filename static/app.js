@@ -372,6 +372,7 @@ function renderVideoTile(video, channel, showChannel) {
                 data-video-id="${vid}"
                 data-title="${escAttr(video.title)}"
                 data-channel-name="${escAttr(channel.name)}"
+                data-thumbnail-url="${escAttr(video.thumbnail_url || '')}"
                 title="Send to Signal Notes to Self">✉</button>` : ''}
       </div>
       <div class="tile-info">
@@ -433,6 +434,7 @@ function renderVideoRow(video, channel) {
               data-video-id="${vid}"
               data-title="${escAttr(video.title)}"
               data-channel-name="${escAttr(channel.name)}"
+              data-thumbnail-url="${escAttr(video.thumbnail_url || '')}"
               title="Send to Signal Notes to Self">✉</button>` : ''}
     </div>`;
 }
@@ -478,6 +480,7 @@ function renderQueue() {
                   data-video-id="${escAttr(item.video_id)}"
                   data-title="${escAttr(item.title)}"
                   data-channel-name="${escAttr(item.channel_name)}"
+                  data-thumbnail-url="${escAttr(item.thumbnail_url || '')}"
                   title="Send to Signal Notes to Self">✉</button>` : ''}
         </div>
       </div>
@@ -1201,9 +1204,14 @@ async function removeSignal() {
   }
 }
 
-async function signalSendVideo(videoId, title, channelName) {
+async function signalSendVideo(videoId, title, channelName, thumbnailUrl) {
   try {
-    await api.post('/api/signal/send', { video_id: videoId, title, channel_name: channelName });
+    await api.post('/api/signal/send', {
+      video_id: videoId,
+      title,
+      channel_name: channelName,
+      thumbnail_url: thumbnailUrl || '',
+    });
     status('Sent to Signal ✓', 'ok');
     setTimeout(() => status(''), 3000);
   } catch (e) {
@@ -1323,7 +1331,7 @@ document.addEventListener('click', e => {
   const sigBtn = e.target.closest('[data-action="signal-send"]');
   if (sigBtn) {
     e.stopPropagation();
-    signalSendVideo(sigBtn.dataset.videoId, sigBtn.dataset.title, sigBtn.dataset.channelName);
+    signalSendVideo(sigBtn.dataset.videoId, sigBtn.dataset.title, sigBtn.dataset.channelName, sigBtn.dataset.thumbnailUrl);
     return;
   }
 
