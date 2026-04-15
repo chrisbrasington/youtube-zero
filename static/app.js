@@ -1118,13 +1118,15 @@ async function loadSettings() {
       $('api-key-status').textContent = `Key saved (${s.masked})`;
       $('api-key-status').className = 'api-key-status ok';
     }
-    const serverVal = !!s.hide_shorts;
-    $('hide-shorts-check').checked = serverVal;
-    if (serverVal !== state.hideShorts) {
-      state.hideShorts = serverVal;
-      localStorage.setItem('hideShorts', serverVal ? '1' : '0');
-      render();  // DB differed from localStorage cache — re-render
+    // hideShorts: localStorage is the source of truth once set.
+    // Only fall back to server value on first-ever visit (no localStorage entry).
+    if (localStorage.getItem('hideShorts') === null) {
+      state.hideShorts = !!s.hide_shorts;
+      localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
+      render();
     }
+    // Always sync checkbox to whatever state ended up as
+    $('hide-shorts-check').checked = state.hideShorts;
   } catch {}
 }
 
@@ -1499,7 +1501,8 @@ $('hide-shorts-check').addEventListener('change', async () => {
   state.hideShorts = $('hide-shorts-check').checked;
   localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
   render();
-  try { await api.post('/api/settings/hide-shorts', { hide_shorts: state.hideShorts }); } catch {}
+  api.post('/api/settings/hide-shorts', { hide_shorts: state.hideShorts })
+    .catch(e => console.warn('hide-shorts save failed:', e));
 });
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
