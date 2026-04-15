@@ -523,7 +523,8 @@ input::placeholder { color: var(--dim); }
 /* Folder drag states */
 .folder-card[draggable="true"] { cursor: grab; }
 .folder-card.dragging { opacity: .4; outline: 2px dashed var(--border-l); }
-.folder-card.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.04); }
+.folder-card.drag-over  { outline: 2px solid var(--accent);  background: rgba(255,68,68,.04); }
+.folder-card.drag-into  { outline: 2px solid var(--green);   background: rgba(74,222,128,.06); }
 
 /* Move-to-folder select */
 .ch-folder-select {

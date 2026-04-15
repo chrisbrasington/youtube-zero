@@ -398,6 +398,40 @@ def folders_rename(folder_id: int, req: RenameReq):
     return {"ok": True}
 
 
+@app.post("/api/folders/{folder_id}/mark-read")
+def folders_mark_read(folder_id: int):
+    now = datetime.now(timezone.utc).isoformat()
+    with db() as c:
+        ids = [r["channel_id"] for r in c.execute(
+            "SELECT channel_id FROM channels WHERE folder_id=?", (folder_id,)
+        ).fetchall()]
+        for cid in ids:
+            c.execute("UPDATE channels SET read_before=? WHERE channel_id=?", (now, cid))
+            c.execute("DELETE FROM video_status WHERE channel_id=?", (cid,))
+        c.commit()
+    return {"ok": True, "read_before": now, "channel_ids": ids}
+
+
+@app.post("/api/folders/{folder_id}/refresh")
+async def folders_refresh(folder_id: int):
+    api_key = get_api_key()
+    if not api_key:
+        raise HTTPException(400, "No API key")
+    with db() as c:
+        channels = c.execute(
+            "SELECT * FROM channels WHERE folder_id=?", (folder_id,)
+        ).fetchall()
+    results = []
+    for ch in channels:
+        try:
+            videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
+            save_videos(ch["channel_id"], videos)
+            results.append({"channel_id": ch["channel_id"], "count": len(videos)})
+        except Exception as e:
+            results.append({"channel_id": ch["channel_id"], "error": str(e)})
+    return {"ok": True, "results": results}
+
+
 @app.post("/api/channels/{channel_id}/set-folder")
 def channels_set_folder(channel_id: str, req: SetFolderReq):
     with db() as c:

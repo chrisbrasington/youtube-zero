@@ -86,8 +86,9 @@ const state = {
   folderExpand: new Set(),   // folder ids force-expanded to show channels
 };
 
-let dragSrcId   = null;
-let dragSrcType = null;  // 'folder' | 'channel'
+let dragSrcId       = null;
+let dragSrcType     = null;   // 'folder' | 'channel'
+let dragSrcFolderId = null;   // current folder_id of the dragged channel (null = standalone)
 
 const player = {
   videoId:      null,
@@ -232,13 +233,21 @@ function renderFolder(folder) {
       </div>`;
   }
 
+  const allDone = (folder.channels || []).length > 0 &&
+    (folder.channels || []).every(ch => (ch.videos || []).every(v => v.is_read));
+
   return `
     <div class="folder-card" id="fl-${fid}" data-folder-id="${fid}" ${draggable}>
       <div class="folder-header" data-action="toggle-folder" data-folder-id="${fid}">
+        <div class="ch-check ${allDone ? 'done' : ''}"
+             data-action="mark-folder-read"
+             data-folder-id="${fid}"
+             title="Mark all as read">✓</div>
         <span class="folder-icon">📁</span>
         <span class="folder-name">${esc(folder.name)}</span>
         <div class="folder-right">
           ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
+          <button class="ch-btn refresh" data-action="refresh-folder" data-folder-id="${fid}" title="Refresh all channels">↻</button>
           <button class="ch-btn" data-action="rename-folder" data-folder-id="${fid}" title="Rename">✏</button>
           <button class="ch-btn delete" data-action="delete-folder" data-folder-id="${fid}" title="Delete folder">✕</button>
           <span class="ch-caret ${mode === 'expanded' ? 'open' : ''}">▼</span>
@@ -256,7 +265,7 @@ function renderChannel(ch, nested) {
   const allDone = ch.videos.length > 0 && unread === 0;
   const cid     = escAttr(ch.channel_id);
   const refreshed = ch.last_refreshed ? timeAgo(ch.last_refreshed) : 'never';
-  const draggable = (!nested && state.sortMode === 'manual') ? 'draggable="true"' : '';
+  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
 
   // Folder select options
   const folderOptions = [
@@ -682,6 +691,36 @@ function toggleFolder(folderId) {
   render();
 }
 
+async function markFolderRead(folderId) {
+  try {
+    const res = await api.post(`/api/folders/${folderId}/mark-read`);
+    const folder = findFolder(folderId);
+    if (folder) {
+      folder.channels.forEach(ch => {
+        ch.read_before = res.read_before;
+        ch.videos.forEach(v => { v.is_read = true; });
+      });
+    }
+    state.folderExpand.delete(folderId);
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function refreshFolder(folderId) {
+  status('Refreshing folder…', 'loading');
+  try {
+    await api.post(`/api/folders/${folderId}/refresh`);
+    state.feed = await api.get('/api/feed');
+    render();
+    status('Folder refreshed', 'ok');
+    setTimeout(() => status(''), 2000);
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
 // ── Actions: per-video read state ─────────────────────────────────────────────
 
 async function toggleVideoRead(videoId, currentlyRead) {
@@ -817,14 +856,18 @@ document.addEventListener('click', e => {
   }
 
   // Folder: toggle
-  const fToggle = e.target.closest('[data-action="toggle-folder"]');
-  if (fToggle && !e.target.closest('.ch-btn') && !e.target.closest('.folder-right')) {
-    toggleFolder(parseInt(fToggle.dataset.folderId, 10)); return;
-  }
   const fHeader = e.target.closest('.folder-header');
-  if (fHeader && !e.target.closest('.ch-btn')) {
+  if (fHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check')) {
     toggleFolder(parseInt(fHeader.dataset.folderId, 10)); return;
   }
+
+  // Folder: mark all read
+  const mfrBtn = e.target.closest('[data-action="mark-folder-read"]');
+  if (mfrBtn) { e.stopPropagation(); markFolderRead(parseInt(mfrBtn.dataset.folderId, 10)); return; }
+
+  // Folder: refresh
+  const rfBtn = e.target.closest('[data-action="refresh-folder"]');
+  if (rfBtn) { e.stopPropagation(); refreshFolder(parseInt(rfBtn.dataset.folderId, 10)); return; }
 
   // Folder: rename
   const renameBtn = e.target.closest('[data-action="rename-folder"]');
@@ -903,86 +946,151 @@ document.addEventListener('change', e => {
   }
 });
 
-// ── Drag and drop (top-level items only) ─────────────────────────────────────
+// ── Drag and drop ─────────────────────────────────────────────────────────────
 
-function dragTargetEl(el) {
-  return el.closest('.channel-card:not(.nested)') || el.closest('.folder-card');
+function anyCard(el) {
+  return el.closest('.channel-card') || el.closest('.folder-card');
 }
 
 document.addEventListener('dragstart', e => {
-  const card = dragTargetEl(e.target);
+  const card = anyCard(e.target);
   if (!card) return;
-  dragSrcId   = card.dataset.channelId || card.dataset.folderId;
-  dragSrcType = card.dataset.folderId ? 'folder' : 'channel';
+  if (card.dataset.folderId) {
+    dragSrcId       = card.dataset.folderId;
+    dragSrcType     = 'folder';
+    dragSrcFolderId = null;
+  } else {
+    dragSrcId       = card.dataset.channelId;
+    dragSrcType     = 'channel';
+    const ch        = findChannel(dragSrcId);
+    dragSrcFolderId = ch?.folder_id ?? null;
+  }
   e.dataTransfer.effectAllowed = 'move';
   setTimeout(() => card.classList.add('dragging'), 0);
 });
 
 document.addEventListener('dragend', () => {
   document.querySelectorAll('.channel-card, .folder-card').forEach(c =>
-    c.classList.remove('dragging', 'drag-over')
+    c.classList.remove('dragging', 'drag-over', 'drag-into')
   );
-  dragSrcId = dragSrcType = null;
+  dragSrcId = dragSrcType = dragSrcFolderId = null;
 });
 
 document.addEventListener('dragover', e => {
-  const card = dragTargetEl(e.target);
-  if (!card) return;
-  const targetId = card.dataset.channelId || card.dataset.folderId;
-  if (targetId === dragSrcId) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('.channel-card, .folder-card').forEach(c =>
-    c.classList.remove('drag-over')
+  if (!dragSrcId) return;
+
+  document.querySelectorAll('.drag-over, .drag-into').forEach(c =>
+    c.classList.remove('drag-over', 'drag-into')
   );
-  card.classList.add('drag-over');
+
+  if (dragSrcType === 'channel') {
+    // Hovering over a folder card → "drop into folder" indicator
+    const folderCard = e.target.closest('.folder-card');
+    if (folderCard) {
+      const targetFolderId = parseInt(folderCard.dataset.folderId, 10);
+      if (targetFolderId !== dragSrcFolderId) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        folderCard.classList.add('drag-into');
+      }
+      return;
+    }
+    // Hovering over another channel → reorder
+    const channelCard = e.target.closest('.channel-card');
+    if (channelCard && channelCard.dataset.channelId !== dragSrcId) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      channelCard.classList.add('drag-over');
+    }
+    return;
+  }
+
+  if (dragSrcType === 'folder') {
+    // Folder reorder: hover over any top-level item
+    const topCard = e.target.closest('.channel-card:not(.nested)') || e.target.closest('.folder-card');
+    if (topCard) {
+      const targetId = topCard.dataset.channelId || topCard.dataset.folderId;
+      if (targetId !== dragSrcId) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        topCard.classList.add('drag-over');
+      }
+    }
+  }
 });
 
 document.addEventListener('drop', e => {
-  const card = dragTargetEl(e.target);
-  if (!card || !dragSrcId) return;
-  const targetId = card.dataset.channelId || card.dataset.folderId;
-  if (targetId === dragSrcId) return;
-  e.preventDefault();
+  if (!dragSrcId) return;
 
-  // Build mutable top-level list and swap
-  const items = topLevelItems();
-  const srcIdx = items.findIndex(({ type, item }) => {
-    const id = type === 'folder' ? String(item.id) : item.channel_id;
-    return id === dragSrcId;
-  });
-  const dstIdx = items.findIndex(({ type, item }) => {
-    const id = type === 'folder' ? String(item.id) : item.channel_id;
-    return id === targetId;
-  });
-  if (srcIdx === -1 || dstIdx === -1) return;
-
-  // Apply reorder to state arrays
-  const srcEntry = items[srcIdx];
-  if (srcEntry.type === 'folder') {
-    const fi = state.feed.folders.findIndex(f => f.id === srcEntry.item.id);
-    const di = items[dstIdx];
-    let target;
-    if (di.type === 'folder') {
-      target = state.feed.folders.findIndex(f => f.id === di.item.id);
-      const [m] = state.feed.folders.splice(fi, 1);
-      state.feed.folders.splice(target, 0, m);
-    } else {
-      // Moving folder past a standalone channel — just re-sort by new items order
-      applyFeedItemOrder(items, srcIdx, dstIdx);
+  if (dragSrcType === 'channel') {
+    // Drop onto folder → move channel into that folder
+    const folderCard = e.target.closest('.folder-card');
+    if (folderCard) {
+      e.preventDefault();
+      const targetFolderId = parseInt(folderCard.dataset.folderId, 10);
+      if (targetFolderId !== dragSrcFolderId) {
+        setFolder(dragSrcId, String(targetFolderId));
+      }
+      return;
     }
-  } else {
-    applyFeedItemOrder(items, srcIdx, dstIdx);
+
+    // Drop onto another channel → reorder within the same context
+    const channelCard = e.target.closest('.channel-card');
+    if (channelCard && channelCard.dataset.channelId !== dragSrcId) {
+      e.preventDefault();
+      const targetId = channelCard.dataset.channelId;
+      reorderChannels(dragSrcId, targetId);
+    }
+    return;
   }
 
+  if (dragSrcType === 'folder') {
+    const topCard = e.target.closest('.channel-card:not(.nested)') || e.target.closest('.folder-card');
+    if (!topCard) return;
+    const targetId = topCard.dataset.channelId || topCard.dataset.folderId;
+    if (targetId === dragSrcId) return;
+    e.preventDefault();
+
+    const items = topLevelItems();
+    const srcIdx = items.findIndex(({ type, item }) =>
+      (type === 'folder' ? String(item.id) : item.channel_id) === dragSrcId
+    );
+    const dstIdx = items.findIndex(({ type, item }) =>
+      (type === 'folder' ? String(item.id) : item.channel_id) === targetId
+    );
+    if (srcIdx === -1 || dstIdx === -1) return;
+    applyFeedItemOrder(items, srcIdx, dstIdx);
+    render();
+    persistFeedOrder();
+  }
+});
+
+function reorderChannels(srcId, dstId) {
+  // Find which list both channels live in (same folder or both standalone)
+  const srcInFolder = state.feed.folders.find(f => f.channels.some(c => c.channel_id === srcId));
+  const dstInFolder = state.feed.folders.find(f => f.channels.some(c => c.channel_id === dstId));
+
+  let list;
+  if (srcInFolder && dstInFolder && srcInFolder.id === dstInFolder.id) {
+    list = srcInFolder.channels;
+  } else if (!srcInFolder && !dstInFolder) {
+    list = state.feed.channels;
+  } else {
+    return; // different contexts — use dropdown to move between folders
+  }
+
+  const si = list.findIndex(c => c.channel_id === srcId);
+  const di = list.findIndex(c => c.channel_id === dstId);
+  if (si === -1 || di === -1) return;
+  const [m] = list.splice(si, 1);
+  list.splice(di, 0, m);
   render();
   persistFeedOrder();
-});
+}
 
 function applyFeedItemOrder(items, srcIdx, dstIdx) {
   const [moved] = items.splice(srcIdx, 1);
   items.splice(dstIdx, 0, moved);
-  // Rebuild arrays from new order
   state.feed.folders  = items.filter(i => i.type === 'folder').map(i => i.item);
   state.feed.channels = items.filter(i => i.type === 'channel').map(i => i.item);
 }
