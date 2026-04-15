@@ -41,25 +41,7 @@ Or pass your key directly:
 YOUTUBE_API_KEY=AIza... docker compose up --build
 ```
 
-Data persists in a named Docker volume (`yt_data`). The key can also be saved via the UI.
-
-### Save database to a host directory
-
-By default the DB lives in a named volume. To map it to a host path instead, edit `compose.yaml`:
-
-```yaml
-services:
-  youtube-zero:
-    volumes:
-      - ./data:/data        # host path : container path
-```
-
-```bash
-mkdir -p data
-docker compose up --build
-```
-
-The database will be at `./data/youtube_zero.db` on your host.
+The database is saved to `./data/youtube_zero.db` on the host. The API key can also be set via the UI.
 
 ## YouTube API key
 
