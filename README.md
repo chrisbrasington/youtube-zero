@@ -1,10 +1,18 @@
 # YouTube Zero
 
-Inbox-zero for YouTube subscriptions. Add channels, see new videos, queue what you want to watch, dismiss the rest.
+Treat your YouTube subscriptions like an inbox, not a feed. 
 
-No algorithmic feed. No recommendations. When everything is read, the screen is empty — and an empty screen means there's nothing left to scroll.
+- No algorithms
+- No recommendations
+- No endless scroll. 
+
+Just a clear list of new videos from channels you chose.
+
+Watch what matters, queue what you want, dismiss what doesn’t. <u>When you’re done, you’re done.</u> The screen goes empty and stays that way.
 
 ## Features
+
+<img src="./.img/app2.png" align="right" width="200" style="margin-right: 16px;" />
 
 - Add any YouTube channel by URL, `@handle`, or name
 - Compact strip view — unread videos appear as tiles below each channel header by default, no clicking required
@@ -16,9 +24,14 @@ No algorithmic feed. No recommendations. When everything is read, the screen is 
 - **☢ Clear All** — nuclear dismiss everything, queue untouched
 - Dark theme, no JavaScript framework, no build step
 
+<div style="clear: both;"></div>
+
+---
+
 ![](./.img/app.png)
 
 ## Quick start
+
 
 ### Local (venv)
 
