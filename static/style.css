@@ -18,7 +18,7 @@
   --r-sm:     4px;
 }
 
-html { height: 100%; overflow: hidden; }
+html { height: 100%; overflow: hidden; overflow-x: hidden; }
 
 body.app {
   height: 100vh;
@@ -971,13 +971,18 @@ input::placeholder { color: var(--dim); }
 
 .player-overlay {
   position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0; /* inset fallback for older mobile */
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   background: rgba(0,0,0,.78);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 500;
-  cursor: pointer; /* clicking backdrop closes */
+  cursor: pointer;
+  overflow: hidden;
 }
 
 .player-box {
@@ -987,6 +992,8 @@ input::placeholder { color: var(--dim); }
   display: flex;
   flex-direction: column;
   width: min(700px, 96vw);
+  max-height: 96vh;
+  max-height: 96dvh;
   box-shadow: 0 8px 40px rgba(0,0,0,.8);
   cursor: default;
 }
@@ -994,6 +1001,7 @@ input::placeholder { color: var(--dim); }
 .player-box.theater {
   width: 92vw;
   height: 92vh;
+  height: 92dvh;
 }
 
 .player-header {
@@ -1120,3 +1128,61 @@ input::placeholder { color: var(--dim); }
 ::-webkit-scrollbar-track        { background: transparent; }
 ::-webkit-scrollbar-thumb        { background: var(--bg4); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover  { background: var(--border-l); }
+
+/* ── Mobile / portrait ───────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  /* Header: single tight row */
+  .header {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .header-right { gap: 5px; }
+
+  /* Hide verbose text labels, keep icons */
+  .btn-label            { display: none; }
+  .auto-refresh-label   { display: none; }
+  .auto-refresh-interval{ display: none; }
+  .auto-refresh-countdown { display: none; }
+  .quota-label          { display: none; }
+  .all-clear-badge      { display: none; }
+
+  /* Slim the slider */
+  #auto-refresh-slider  { width: 60px; }
+
+  /* Tighter auto-refresh pill */
+  .auto-refresh { padding: 3px 6px; gap: 5px; }
+
+  /* Shrink buttons */
+  .btn-ghost, .btn-danger {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .btn-queue  { padding: 5px 8px; font-size: 12px; }
+  .logo       { font-size: 14px; }
+
+  /* Queue pane full-width on mobile */
+  .queue-pane {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    min-width: 0;
+    z-index: 300;
+    border-left: none;
+  }
+
+  /* Channels pane padding */
+  .channels-pane { padding: 10px 12px; }
+
+  /* Video tile smaller */
+  .video-tile       { width: 130px; }
+  .tile-thumb-wrap,
+  .tile-thumb       { width: 130px; height: 73px; }
+
+  /* Add bar stacks */
+  .add-bar { flex-wrap: wrap; }
+  .add-bar input { min-width: 0; }
+
+  /* Toolbar */
+  .toolbar { margin-bottom: 8px; }
+}
