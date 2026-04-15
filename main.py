@@ -691,21 +691,23 @@ def queue_list():
 @app.post("/api/queue")
 def queue_add(req: QueueAddReq):
     with db() as c:
-        try:
-            max_order = c.execute(
-                "SELECT COALESCE(MAX(sort_order), -1) FROM queue WHERE watched_at IS NULL"
-            ).fetchone()[0]
-            data = req.model_dump()
-            data["sort_order"] = max_order + 1
-            c.execute(
-                """INSERT INTO queue
-                   (video_id, channel_id, channel_name, title, thumbnail_url, published_at, sort_order)
-                   VALUES (:video_id, :channel_id, :channel_name, :title, :thumbnail_url, :published_at, :sort_order)""",
-                data,
-            )
-            c.commit()
-        except sqlite3.IntegrityError:
-            pass
+        max_order = c.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM queue WHERE watched_at IS NULL"
+        ).fetchone()[0]
+        data = req.model_dump()
+        data["sort_order"] = max_order + 1
+        # Upsert: re-adding a previously watched video reactivates it
+        c.execute(
+            """INSERT INTO queue
+               (video_id, channel_id, channel_name, title, thumbnail_url, published_at, sort_order)
+               VALUES (:video_id, :channel_id, :channel_name, :title, :thumbnail_url, :published_at, :sort_order)
+               ON CONFLICT(video_id) DO UPDATE SET
+                 watched_at  = NULL,
+                 sort_order  = excluded.sort_order,
+                 added_at    = CURRENT_TIMESTAMP""",
+            data,
+        )
+        c.commit()
     return {"ok": True}
 
 
