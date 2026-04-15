@@ -502,8 +502,12 @@ async function loadAll() {
 // ── Actions: channels ─────────────────────────────────────────────────────────
 
 async function addChannel() {
-  const input = $('channel-input').value.trim();
+  const raw = $('channel-input').value;
+  const lines = raw.split(/[\n\r,]+/).map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1) { await addChannels(lines); return; }
+  const input = lines[0] || '';
   if (!input) return;
+
   $('btn-add-channel').disabled = true;
   status('Adding…', 'loading');
   try {
@@ -518,6 +522,31 @@ async function addChannel() {
   } finally {
     $('btn-add-channel').disabled = false;
   }
+}
+
+async function addChannels(inputs) {
+  const valid = inputs.map(s => s.trim()).filter(Boolean);
+  if (!valid.length) return;
+
+  $('btn-add-channel').disabled = true;
+  $('channel-input').value = '';
+  let added = 0, failed = 0;
+
+  for (let i = 0; i < valid.length; i++) {
+    status(`Adding ${i + 1}/${valid.length}: ${valid[i]}…`, 'loading');
+    try {
+      const ch = await api.post('/api/channels', { input: valid[i] });
+      state.feed.channels.push(ch);
+      added++;
+      render();
+    } catch {
+      failed++;
+    }
+  }
+
+  status(`Added ${added}${failed ? `, ${failed} failed` : ''}`, added ? 'ok' : 'err');
+  setTimeout(() => status(''), 4000);
+  $('btn-add-channel').disabled = false;
 }
 
 async function deleteChannel(channelId) {
@@ -1280,6 +1309,14 @@ $('btn-player-watched').addEventListener('click', playerMarkWatched);
 
 $('btn-add-channel').addEventListener('click', addChannel);
 $('channel-input').addEventListener('keydown', e => { if (e.key === 'Enter') addChannel(); });
+$('channel-input').addEventListener('paste', e => {
+  const text = e.clipboardData.getData('text');
+  const lines = text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    e.preventDefault();
+    addChannels(lines);
+  }
+});
 $('btn-new-folder').addEventListener('click', createFolder);
 $('btn-refresh-all').addEventListener('click', refreshAll);
 $('btn-clear-all').addEventListener('click', clearAll);
