@@ -1562,8 +1562,10 @@ $('auto-refresh-slider').addEventListener('input', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-loadSettings();
-loadAutoRefreshPrefs();
-syncAutoRefresh();
-updateQuota();
-loadAll();
+(async () => {
+  loadAutoRefreshPrefs();
+  await loadSettings();   // must complete before first render
+  syncAutoRefresh();
+  updateQuota();
+  loadAll();
+})();
