@@ -4,7 +4,7 @@ Treat your YouTube subscriptions like an inbox, not a feed.
 
 - No algorithms
 - No recommendations
-- No endless scroll. 
+- No endless scroll
 
 Just a clear list of new videos from channels you chose.
 
