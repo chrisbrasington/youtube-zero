@@ -13,6 +13,8 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
+_session_quota = 0  # resets on process restart
+
 DB_PATH = os.environ.get(
     "DB_PATH",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "youtube_zero.db"),
@@ -78,6 +80,10 @@ def init_db():
                 channel_id TEXT NOT NULL,
                 status     TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS quota_log (
+                date  TEXT PRIMARY KEY,
+                units INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS folders (
                 id         INTEGER PRIMARY KEY,
                 name       TEXT NOT NULL,
@@ -103,6 +109,19 @@ def init_db():
 
 
 init_db()
+
+
+def add_quota(units: int):
+    global _session_quota
+    _session_quota += units
+    today = datetime.now(timezone.utc).date().isoformat()
+    with db() as c:
+        c.execute(
+            """INSERT INTO quota_log (date, units) VALUES (?, ?)
+               ON CONFLICT(date) DO UPDATE SET units = units + excluded.units""",
+            (today, units),
+        )
+        c.commit()
 
 
 # ── YouTube helpers ───────────────────────────────────────────────────────────
@@ -151,6 +170,7 @@ async def yt_get_channel(lookup_type: str, value: str, api_key: str):
     if r.status_code != 200:
         detail = r.json().get("error", {}).get("message", r.text)
         raise HTTPException(502, f"YouTube API: {detail}")
+    add_quota(1)
     items = r.json().get("items", [])
     if not items:
         raise HTTPException(404, f"Channel not found: {value}")
@@ -179,6 +199,7 @@ async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10)
     if r.status_code != 200:
         detail = r.json().get("error", {}).get("message", r.text)
         raise HTTPException(502, f"YouTube API: {detail}")
+    add_quota(1)  # playlistItems.list
 
     videos = []
     video_ids = []
@@ -208,6 +229,7 @@ async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10)
                 "id": ",".join(video_ids),
                 "key": api_key,
             })
+        add_quota(1)  # videos.list (durations)
         dur_map = {
             d["id"]: parse_duration(d["contentDetails"]["duration"])
             for d in r2.json().get("items", [])
@@ -305,6 +327,22 @@ class FeedReorderReq(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/settings")
+@app.get("/api/quota")
+def quota_get():
+    today = datetime.now(timezone.utc).date().isoformat()
+    with db() as c:
+        row = c.execute(
+            "SELECT units FROM quota_log WHERE date=?", (today,)
+        ).fetchone()
+    return {
+        "today":   row["units"] if row else 0,
+        "session": _session_quota,
+        "limit":   10000,
+        "date":    today,
+    }
+
 
 @app.get("/api/settings")
 def settings_get():

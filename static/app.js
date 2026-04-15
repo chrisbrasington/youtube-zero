@@ -621,6 +621,7 @@ async function refreshAll() {
     const err = res.results.filter(r =>  r.error).length;
     status(`Refreshed ${ok} channel${ok !== 1 ? 's' : ''}${err ? `, ${err} failed` : ''}`, 'ok');
     setTimeout(() => status(''), 4000);
+    updateQuota();
   } catch (e) {
     status('Error: ' + e.message, 'err');
   } finally {
@@ -1081,6 +1082,22 @@ document.addEventListener('mousedown', e => {
   }
 });
 
+// ── Quota display ─────────────────────────────────────────────────────────────
+
+async function updateQuota() {
+  try {
+    const q = await api.get('/api/quota');
+    const el  = $('quota-today');
+    const pct = q.today / q.limit;
+    const cls = pct >= 0.8 ? 'quota-danger' : pct >= 0.5 ? 'quota-warn' : 'quota-ok';
+    const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+    el.textContent = `${fmt(q.today)}/${fmt(q.limit)}`;
+    el.className   = cls;
+    $('quota-display').title =
+      `API quota — today: ${q.today} units, session: ${q.session} units, limit: ${q.limit}/day`;
+  } catch {}
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
@@ -1530,4 +1547,5 @@ $('auto-refresh-slider').addEventListener('input', () => {
 loadSettings();
 loadAutoRefreshPrefs();
 syncAutoRefresh();
+updateQuota();
 loadAll();
