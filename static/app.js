@@ -1280,6 +1280,8 @@ function reorderChannels(srcId, dstId) {
 function applyFeedItemOrder(items, srcIdx, dstIdx) {
   const [moved] = items.splice(srcIdx, 1);
   items.splice(dstIdx, 0, moved);
+  // Update sort_order so topLevelItems() re-sort preserves the new positions
+  items.forEach((entry, i) => { entry.item.sort_order = i; });
   state.feed.folders  = items.filter(i => i.type === 'folder').map(i => i.item);
   state.feed.channels = items.filter(i => i.type === 'channel').map(i => i.item);
 }
