@@ -372,11 +372,11 @@ def folders_create(req: FolderReq):
         max_order = c.execute(
             "SELECT COALESCE(MAX(sort_order), -1) FROM folders"
         ).fetchone()[0]
-        c.execute(
+        cur = c.execute(
             "INSERT INTO folders (name, sort_order) VALUES (?, ?)",
             (req.name, max_order + 1),
         )
-        folder_id = c.lastrowid
+        folder_id = cur.lastrowid
         c.commit()
     return {"id": folder_id, "name": req.name, "sort_order": max_order + 1, "channels": []}
 
