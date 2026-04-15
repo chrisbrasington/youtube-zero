@@ -2,6 +2,8 @@
 
 Inbox-zero for YouTube subscriptions. Add channels, see new videos, queue what you want to watch, dismiss the rest.
 
+No algorithmic feed. No recommendations. When everything is read, the screen is empty — and an empty screen means there's nothing left to scroll.
+
 ## Features
 
 - Add any YouTube channel by URL, `@handle`, or name
