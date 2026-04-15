@@ -1171,7 +1171,14 @@ input::placeholder { color: var(--dim); }
     padding: 5px 8px;
     font-size: 12px;
   }
-  .btn-queue  { padding: 5px 8px; font-size: 12px; }
+  .btn-queue {
+    padding: 5px 8px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+  }
+  .queue-badge { line-height: 1; vertical-align: middle; }
   .logo       { font-size: 14px; }
 
   /* Queue pane full-width on mobile */
