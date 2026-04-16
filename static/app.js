@@ -1632,6 +1632,12 @@ document.addEventListener('keydown', e => {
     closePlayer();
     return;
   }
+  if (e.key === 's' && state.signalConfigured) {
+    const meta = videoMeta.get(player.videoId);
+    if (meta) signalSendVideo(meta.video_id, meta.title, meta.channel_name, meta.thumbnail_url);
+    closePlayer();
+    return;
+  }
 });
 
 // ── Player controls ───────────────────────────────────────────────────────────
