@@ -644,28 +644,57 @@ async function refreshChannel(channelId) {
   }
 }
 
-async function refreshAll() {
+function setRefreshProgress(pct) {
+  const wrap = $('refresh-progress');
+  const bar  = $('refresh-progress-bar');
+  if (!wrap || !bar) return;
+  if (pct <= 0) {
+    bar.style.width = '0';
+    wrap.classList.add('hidden');
+  } else {
+    wrap.classList.remove('hidden');
+    bar.style.width = `${Math.round(pct * 100)}%`;
+  }
+}
+
+function refreshAll() {
   const btn = $('btn-refresh-all');
   btn.disabled = true;
-  $('refresh-spinner').classList.remove('hidden');
-  $('refresh-label').textContent = 'Refreshing…';
-  status('Refreshing all channels…', 'loading');
-  try {
-    const res = await api.post('/api/refresh-all');
-    state.feed = await api.get('/api/feed');
-    render();
-    const ok  = res.results.filter(r => !r.error).length;
-    const err = res.results.filter(r =>  r.error).length;
-    status(`Refreshed ${ok} channel${ok !== 1 ? 's' : ''}${err ? `, ${err} failed` : ''}`, 'ok');
-    setTimeout(() => status(''), 4000);
-    updateQuota();
-  } catch (e) {
-    status('Error: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    $('refresh-spinner').classList.add('hidden');
-    $('refresh-label').textContent = '↻ Refresh All';
-  }
+  $('refresh-spinner').classList.add('hidden');
+
+  return new Promise(resolve => {
+    const source = new EventSource('/api/refresh-all/stream');
+
+    source.onmessage = async e => {
+      const data = JSON.parse(e.data);
+      if (data.done) {
+        source.close();
+        state.feed = await api.get('/api/feed');
+        render();
+        const ok  = data.results.filter(r => !r.error).length;
+        const err = data.results.filter(r =>  r.error).length;
+        status(`Refreshed ${ok} channel${ok !== 1 ? 's' : ''}${err ? `, ${err} failed` : ''}`, err ? 'err' : 'ok');
+        setTimeout(() => status(''), 4000);
+        updateQuota();
+        btn.disabled = false;
+        $('refresh-label').innerHTML = '↻<span class="btn-label"> Refresh All</span>';
+        setRefreshProgress(0);
+        resolve();
+      } else {
+        $('refresh-label').textContent = `↻ ${data.i}/${data.total} ${data.name}`;
+        setRefreshProgress(data.i / data.total);
+      }
+    };
+
+    source.onerror = () => {
+      source.close();
+      status('Refresh failed', 'err');
+      btn.disabled = false;
+      $('refresh-label').innerHTML = '↻<span class="btn-label"> Refresh All</span>';
+      setRefreshProgress(0);
+      resolve();
+    };
+  });
 }
 
 async function clearAll() {

@@ -31,6 +31,21 @@ body.app {
   line-height: 1.5;
 }
 
+/* ── Refresh progress bar ────────────────────────────────────────────────── */
+
+.refresh-progress {
+  height: 3px;
+  background: var(--bg3);
+  width: 100%;
+  flex-shrink: 0;
+}
+.refresh-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  width: 0;
+  transition: width .25s ease;
+}
+
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
 .header {

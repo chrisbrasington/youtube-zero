@@ -8,7 +8,7 @@ from typing import Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -783,13 +783,43 @@ def video_mark_unread(video_id: str):
     return {"ok": True}
 
 
+@app.get("/api/refresh-all/stream")
+async def refresh_all_stream():
+    import json as _json
+    api_key = get_api_key()
+    if not api_key:
+        raise HTTPException(400, "No API key")
+    with db() as c:
+        channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+
+    async def generator():
+        total = len(channels)
+        results = []
+        for i, ch in enumerate(channels, 1):
+            name = ch.get("handle") or ch.get("name") or ch["channel_id"]
+            yield f"data: {_json.dumps({'i': i, 'total': total, 'name': name})}\n\n"
+            try:
+                videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
+                save_videos(ch["channel_id"], videos)
+                results.append({"channel_id": ch["channel_id"], "count": len(videos)})
+            except Exception as e:
+                results.append({"channel_id": ch["channel_id"], "error": str(e)})
+        yield f"data: {_json.dumps({'done': True, 'results': results})}\n\n"
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/api/refresh-all")
 async def refresh_all():
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(400, "No API key")
     with db() as c:
-        channels = c.execute("SELECT * FROM channels").fetchall()
+        channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
     results = []
     for ch in channels:
         try:
