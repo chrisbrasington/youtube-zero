@@ -1619,9 +1619,18 @@ function applyFeedItemOrder(items, srcIdx, dstIdx) {
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && player.videoId) { closePlayer(); return; }
-  if (e.key === 'f' && player.videoId && !e.target.matches('input,textarea')) {
-    $('player-frame').requestFullscreen?.();
+  if (!player.videoId || e.target.matches('input,textarea')) return;
+  if (e.key === 'Escape') { closePlayer(); return; }
+  if (e.key === 'f') { $('player-frame').requestFullscreen?.(); return; }
+  if (e.key === 't') {
+    player.mode = player.mode === 'theater' ? 'normal' : 'theater';
+    renderPlayer();
+    return;
+  }
+  if (e.key === 'y') {
+    window.open(`https://www.youtube.com/watch?v=${player.videoId}`, '_blank', 'noopener,noreferrer');
+    closePlayer();
+    return;
   }
 });
 
