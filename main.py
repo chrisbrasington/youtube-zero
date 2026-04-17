@@ -793,17 +793,28 @@ async def refresh_all_stream():
         channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
 
     async def generator():
+        import asyncio as _asyncio
         total = len(channels)
         results = []
-        for i, ch in enumerate(channels, 1):
-            name = ch.get("handle") or ch.get("name") or ch["channel_id"]
-            yield f"data: {_json.dumps({'i': i, 'total': total, 'name': name})}\n\n"
-            try:
-                videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
-                save_videos(ch["channel_id"], videos)
-                results.append({"channel_id": ch["channel_id"], "count": len(videos)})
-            except Exception as e:
-                results.append({"channel_id": ch["channel_id"], "error": str(e)})
+        sem = _asyncio.Semaphore(5)
+
+        async def fetch_one(ch):
+            async with sem:
+                name = ch.get("handle") or ch.get("name") or ch["channel_id"]
+                try:
+                    videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
+                    save_videos(ch["channel_id"], videos)
+                    return {"channel_id": ch["channel_id"], "count": len(videos), "name": name}
+                except Exception as e:
+                    return {"channel_id": ch["channel_id"], "error": str(e), "name": name}
+
+        tasks = [_asyncio.create_task(fetch_one(ch)) for ch in channels]
+        completed = 0
+        for fut in _asyncio.as_completed(tasks):
+            result = await fut
+            completed += 1
+            results.append(result)
+            yield f"data: {_json.dumps({'i': completed, 'total': total, 'name': result['name']})}\n\n"
         yield f"data: {_json.dumps({'done': True, 'results': results})}\n\n"
 
     return StreamingResponse(
@@ -820,15 +831,20 @@ async def refresh_all():
         raise HTTPException(400, "No API key")
     with db() as c:
         channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
-    results = []
-    for ch in channels:
-        try:
-            videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
-            save_videos(ch["channel_id"], videos)
-            results.append({"channel_id": ch["channel_id"], "count": len(videos)})
-        except Exception as e:
-            results.append({"channel_id": ch["channel_id"], "error": str(e)})
-    return {"ok": True, "results": results}
+    import asyncio as _asyncio
+    sem = _asyncio.Semaphore(5)
+
+    async def fetch_one(ch):
+        async with sem:
+            try:
+                videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
+                save_videos(ch["channel_id"], videos)
+                return {"channel_id": ch["channel_id"], "count": len(videos)}
+            except Exception as e:
+                return {"channel_id": ch["channel_id"], "error": str(e)}
+
+    results = await _asyncio.gather(*[fetch_one(ch) for ch in channels])
+    return {"ok": True, "results": list(results)}
 
 
 @app.post("/api/clear-all")
