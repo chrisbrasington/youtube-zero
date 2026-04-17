@@ -797,24 +797,32 @@ async def refresh_all_stream():
         total = len(channels)
         results = []
         sem = _asyncio.Semaphore(5)
+        queue = _asyncio.Queue()
 
         async def fetch_one(ch):
             async with sem:
                 name = ch.get("handle") or ch.get("name") or ch["channel_id"]
+                await queue.put({"type": "start", "name": name})
                 try:
                     videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
                     save_videos(ch["channel_id"], videos)
-                    return {"channel_id": ch["channel_id"], "count": len(videos), "name": name}
+                    await queue.put({"type": "done", "channel_id": ch["channel_id"], "count": len(videos)})
                 except Exception as e:
-                    return {"channel_id": ch["channel_id"], "error": str(e), "name": name}
+                    await queue.put({"type": "done", "channel_id": ch["channel_id"], "error": str(e)})
 
-        tasks = [_asyncio.create_task(fetch_one(ch)) for ch in channels]
+        for ch in channels:
+            _asyncio.create_task(fetch_one(ch))
+
+        started = 0
         completed = 0
-        for fut in _asyncio.as_completed(tasks):
-            result = await fut
-            completed += 1
-            results.append(result)
-            yield f"data: {_json.dumps({'i': completed, 'total': total, 'name': result['name']})}\n\n"
+        while completed < total:
+            event = await queue.get()
+            if event["type"] == "start":
+                started += 1
+                yield f"data: {_json.dumps({'i': started, 'total': total, 'name': event['name']})}\n\n"
+            else:
+                completed += 1
+                results.append({k: v for k, v in event.items() if k != "type"})
         yield f"data: {_json.dumps({'done': True, 'results': results})}\n\n"
 
     return StreamingResponse(
