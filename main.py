@@ -820,6 +820,7 @@ async def refresh_all_stream():
             if event["type"] == "start":
                 started += 1
                 yield f"data: {_json.dumps({'i': started, 'total': total, 'name': event['name']})}\n\n"
+                await _asyncio.sleep(0.06)  # visual stagger — fetches still run at full speed
             else:
                 completed += 1
                 results.append({k: v for k, v in event.items() if k != "type"})
