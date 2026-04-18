@@ -1,8 +1,9 @@
+import asyncio
 import base64
 import os
 import re
 import sqlite3
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -12,7 +13,42 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-app = FastAPI()
+REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))
+
+
+async def _background_refresh():
+    if REFRESH_INTERVAL <= 0:
+        return
+    await asyncio.sleep(REFRESH_INTERVAL)  # initial delay — let app fully start
+    while True:
+        try:
+            api_key = get_api_key()
+            if api_key:
+                with db() as c:
+                    channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+                sem = asyncio.Semaphore(5)
+
+                async def fetch_one(ch):
+                    async with sem:
+                        try:
+                            videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
+                            save_videos(ch["channel_id"], videos)
+                        except Exception:
+                            pass
+
+                await asyncio.gather(*[fetch_one(ch) for ch in channels])
+        except Exception:
+            pass
+        await asyncio.sleep(REFRESH_INTERVAL)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    asyncio.create_task(_background_refresh())
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 _session_quota = 0  # resets on process restart
 
