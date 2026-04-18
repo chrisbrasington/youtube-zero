@@ -15,6 +15,13 @@ from pydantic import BaseModel
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))
 
+_event_listeners: set[asyncio.Queue] = set()
+
+
+async def _broadcast(event: str):
+    for q in list(_event_listeners):
+        await q.put(event)
+
 
 async def _background_refresh():
     if REFRESH_INTERVAL <= 0:
@@ -37,6 +44,7 @@ async def _background_refresh():
                             pass
 
                 await asyncio.gather(*[fetch_one(ch) for ch in channels])
+                await _broadcast("refreshed")
         except Exception:
             pass
         await asyncio.sleep(REFRESH_INTERVAL)
@@ -365,6 +373,28 @@ class FeedReorderReq(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/events")
+async def events():
+    import json as _json
+    queue = asyncio.Queue()
+    _event_listeners.add(queue)
+
+    async def generator():
+        try:
+            yield "data: connected\n\n"
+            while True:
+                event = await queue.get()
+                yield f"data: {_json.dumps({'type': event})}\n\n"
+        finally:
+            _event_listeners.discard(queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 @app.get("/api/settings")
 @app.get("/api/quota")

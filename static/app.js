@@ -1767,6 +1767,20 @@ $('auto-refresh-slider').addEventListener('input', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+function connectEventSource() {
+  const es = new EventSource('/api/events');
+  es.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'refreshed') loadAll();
+    } catch (_) {}
+  };
+  es.onerror = () => {
+    es.close();
+    setTimeout(connectEventSource, 5000);
+  };
+}
+
 (async () => {
   loadAutoRefreshPrefs();
   syncAutoRefresh();
@@ -1775,4 +1789,5 @@ $('auto-refresh-slider').addEventListener('input', () => {
   await loadAll();            // build UI with state from localStorage
   await loadSettings();       // reconcile DB → re-render only if value changed
   await loadSignalSettings(); // check Signal config, show/hide send buttons
+  connectEventSource();
 })();
