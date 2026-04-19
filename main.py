@@ -201,8 +201,8 @@ async def _signal_listener():
                 await asyncio.sleep(10)
                 continue
             number = row["value"]
-            async with httpx.AsyncClient(timeout=15) as client:
-                r = await client.get(f"{SIGNAL_API_URL}/v1/receive/{number}", params={"timeout": "5"})
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.get(f"{SIGNAL_API_URL}/v1/receive/{number}", params={"timeout": "30"})
             if r.status_code != 200:
                 await asyncio.sleep(5)
                 continue
