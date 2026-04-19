@@ -1163,6 +1163,16 @@ document.addEventListener('mousedown', e => {
 
 // ── Quota display ─────────────────────────────────────────────────────────────
 
+function formatLastChecked(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `Last checked: ${h}:${String(m).padStart(2, '0')} ${ap}`;
+}
+
 async function updateQuota() {
   try {
     const q = await api.get('/api/quota');
@@ -1174,6 +1184,7 @@ async function updateQuota() {
     el.className   = cls;
     $('quota-display').title =
       `API quota — today: ${q.today} units, session: ${q.session} units, limit: ${q.limit}/day`;
+    $('last-checked').textContent = formatLastChecked(q.last_refreshed);
   } catch {}
 }
 
@@ -1791,6 +1802,7 @@ function connectEventSource() {
       else if (msg.type === 'refresh_done') {
         $('refresh-label').innerHTML = '↻<span class="btn-label"> Refresh All</span>';
         setRefreshProgress(0);
+        updateQuota();
       }
       else if (msg.type === 'signal_cmd') {
         if (msg.phase === 'received') signalToast(`signal: ${msg.cmd} received`);

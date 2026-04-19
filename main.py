@@ -606,11 +606,13 @@ def quota_get():
         row = c.execute(
             "SELECT units FROM quota_log WHERE date=?", (today,)
         ).fetchone()
+        last = c.execute("SELECT MAX(last_refreshed) AS t FROM channels").fetchone()
     return {
         "today":   row["units"] if row else 0,
         "session": _session_quota,
         "limit":   10000,
         "date":    today,
+        "last_refreshed": last["t"] if last else None,
     }
 
 

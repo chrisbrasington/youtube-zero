@@ -82,6 +82,11 @@ body.app {
   font-size: 11px;
   white-space: nowrap;
 }
+.last-checked {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
 .quota-label {
   color: var(--dim);
   font-weight: 500;
