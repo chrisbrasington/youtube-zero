@@ -3,4 +3,4 @@ set -euo pipefail
 
 git pull
 docker compose up -d --build
-docker compose logs -f
+docker compose ps
