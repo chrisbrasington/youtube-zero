@@ -108,11 +108,7 @@ def _is_short(v: dict) -> bool:
     if not dur:
         return False  # unknown duration = don't treat as short
     secs = _duration_seconds(dur)
-    if secs <= 0 or secs >= 180:
-        return False
-    w, h = v.get("thumb_w") or 0, v.get("thumb_h") or 0
-    # Portrait thumbnail = strong signal, otherwise fall back to duration-only
-    return h >= w if (w and h) else True
+    return 0 < secs < 180
 
 
 def _duration_seconds(dur: str) -> int:
