@@ -9,7 +9,7 @@ services:
       DB_PATH: /data/youtube_zero.db
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
       SIGNAL_API_URL: ${SIGNAL_API_URL:-http://signal-api:8080}
-      REFRESH_INTERVAL_SECONDS: ${REFRESH_INTERVAL_SECONDS:-3600}  # 0 = disabled, 3600 = hourly
+      REFRESH_INTERVAL_SECONDS: ${REFRESH_INTERVAL_SECONDS:-3600}  # 0 = disabled, >0 = enabled (fires at top of every hour)
       TZ: ${TZ:-America/Denver}  # for quiet hours (see below)
       QUIET_HOURS_START: ${QUIET_HOURS_START:-0}  # midnight
       QUIET_HOURS_END: ${QUIET_HOURS_END:-6}      # 6am — skip refresh between these hours

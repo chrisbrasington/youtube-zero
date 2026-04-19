@@ -5,7 +5,7 @@ import os
 import re
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -73,11 +73,23 @@ async def _refresh_channels(api_key: str) -> list[dict]:
     return list(results)
 
 
+def _seconds_to_next_hour() -> float:
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo(TZ_NAME))
+    except Exception:
+        now = datetime.now(timezone.utc)
+    nxt = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    return (nxt - now).total_seconds()
+
+
 async def _background_refresh():
     if REFRESH_INTERVAL <= 0:
         return
-    await asyncio.sleep(REFRESH_INTERVAL)
     while True:
+        wait = _seconds_to_next_hour()
+        print(f"[bg refresh] next fire in {int(wait)}s (top of hour)")
+        await asyncio.sleep(wait)
         try:
             if _is_quiet_hour():
                 print(f"[bg refresh] quiet hours ({QUIET_START}-{QUIET_END} {TZ_NAME}) — skipping")
@@ -87,7 +99,6 @@ async def _background_refresh():
                     await _refresh_channels(api_key)
         except Exception:
             pass
-        await asyncio.sleep(REFRESH_INTERVAL)
 
 
 def _is_short(v: dict) -> bool:
