@@ -83,6 +83,7 @@ Text any of these to yourself in Note-to-Self — the app listens and reacts.
 | `/queue` | send queue items only |
 | `/refresh` | parallel refresh all channels, then `/get` |
 | `/nuke` | mark all visible videos as read |
+| `/undo` | make today's videos visible again |
 | `/clear` | empty the queue |
 | `/help` | list commands |
 

@@ -120,6 +120,7 @@ _HELP_TEXT = (
     "/queue — queue only\n"
     "/refresh — refresh then /get\n"
     "/nuke — mark all visible as read\n"
+    "/undo — today's videos visible again\n"
     "/clear — empty queue\n"
     "/help — this"
 )
@@ -171,6 +172,15 @@ async def _handle_signal_command(cmd: str, number: str):
         await _signal_send_plain(number, "refreshing…")
         await _refresh_channels(api_key)
         await _do_get(number, prefix="refreshed — ")
+    elif cmd == "/undo":
+        cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        with db() as c:
+            c.execute("UPDATE channels SET read_before=? WHERE read_before > ?", (cutoff, cutoff))
+            c.execute("""DELETE FROM video_status WHERE status='read' AND video_id IN (
+                SELECT video_id FROM videos WHERE published_at > ?)""", (cutoff,))
+            c.commit()
+        await _broadcast("refreshed")
+        await _signal_send_plain(number, "undone — today visible ✓")
 
 
 async def _signal_listener():
