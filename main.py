@@ -140,17 +140,33 @@ _HELP_TEXT = (
 )
 
 
+def _minutes_since_last_refresh() -> int | None:
+    with db() as c:
+        row = c.execute("SELECT MAX(last_refreshed) AS t FROM channels").fetchone()
+    if not row or not row["t"]:
+        return None
+    try:
+        last = datetime.fromisoformat(row["t"])
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return int((datetime.now(timezone.utc) - last).total_seconds() // 60)
+    except Exception:
+        return None
+
+
 async def _do_get(number: str, prefix: str = ""):
     queued_ids = await _send_queue_to_signal(number)
     visible = await _send_unread_to_signal(number, exclude_ids=set(queued_ids))
     q, v = len(queued_ids), visible
+    mins = _minutes_since_last_refresh()
+    checked = f" (checked {mins}m ago)" if mins is not None else ""
     if q == 0 and v == 0:
-        await _signal_send_plain(number, f"{prefix}nothing in queue or visible ✓")
+        await _signal_send_plain(number, f"{prefix}nothing in queue or visible ✓{checked}")
     else:
         parts = []
         if q: parts.append(f"{q} queued")
         if v: parts.append(f"{v} visible")
-        await _signal_send_plain(number, f"{prefix}sent {', '.join(parts)}")
+        await _signal_send_plain(number, f"{prefix}sent {', '.join(parts)}{checked}")
 
 
 async def _handle_signal_command(cmd: str, number: str):
