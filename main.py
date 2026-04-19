@@ -80,7 +80,18 @@ async def _signal_send_plain(number: str, message: str):
             pass
 
 
-async def _send_unread_to_signal(number: str) -> int:
+async def _send_queue_to_signal(number: str) -> list[str]:
+    with db() as c:
+        items = [dict(r) for r in c.execute(
+            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY COALESCE(sort_order, id)"
+        ).fetchall()]
+    for item in items:
+        await _signal_send_one(number, item["video_id"], item["title"], item["channel_name"], item.get("thumbnail_url") or "")
+    return [i["video_id"] for i in items]
+
+
+async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = None) -> int:
+    exclude_ids = exclude_ids or set()
     with db() as c:
         rows = c.execute("SELECT key, value FROM settings").fetchall()
         hide_shorts = {r["key"]: r["value"] for r in rows}.get("hide_shorts", "0") == "1"
@@ -91,6 +102,8 @@ async def _send_unread_to_signal(number: str) -> int:
             for v in vids:
                 if v["is_read"]:
                     continue
+                if v["video_id"] in exclude_ids:
+                    continue
                 if hide_shorts and _duration_seconds(v.get("duration") or "") < 100:
                     continue
                 v["channel_name"] = ch["name"]
@@ -100,13 +113,48 @@ async def _send_unread_to_signal(number: str) -> int:
     return len(unread)
 
 
+_HELP_TEXT = (
+    "commands:\n"
+    "/ping — pong\n"
+    "/get — queue + visible videos\n"
+    "/queue — queue only\n"
+    "/refresh — refresh then /get\n"
+    "/nuke — mark all visible as read\n"
+    "/clear — empty queue\n"
+    "/help — this"
+)
+
+
+async def _do_get(number: str, prefix: str = ""):
+    queued_ids = await _send_queue_to_signal(number)
+    visible = await _send_unread_to_signal(number, exclude_ids=set(queued_ids))
+    q, v = len(queued_ids), visible
+    if q == 0 and v == 0:
+        await _signal_send_plain(number, f"{prefix}nothing in queue or visible ✓")
+    else:
+        parts = []
+        if q: parts.append(f"{q} queued")
+        if v: parts.append(f"{v} visible")
+        await _signal_send_plain(number, f"{prefix}sent {', '.join(parts)}")
+
+
 async def _handle_signal_command(cmd: str, number: str):
     cmd = cmd.strip().lower()
     if cmd == "/ping":
         await _signal_send_plain(number, "pong")
+    elif cmd == "/help":
+        await _signal_send_plain(number, _HELP_TEXT)
     elif cmd == "/get":
-        count = await _send_unread_to_signal(number)
-        await _signal_send_plain(number, f"sent {count} video(s)" if count else "nothing visible ✓")
+        await _do_get(number)
+    elif cmd == "/queue":
+        queued_ids = await _send_queue_to_signal(number)
+        await _signal_send_plain(number, f"sent {len(queued_ids)} from queue" if queued_ids else "queue empty ✓")
+    elif cmd == "/clear":
+        with db() as c:
+            c.execute("DELETE FROM queue WHERE watched_at IS NULL")
+            c.commit()
+        await _broadcast("refreshed")
+        await _signal_send_plain(number, "queue cleared ✓")
     elif cmd == "/nuke":
         now = datetime.now(timezone.utc).isoformat()
         with db() as c:
@@ -122,8 +170,7 @@ async def _handle_signal_command(cmd: str, number: str):
             return
         await _signal_send_plain(number, "refreshing…")
         await _refresh_channels(api_key)
-        count = await _send_unread_to_signal(number)
-        await _signal_send_plain(number, f"refreshed — sent {count} video(s)" if count else "refreshed — nothing visible ✓")
+        await _do_get(number, prefix="refreshed — ")
 
 
 async def _signal_listener():

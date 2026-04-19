@@ -72,6 +72,20 @@ The `compose.yaml` includes a `signal-api` sidecar ([signal-cli-rest-api](https:
 3. Scan the QR code in Signal → Settings → Linked Devices → Link New Device
 4. Signal button appears on video tiles and in the queue
 
+#### Signal commands (Note-to-Self)
+
+Text any of these to yourself in Note-to-Self — the app listens and reacts.
+
+| Command | Action |
+|---------|--------|
+| `/ping` | pong (connectivity test) |
+| `/get` | send queued + visible unread videos (deduped) |
+| `/queue` | send queue items only |
+| `/refresh` | parallel refresh all channels, then `/get` |
+| `/nuke` | mark all visible videos as read |
+| `/clear` | empty the queue |
+| `/help` | list commands |
+
 ## YouTube API key
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
