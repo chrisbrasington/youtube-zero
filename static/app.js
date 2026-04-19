@@ -89,12 +89,16 @@ const state = {
 };
 
 function isShort(video) {
-  if (!state.hideShorts || !video.duration) return false;
+  if (!state.hideShorts) return false;
+  if (video.is_live && video.is_live !== 'none') return false;  // live/upcoming never short
+  if (!video.duration) return false;                            // unknown duration = keep
   const parts = video.duration.split(':').map(Number);
   const secs = parts.length === 3
     ? parts[0] * 3600 + parts[1] * 60 + parts[2]
     : parts[0] * 60 + (parts[1] || 0);
-  return secs < 120;
+  if (secs <= 0 || secs >= 180) return false;
+  const w = video.thumb_w || 0, h = video.thumb_h || 0;
+  return (w && h) ? h >= w : true;
 }
 
 let dragSrcId       = null;

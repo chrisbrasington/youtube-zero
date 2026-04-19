@@ -71,6 +71,20 @@ async def _background_refresh():
         await asyncio.sleep(REFRESH_INTERVAL)
 
 
+def _is_short(v: dict) -> bool:
+    if (v.get("is_live") or "none") != "none":
+        return False  # live/upcoming never a short
+    dur = v.get("duration") or ""
+    if not dur:
+        return False  # unknown duration = don't treat as short
+    secs = _duration_seconds(dur)
+    if secs <= 0 or secs >= 180:
+        return False
+    w, h = v.get("thumb_w") or 0, v.get("thumb_h") or 0
+    # Portrait thumbnail = strong signal, otherwise fall back to duration-only
+    return h >= w if (w and h) else True
+
+
 def _duration_seconds(dur: str) -> int:
     if not dur:
         return 0
@@ -118,8 +132,7 @@ async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = Non
                     continue
                 if v["video_id"] in exclude_ids:
                     continue
-                dur = v.get("duration") or ""
-                if hide_shorts and dur and _duration_seconds(dur) < 120:
+                if hide_shorts and _is_short(v):
                     continue
                 v["channel_name"] = ch["name"]
                 unread.append(v)
@@ -326,7 +339,10 @@ def init_db():
                 title TEXT NOT NULL,
                 thumbnail_url TEXT,
                 published_at TEXT NOT NULL,
-                duration TEXT
+                duration TEXT,
+                is_live TEXT,
+                thumb_w INTEGER,
+                thumb_h INTEGER
             );
             CREATE TABLE IF NOT EXISTS queue (
                 id INTEGER PRIMARY KEY,
@@ -364,6 +380,9 @@ def init_db():
             "ALTER TABLE channels ADD COLUMN folder_id INTEGER REFERENCES folders(id)",
             "ALTER TABLE folders ADD COLUMN icon TEXT DEFAULT '📁'",
             "ALTER TABLE queue ADD COLUMN sort_order INTEGER",
+            "ALTER TABLE videos ADD COLUMN is_live TEXT",
+            "ALTER TABLE videos ADD COLUMN thumb_w INTEGER",
+            "ALTER TABLE videos ADD COLUMN thumb_h INTEGER",
         ]:
             try:
                 c.execute(migration)
@@ -475,32 +494,37 @@ async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10)
             continue
         video_ids.append(vid)
         thumbnails = sn.get("thumbnails", {})
-        thumb = (
-            thumbnails.get("medium") or thumbnails.get("default") or {}
-        ).get("url", "")
+        picked = thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}
         videos.append({
             "video_id": vid,
             "channel_id": sn.get("channelId", ""),
             "title": sn.get("title", ""),
-            "thumbnail_url": thumb,
+            "thumbnail_url": picked.get("url", ""),
             "published_at": sn.get("publishedAt", ""),
             "duration": "",
+            "is_live": "none",
+            "thumb_w": picked.get("width") or 0,
+            "thumb_h": picked.get("height") or 0,
         })
 
     if video_ids:
         async with httpx.AsyncClient(timeout=15) as client:
             r2 = await client.get(f"{YT_API}/videos", params={
-                "part": "contentDetails",
+                "part": "contentDetails,snippet",
                 "id": ",".join(video_ids),
                 "key": api_key,
             })
-        add_quota(1)  # videos.list (durations)
-        dur_map = {
-            d["id"]: parse_duration(d["contentDetails"]["duration"])
-            for d in r2.json().get("items", [])
-        }
+        add_quota(1)  # videos.list (durations + snippet)
+        meta_map = {}
+        for d in r2.json().get("items", []):
+            meta_map[d["id"]] = {
+                "duration": parse_duration(d["contentDetails"]["duration"]),
+                "is_live": d.get("snippet", {}).get("liveBroadcastContent", "none"),
+            }
         for v in videos:
-            v["duration"] = dur_map.get(v["video_id"], "")
+            m = meta_map.get(v["video_id"], {})
+            v["duration"] = m.get("duration", "")
+            v["is_live"] = m.get("is_live", "none")
 
     return videos
 
@@ -513,8 +537,8 @@ def save_videos(channel_id: str, videos: list):
             v["channel_id"] = channel_id
             c.execute(
                 """INSERT OR REPLACE INTO videos
-                   (video_id, channel_id, title, thumbnail_url, published_at, duration)
-                   VALUES (:video_id, :channel_id, :title, :thumbnail_url, :published_at, :duration)""",
+                   (video_id, channel_id, title, thumbnail_url, published_at, duration, is_live, thumb_w, thumb_h)
+                   VALUES (:video_id, :channel_id, :title, :thumbnail_url, :published_at, :duration, :is_live, :thumb_w, :thumb_h)""",
                 v,
             )
         c.execute(
