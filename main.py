@@ -159,7 +159,7 @@ async def _do_get(number: str, prefix: str = ""):
     visible = await _send_unread_to_signal(number, exclude_ids=set(queued_ids))
     q, v = len(queued_ids), visible
     mins = _minutes_since_last_refresh()
-    checked = f" (checked {mins}m ago)" if mins is not None else ""
+    checked = f"\n(checked {mins}m ago)" if mins is not None else ""
     if q == 0 and v == 0:
         await _signal_send_plain(number, f"{prefix}nothing in queue or visible ✓{checked}")
     else:
