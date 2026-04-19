@@ -1324,6 +1324,20 @@ input::placeholder { color: var(--dim); }
 
   /* Toolbar */
   .toolbar { margin-bottom: 8px; }
+
+  /* Channel/folder row: prioritize name space */
+  .channel-header,
+  .folder-header {
+    padding: 8px 8px;
+    gap: 6px;
+  }
+  .ch-thumb   { width: 28px; height: 28px; }
+  .ch-check   { width: 18px; height: 18px; font-size: 13px; }
+  .ch-right,
+  .folder-right { gap: 3px; }
+  .ch-right .btn-icon,
+  .folder-right .btn-icon { padding: 3px 5px; }
+  .folder-icon-btn { padding: 3px 5px; }
 }
 
 /* Mobile: revert font/thumb bumps */
