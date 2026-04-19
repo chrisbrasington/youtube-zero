@@ -1780,6 +1780,18 @@ function connectEventSource() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'refreshed') loadAll();
+      else if (msg.type === 'refresh_start') {
+        $('refresh-label').textContent = `↻ 0/${msg.total}`;
+        setRefreshProgress(0.001);
+      }
+      else if (msg.type === 'refresh_progress') {
+        $('refresh-label').textContent = `↻ ${msg.i}/${msg.total} ${msg.name}`;
+        setRefreshProgress(msg.i / msg.total);
+      }
+      else if (msg.type === 'refresh_done') {
+        $('refresh-label').innerHTML = '↻<span class="btn-label"> Refresh All</span>';
+        setRefreshProgress(0);
+      }
       else if (msg.type === 'signal_cmd') {
         if (msg.phase === 'received') signalToast(`signal: ${msg.cmd} received`);
         else if (msg.phase === 'done') signalToast(`signal: ${msg.cmd} response sent ✓`);

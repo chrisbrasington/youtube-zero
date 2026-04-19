@@ -30,10 +30,19 @@ async def _refresh_channels(api_key: str) -> list[dict]:
     """Parallel refresh all channels (sem=5), save, broadcast. Returns per-channel results."""
     with db() as c:
         channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+    total = len(channels)
     sem = asyncio.Semaphore(5)
+    lock = asyncio.Lock()
+    started = 0
 
     async def fetch_one(ch):
+        nonlocal started
         async with sem:
+            async with lock:
+                started += 1
+                name = ch.get("handle") or ch.get("name") or ch["channel_id"]
+                await _broadcast("refresh_progress", i=started, total=total, name=name)
+                await asyncio.sleep(0.06)
             try:
                 videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
                 save_videos(ch["channel_id"], videos)
@@ -41,7 +50,9 @@ async def _refresh_channels(api_key: str) -> list[dict]:
             except Exception as e:
                 return {"channel_id": ch["channel_id"], "error": str(e)}
 
+    await _broadcast("refresh_start", total=total)
     results = await asyncio.gather(*[fetch_one(ch) for ch in channels])
+    await _broadcast("refresh_done")
     await _broadcast("refreshed")
     return list(results)
 
