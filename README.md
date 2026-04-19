@@ -52,13 +52,20 @@ Open http://localhost:8000, click **⚙**, paste your API key.
 ### Docker
 
 ```bash
-docker compose up --build
+docker compose up -d --build
+docker compose logs -f
 ```
 
-Or pass your key directly:
+Create `.env` next to `compose.yaml` so the API key loads automatically:
+
+```
+YOUTUBE_API_KEY=AIza...
+```
+
+Or use the provided `deploy.sh` helper (pulls latest, rebuilds, tails logs):
 
 ```bash
-YOUTUBE_API_KEY=AIza... docker compose up --build
+./deploy.sh
 ```
 
 The database is saved to `./data/youtube_zero.db` on the host. The API key can also be set via the UI.
