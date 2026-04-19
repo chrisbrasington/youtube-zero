@@ -1751,7 +1751,7 @@ function syncAutoRefresh() {
 function loadAutoRefreshPrefs() {
   const enabled = localStorage.getItem('arEnabled');
   const idx     = localStorage.getItem('arIdx');
-  $('auto-refresh-check').checked = enabled === null ? true : enabled === '1';
+  $('auto-refresh-check').checked = enabled === '1';
   $('auto-refresh-slider').value  = idx !== null ? idx : '3';
   $('auto-refresh-interval').textContent = REFRESH_LABELS[parseInt($('auto-refresh-slider').value, 10)];
 }
