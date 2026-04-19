@@ -94,7 +94,7 @@ function isShort(video) {
   const secs = parts.length === 3
     ? parts[0] * 3600 + parts[1] * 60 + parts[2]
     : parts[0] * 60 + (parts[1] || 0);
-  return secs < 100;
+  return secs < 120;
 }
 
 let dragSrcId       = null;

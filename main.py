@@ -104,7 +104,7 @@ async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = Non
                     continue
                 if v["video_id"] in exclude_ids:
                     continue
-                if hide_shorts and _duration_seconds(v.get("duration") or "") < 100:
+                if hide_shorts and _duration_seconds(v.get("duration") or "") < 120:
                     continue
                 v["channel_name"] = ch["name"]
                 unread.append(v)
