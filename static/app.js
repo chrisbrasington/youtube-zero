@@ -1767,12 +1767,23 @@ $('auto-refresh-slider').addEventListener('input', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+let signalToastTimer = null;
+function signalToast(text) {
+  status(text, 'signal');
+  clearTimeout(signalToastTimer);
+  signalToastTimer = setTimeout(() => status(''), 4000);
+}
+
 function connectEventSource() {
   const es = new EventSource('/api/events');
   es.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'refreshed') loadAll();
+      else if (msg.type === 'signal_cmd') {
+        if (msg.phase === 'received') signalToast(`signal: ${msg.cmd} received`);
+        else if (msg.phase === 'done') signalToast(`signal: ${msg.cmd} response sent ✓`);
+      }
     } catch (_) {}
   };
   es.onerror = () => {

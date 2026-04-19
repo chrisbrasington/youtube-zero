@@ -18,9 +18,10 @@ REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))
 _event_listeners: set[asyncio.Queue] = set()
 
 
-async def _broadcast(event: str):
+async def _broadcast(event_type: str, **extra):
+    payload = {"type": event_type, **extra}
     for q in list(_event_listeners):
-        await q.put(event)
+        await q.put(payload)
 
 
 async def _refresh_channels(api_key: str) -> list[dict]:
@@ -215,7 +216,13 @@ async def _signal_listener():
                         msg = dm.get("message")
                 if msg:
                     print(f"[signal listener] received: {msg!r}")
-                    await _handle_signal_command(msg, number)
+                    cmd = msg.strip().lower()
+                    if cmd.startswith("/"):
+                        await _broadcast("signal_cmd", phase="received", cmd=cmd)
+                        await _handle_signal_command(msg, number)
+                        await _broadcast("signal_cmd", phase="done", cmd=cmd)
+                    else:
+                        await _handle_signal_command(msg, number)
         except Exception as exc:
             print(f"[signal listener] error: {exc}")
             await asyncio.sleep(5)
@@ -557,7 +564,7 @@ async def events():
             yield "data: connected\n\n"
             while True:
                 event = await queue.get()
-                yield f"data: {_json.dumps({'type': event})}\n\n"
+                yield f"data: {_json.dumps(event)}\n\n"
         finally:
             _event_listeners.discard(queue)
 

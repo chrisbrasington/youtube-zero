@@ -406,6 +406,7 @@ input::placeholder { color: var(--dim); }
 .status-msg.err     { color: var(--accent); }
 .status-msg.ok      { color: var(--green); }
 .status-msg.loading { color: var(--dim); }
+.status-msg.signal  { color: var(--green); font-weight: 600; }
 
 /* ── Channel card ────────────────────────────────────────────────────────── */
 
