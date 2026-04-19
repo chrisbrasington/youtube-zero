@@ -620,7 +620,7 @@ def get_feed():
 # ── Folder CRUD ───────────────────────────────────────────────────────────────
 
 @app.post("/api/folders")
-def folders_create(req: FolderReq):
+def folders_create(req: FolderReq, background_tasks: BackgroundTasks):
     with db() as c:
         max_order = c.execute(
             "SELECT COALESCE(MAX(sort_order), -1) FROM folders"
@@ -631,23 +631,26 @@ def folders_create(req: FolderReq):
         )
         folder_id = cur.lastrowid
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"id": folder_id, "name": req.name, "sort_order": max_order + 1, "channels": []}
 
 
 @app.delete("/api/folders/{folder_id}")
-def folders_delete(folder_id: int):
+def folders_delete(folder_id: int, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("UPDATE channels SET folder_id=NULL WHERE folder_id=?", (folder_id,))
         c.execute("DELETE FROM folders WHERE id=?", (folder_id,))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/folders/{folder_id}/rename")
-def folders_rename(folder_id: int, req: RenameReq):
+def folders_rename(folder_id: int, req: RenameReq, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("UPDATE folders SET name=? WHERE id=?", (req.name, folder_id))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
@@ -655,10 +658,11 @@ class SetIconReq(BaseModel):
     icon: str
 
 @app.post("/api/folders/{folder_id}/set-icon")
-def folders_set_icon(folder_id: int, req: SetIconReq):
+def folders_set_icon(folder_id: int, req: SetIconReq, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("UPDATE folders SET icon=? WHERE id=?", (req.icon, folder_id))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
@@ -698,18 +702,19 @@ async def folders_refresh(folder_id: int):
 
 
 @app.post("/api/channels/{channel_id}/set-folder")
-def channels_set_folder(channel_id: str, req: SetFolderReq):
+def channels_set_folder(channel_id: str, req: SetFolderReq, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute(
             "UPDATE channels SET folder_id=? WHERE channel_id=?",
             (req.folder_id, channel_id),
         )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/feed/reorder")
-def feed_reorder(req: FeedReorderReq):
+def feed_reorder(req: FeedReorderReq, background_tasks: BackgroundTasks):
     with db() as c:
         for i, item in enumerate(req.items):
             if item.type == "folder":
@@ -721,11 +726,12 @@ def feed_reorder(req: FeedReorderReq):
                     "UPDATE channels SET sort_order=? WHERE channel_id=?", (i, item.id)
                 )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/channels")
-async def channels_add(req: AddChannelReq):
+async def channels_add(req: AddChannelReq, background_tasks: BackgroundTasks):
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(400, "No YouTube API key. Add one in settings (⚙).")
@@ -752,6 +758,7 @@ async def channels_add(req: AddChannelReq):
             raise HTTPException(409, "Channel already added")
     videos = await yt_fetch_videos(info["uploads_playlist_id"], api_key)
     save_videos(info["channel_id"], videos)
+    background_tasks.add_task(_broadcast, "refreshed")
     return {
         **info,
         "videos": [{**v, "in_queue": False, "is_read": False} for v in videos],
@@ -764,22 +771,24 @@ async def channels_add(req: AddChannelReq):
 
 
 @app.delete("/api/channels/{channel_id}")
-def channels_delete(channel_id: str):
+def channels_delete(channel_id: str, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("DELETE FROM channels WHERE channel_id=?", (channel_id,))
         c.execute("DELETE FROM videos WHERE channel_id=?", (channel_id,))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/channels/reorder")
-def channels_reorder(req: ReorderReq):
+def channels_reorder(req: ReorderReq, background_tasks: BackgroundTasks):
     with db() as c:
         for i, cid in enumerate(req.ids):
             c.execute(
                 "UPDATE channels SET sort_order=? WHERE channel_id=?", (i, cid)
             )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
