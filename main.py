@@ -171,8 +171,14 @@ async def _handle_signal_command(cmd: str, number: str):
             await _signal_send_plain(number, "no API key configured")
             return
         await _signal_send_plain(number, "refreshing…")
+        with db() as c:
+            before = {r["video_id"] for r in c.execute("SELECT video_id FROM videos").fetchall()}
         await _refresh_channels(api_key)
-        await _do_get(number, prefix="refreshed — ")
+        with db() as c:
+            after = {r["video_id"] for r in c.execute("SELECT video_id FROM videos").fetchall()}
+        new_count = len(after - before)
+        prefix = f"{new_count} new video(s) — " if new_count else "no new videos — "
+        await _do_get(number, prefix=prefix)
     elif cmd == "/undo":
         cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         with db() as c:
