@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 import re
 import sqlite3
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+import websockets
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -193,6 +195,7 @@ async def _handle_signal_command(cmd: str, number: str):
 async def _signal_listener():
     await asyncio.sleep(5)  # let app boot
     start_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    ws_base = SIGNAL_API_URL.replace("http://", "ws://").replace("https://", "wss://")
     while True:
         try:
             with db() as c:
@@ -201,36 +204,39 @@ async def _signal_listener():
                 await asyncio.sleep(10)
                 continue
             number = row["value"]
-            async with httpx.AsyncClient(timeout=15) as client:
-                r = await client.get(f"{SIGNAL_API_URL}/v1/receive/{number}", params={"timeout": "5"})
-            if r.status_code != 200:
-                await asyncio.sleep(5)
-                continue
-            for env in r.json():
-                envelope = env.get("envelope", {})
-                ts = envelope.get("timestamp", 0)
-                if ts < start_ts:
-                    continue  # skip messages from before startup
-                msg = None
-                sync = envelope.get("syncMessage", {}) or {}
-                sent = sync.get("sentMessage") or {}
-                if sent and sent.get("destination") == number:
-                    msg = sent.get("message")
-                else:
-                    dm = envelope.get("dataMessage") or {}
-                    if dm and envelope.get("source") == number:
-                        msg = dm.get("message")
-                if msg:
-                    print(f"[signal listener] received: {msg!r}")
-                    cmd = msg.strip().lower()
-                    if cmd.startswith("/"):
-                        await _broadcast("signal_cmd", phase="received", cmd=cmd)
-                        await _handle_signal_command(msg, number)
-                        await _broadcast("signal_cmd", phase="done", cmd=cmd)
+            url = f"{ws_base}/v1/receive/{number}"
+            print(f"[signal listener] connecting to {url}")
+            async with websockets.connect(url, ping_interval=30) as ws:
+                print(f"[signal listener] ws connected")
+                async for raw in ws:
+                    try:
+                        env = json.loads(raw)
+                    except Exception:
+                        continue
+                    envelope = env.get("envelope", {})
+                    ts = envelope.get("timestamp", 0)
+                    if ts < start_ts:
+                        continue
+                    msg = None
+                    sync = envelope.get("syncMessage", {}) or {}
+                    sent = sync.get("sentMessage") or {}
+                    if sent and sent.get("destination") == number:
+                        msg = sent.get("message")
                     else:
-                        await _handle_signal_command(msg, number)
+                        dm = envelope.get("dataMessage") or {}
+                        if dm and envelope.get("source") == number:
+                            msg = dm.get("message")
+                    if msg:
+                        print(f"[signal listener] received: {msg!r}")
+                        cmd = msg.strip().lower()
+                        if cmd.startswith("/"):
+                            await _broadcast("signal_cmd", phase="received", cmd=cmd)
+                            await _handle_signal_command(msg, number)
+                            await _broadcast("signal_cmd", phase="done", cmd=cmd)
+                        else:
+                            await _handle_signal_command(msg, number)
         except Exception as exc:
-            print(f"[signal listener] error: {exc}")
+            print(f"[signal listener] ws error: {exc} — reconnecting in 5s")
             await asyncio.sleep(5)
 
 
