@@ -16,6 +16,22 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))
+QUIET_START = int(os.environ.get("QUIET_HOURS_START", "0"))
+QUIET_END = int(os.environ.get("QUIET_HOURS_END", "6"))
+TZ_NAME = os.environ.get("TZ", "UTC")
+
+
+def _is_quiet_hour() -> bool:
+    if QUIET_START == QUIET_END:
+        return False
+    try:
+        from zoneinfo import ZoneInfo
+        h = datetime.now(ZoneInfo(TZ_NAME)).hour
+    except Exception:
+        h = datetime.now(timezone.utc).hour
+    if QUIET_START < QUIET_END:
+        return QUIET_START <= h < QUIET_END
+    return h >= QUIET_START or h < QUIET_END  # wraps midnight
 
 _event_listeners: set[asyncio.Queue] = set()
 
@@ -63,9 +79,12 @@ async def _background_refresh():
     await asyncio.sleep(REFRESH_INTERVAL)
     while True:
         try:
-            api_key = get_api_key()
-            if api_key:
-                await _refresh_channels(api_key)
+            if _is_quiet_hour():
+                print(f"[bg refresh] quiet hours ({QUIET_START}-{QUIET_END} {TZ_NAME}) — skipping")
+            else:
+                api_key = get_api_key()
+                if api_key:
+                    await _refresh_channels(api_key)
         except Exception:
             pass
         await asyncio.sleep(REFRESH_INTERVAL)
