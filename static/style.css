@@ -1325,3 +1325,93 @@ input::placeholder { color: var(--dim); }
   /* Toolbar */
   .toolbar { margin-bottom: 8px; }
 }
+
+/* Mobile: revert font/thumb bumps */
+@media (max-width: 600px) {
+  body.app { font-size: 15px; }
+  .logo { font-size: 17px; }
+  /* ── Quota pill ──────────────────────────────────────────────────────────── */
+
+.quota-pill { font-size: 11px; }
+  .last-checked { font-size: 11px; }
+  .quota-label { font-size: 10px; }
+  #quota-today { font-size: 11px; }
+  .auto-refresh-label { font-size: 12px; }
+  .auto-refresh-interval { font-size: 11px; }
+  .auto-refresh-countdown { font-size: 11px; }
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn-primary { font-size: 13px; }
+  .btn-ghost { font-size: 13px; }
+  .btn-danger { font-size: 13px; }
+  .btn-queue { font-size: 13px; }
+  .queue-badge { font-size: 11px; }
+  .btn-icon { font-size: 16px; }
+  .settings-inner strong { font-size: 13px; }
+  .settings-hint { font-size: 12px; }
+  .api-key-status { font-size: 12px; }
+  .settings-toggle { font-size: 13px; }
+  /* ── Inputs ──────────────────────────────────────────────────────────────── */
+
+input[type="text"],
+input[type="password"] { font-size: 13px; }
+  .btn-sort { font-size: 12px; }
+  /* ── Status message ──────────────────────────────────────────────────────── */
+
+.status-msg { font-size: 12px; }
+  /* The round "mark read" checkbox */
+.ch-check { font-size: 11px; }
+  .ch-name { font-size: 15px; }
+  .ch-meta { font-size: 11px; }
+  .badge-new { font-size: 11px; }
+  .ch-btn { font-size: 15px; }
+  .folder-icon { font-size: 13px; }
+  .folder-name { font-size: 15px; }
+  .folder-name-input { font-size: 15px; }
+  /* Move-to-folder select */
+.ch-folder-select { font-size: 10px; }
+  .ch-caret { font-size: 11px; }
+  .v-dur { font-size: 10px; }
+  .v-title { font-size: 13px; }
+  .v-age { font-size: 11px; }
+  /* Queue toggle button */
+.v-q-btn { font-size: 17px; }
+  .v-q-btn.queued { font-size: 15px; }
+  /* No-videos placeholder */
+.no-videos { font-size: 13px; }
+  .empty-state h3 { font-size: 17px; }
+  .empty-state p { font-size: 13px; }
+  .all-clear-badge { font-size: 12px; }
+  .queue-title { font-size: 15px; }
+  .queue-empty { font-size: 13px; }
+  .q-title { font-size: 12px; }
+  .q-channel { font-size: 11px; }
+  .btn-watch { font-size: 11px; }
+  .btn-remove { font-size: 11px; }
+  .btn-signal { font-size: 11px; }
+  .tile-dur { font-size: 10px; }
+  /* Queue badge — always visible in top-right of tile thumb */
+.tile-q-btn { font-size: 15px; }
+  .tile-q-btn.queued { font-size: 12px; }
+  .tile-read-btn { font-size: 10px; }
+  .tile-signal-btn { font-size: 11px; }
+  .v-signal-btn { font-size: 15px; }
+  .tile-title { font-size: 11px; }
+  .tile-age { font-size: 10px; }
+  /* ── Per-video read toggle (in expanded list) ────────────────────────────── */
+
+.v-read-btn { font-size: 10px; }
+  /* ── Queue item play button ──────────────────────────────────────────────── */
+
+.btn-play { font-size: 11px; }
+  .btn-yt-open { font-size: 11px; }
+  .player-title { font-size: 12px; }
+  .player-btn { font-size: 13px; }
+  .icon-btn { font-size: 23px; }
+  /* Folder icon is clickable */
+.folder-icon-btn { font-size: 15px; }
+  /* Shrink buttons */
+  .btn-ghost, .btn-danger { font-size: 12px; }
+  .v-thumb { width: 108px; height: 60px; }
+  .q-thumb { width: 80px; height: 45px; }
+}
