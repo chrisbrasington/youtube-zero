@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -663,7 +663,7 @@ def folders_set_icon(folder_id: int, req: SetIconReq):
 
 
 @app.post("/api/folders/{folder_id}/mark-read")
-def folders_mark_read(folder_id: int):
+def folders_mark_read(folder_id: int, background_tasks: BackgroundTasks):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
         ids = [r["channel_id"] for r in c.execute(
@@ -673,6 +673,7 @@ def folders_mark_read(folder_id: int):
             c.execute("UPDATE channels SET read_before=? WHERE channel_id=?", (now, cid))
             c.execute("DELETE FROM video_status WHERE channel_id=?", (cid,))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True, "read_before": now, "channel_ids": ids}
 
 
@@ -783,21 +784,23 @@ def channels_reorder(req: ReorderReq):
 
 
 @app.post("/api/channels/{channel_id}/mark-unread")
-def channels_mark_unread(channel_id: str):
+def channels_mark_unread(channel_id: str, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("UPDATE channels SET read_before=NULL WHERE channel_id=?", (channel_id,))
         c.execute("DELETE FROM video_status WHERE channel_id=?", (channel_id,))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/channels/{channel_id}/mark-read")
-def channels_mark_read(channel_id: str):
+def channels_mark_read(channel_id: str, background_tasks: BackgroundTasks):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
         c.execute("UPDATE channels SET read_before=? WHERE channel_id=?", (now, channel_id))
         c.execute("DELETE FROM video_status WHERE channel_id=?", (channel_id,))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True, "read_before": now}
 
 
@@ -818,7 +821,7 @@ async def channels_refresh(channel_id: str):
 
 
 @app.post("/api/videos/{video_id}/read")
-def video_mark_read(video_id: str):
+def video_mark_read(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
         vid = c.execute(
             "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
@@ -830,11 +833,12 @@ def video_mark_read(video_id: str):
             (video_id, vid["channel_id"], "read"),
         )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/videos/{video_id}/unread")
-def video_mark_unread(video_id: str):
+def video_mark_unread(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
         vid = c.execute(
             "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
@@ -846,6 +850,7 @@ def video_mark_unread(video_id: str):
             (video_id, vid["channel_id"], "unread"),
         )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
@@ -923,12 +928,13 @@ async def refresh_all():
 
 
 @app.post("/api/clear-all")
-def clear_all():
+def clear_all(background_tasks: BackgroundTasks):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
         c.execute("UPDATE channels SET read_before=?", (now,))
         c.execute("DELETE FROM video_status")
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
@@ -942,7 +948,7 @@ def queue_list():
 
 
 @app.post("/api/queue")
-def queue_add(req: QueueAddReq):
+def queue_add(req: QueueAddReq, background_tasks: BackgroundTasks):
     with db() as c:
         max_order = c.execute(
             "SELECT COALESCE(MAX(sort_order), -1) FROM queue WHERE watched_at IS NULL"
@@ -961,6 +967,7 @@ def queue_add(req: QueueAddReq):
             data,
         )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
@@ -974,29 +981,32 @@ def queue_reorder(req: ReorderReq):
 
 
 @app.delete("/api/queue")
-def queue_clear():
+def queue_clear(background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("DELETE FROM queue WHERE watched_at IS NULL")
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.delete("/api/queue/{video_id}")
-def queue_remove(video_id: str):
+def queue_remove(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("DELETE FROM queue WHERE video_id=?", (video_id,))
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
 @app.post("/api/queue/{video_id}/watched")
-def queue_watched(video_id: str):
+def queue_watched(video_id: str, background_tasks: BackgroundTasks):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
         c.execute(
             "UPDATE queue SET watched_at=? WHERE video_id=?", (now, video_id)
         )
         c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 
 
