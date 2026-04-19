@@ -255,12 +255,23 @@ async def _handle_signal_command(cmd: str, number: str):
     elif cmd == "/undo":
         cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         with db() as c:
+            todays = [dict(r) for r in c.execute(
+                "SELECT * FROM videos WHERE published_at > ?", (cutoff,)
+            ).fetchall()]
+            short_ids = {v["video_id"] for v in todays if _is_short(v)}
             c.execute("UPDATE channels SET read_before=? WHERE read_before > ?", (cutoff, cutoff))
             c.execute("""DELETE FROM video_status WHERE status='read' AND video_id IN (
                 SELECT video_id FROM videos WHERE published_at > ?)""", (cutoff,))
+            # re-mark today's shorts as read so undo doesn't resurrect them
+            for v in todays:
+                if v["video_id"] in short_ids:
+                    c.execute(
+                        "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?, ?, 'read')",
+                        (v["video_id"], v["channel_id"]),
+                    )
             c.commit()
         await _broadcast("refreshed")
-        await _signal_send_plain(number, "undone — today visible ✓")
+        await _signal_send_plain(number, f"undone — today visible ✓ (skipped {len(short_ids)} shorts)" if short_ids else "undone — today visible ✓")
 
 
 async def _signal_listener():
