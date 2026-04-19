@@ -23,36 +23,149 @@ async def _broadcast(event: str):
         await q.put(event)
 
 
+async def _refresh_channels(api_key: str) -> list[dict]:
+    """Parallel refresh all channels (sem=5), save, broadcast. Returns per-channel results."""
+    with db() as c:
+        channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+    sem = asyncio.Semaphore(5)
+
+    async def fetch_one(ch):
+        async with sem:
+            try:
+                videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
+                save_videos(ch["channel_id"], videos)
+                return {"channel_id": ch["channel_id"], "count": len(videos)}
+            except Exception as e:
+                return {"channel_id": ch["channel_id"], "error": str(e)}
+
+    results = await asyncio.gather(*[fetch_one(ch) for ch in channels])
+    await _broadcast("refreshed")
+    return list(results)
+
+
 async def _background_refresh():
     if REFRESH_INTERVAL <= 0:
         return
-    await asyncio.sleep(REFRESH_INTERVAL)  # initial delay — let app fully start
+    await asyncio.sleep(REFRESH_INTERVAL)
     while True:
         try:
             api_key = get_api_key()
             if api_key:
-                with db() as c:
-                    channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
-                sem = asyncio.Semaphore(5)
-
-                async def fetch_one(ch):
-                    async with sem:
-                        try:
-                            videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
-                            save_videos(ch["channel_id"], videos)
-                        except Exception:
-                            pass
-
-                await asyncio.gather(*[fetch_one(ch) for ch in channels])
-                await _broadcast("refreshed")
+                await _refresh_channels(api_key)
         except Exception:
             pass
         await asyncio.sleep(REFRESH_INTERVAL)
 
 
+def _duration_seconds(dur: str) -> int:
+    if not dur:
+        return 0
+    parts = dur.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    except ValueError:
+        pass
+    return 0
+
+
+async def _signal_send_plain(number: str, message: str):
+    payload = {"message": message, "number": number, "recipients": [number]}
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=30)
+        except Exception:
+            pass
+
+
+async def _send_unread_to_signal(number: str) -> int:
+    with db() as c:
+        rows = c.execute("SELECT key, value FROM settings").fetchall()
+        hide_shorts = {r["key"]: r["value"] for r in rows}.get("hide_shorts", "0") == "1"
+        chs = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+        unread = []
+        for ch in chs:
+            vids = _channel_videos(c, ch["channel_id"], ch["read_before"], set())
+            for v in vids:
+                if v["is_read"]:
+                    continue
+                if hide_shorts and _duration_seconds(v.get("duration") or "") < 100:
+                    continue
+                v["channel_name"] = ch["name"]
+                unread.append(v)
+    for v in unread:
+        await _signal_send_one(number, v["video_id"], v["title"], v["channel_name"], v.get("thumbnail_url") or "")
+    return len(unread)
+
+
+async def _handle_signal_command(cmd: str, number: str):
+    cmd = cmd.strip().lower()
+    if cmd == "/get":
+        count = await _send_unread_to_signal(number)
+        await _signal_send_plain(number, f"sent {count} video(s)" if count else "nothing visible ✓")
+    elif cmd == "/nuke":
+        now = datetime.now(timezone.utc).isoformat()
+        with db() as c:
+            c.execute("UPDATE channels SET read_before=?", (now,))
+            c.execute("DELETE FROM video_status")
+            c.commit()
+        await _broadcast("refreshed")
+        await _signal_send_plain(number, "nuked ✓")
+    elif cmd == "/refresh":
+        api_key = get_api_key()
+        if not api_key:
+            await _signal_send_plain(number, "no API key configured")
+            return
+        await _signal_send_plain(number, "refreshing…")
+        await _refresh_channels(api_key)
+        count = await _send_unread_to_signal(number)
+        await _signal_send_plain(number, f"refreshed — sent {count} video(s)" if count else "refreshed — nothing visible ✓")
+
+
+async def _signal_listener():
+    await asyncio.sleep(5)  # let app boot
+    start_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    while True:
+        try:
+            with db() as c:
+                row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
+            if not row:
+                await asyncio.sleep(10)
+                continue
+            number = row["value"]
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(f"{SIGNAL_API_URL}/v1/receive/{number}", params={"timeout": "5"})
+            if r.status_code != 200:
+                await asyncio.sleep(5)
+                continue
+            for env in r.json():
+                envelope = env.get("envelope", {})
+                ts = envelope.get("timestamp", 0)
+                if ts < start_ts:
+                    continue  # skip messages from before startup
+                msg = None
+                sync = envelope.get("syncMessage", {}) or {}
+                sent = sync.get("sentMessage") or {}
+                if sent and sent.get("destination") == number:
+                    msg = sent.get("message")
+                else:
+                    dm = envelope.get("dataMessage") or {}
+                    if dm and envelope.get("source") == number:
+                        msg = dm.get("message")
+                if msg:
+                    print(f"[signal listener] received: {msg!r}")
+                    await _handle_signal_command(msg, number)
+        except Exception as exc:
+            print(f"[signal listener] error: {exc}")
+            await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app):
     asyncio.create_task(_background_refresh())
+    asyncio.create_task(_signal_listener())
     yield
 
 
@@ -918,22 +1031,8 @@ async def refresh_all():
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(400, "No API key")
-    with db() as c:
-        channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
-    import asyncio as _asyncio
-    sem = _asyncio.Semaphore(5)
-
-    async def fetch_one(ch):
-        async with sem:
-            try:
-                videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
-                save_videos(ch["channel_id"], videos)
-                return {"channel_id": ch["channel_id"], "count": len(videos)}
-            except Exception as e:
-                return {"channel_id": ch["channel_id"], "error": str(e)}
-
-    results = await _asyncio.gather(*[fetch_one(ch) for ch in channels])
-    return {"ok": True, "results": list(results)}
+    results = await _refresh_channels(api_key)
+    return {"ok": True, "results": results}
 
 
 @app.post("/api/clear-all")
