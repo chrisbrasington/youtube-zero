@@ -102,7 +102,9 @@ async def _send_unread_to_signal(number: str) -> int:
 
 async def _handle_signal_command(cmd: str, number: str):
     cmd = cmd.strip().lower()
-    if cmd == "/get":
+    if cmd == "/ping":
+        await _signal_send_plain(number, "pong")
+    elif cmd == "/get":
         count = await _send_unread_to_signal(number)
         await _signal_send_plain(number, f"sent {count} video(s)" if count else "nothing visible ✓")
     elif cmd == "/nuke":
