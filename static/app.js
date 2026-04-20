@@ -1828,7 +1828,7 @@ $('auto-refresh-slider').addEventListener('input', () => {
     if (delta > 10) {
       pulling = true;
       const pct = Math.min(delta / THRESHOLD, 1);
-      setRefreshProgress(pct * 0.3);  // partial bar fills as you pull
+      setRefreshProgress(pct);  // bar fills 0-100% as you pull
     }
   }, { passive: true });
 
