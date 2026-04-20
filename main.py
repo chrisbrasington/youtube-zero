@@ -250,7 +250,12 @@ async def _handle_signal_command(cmd: str, number: str):
         prefix = f"{new_count} new video(s) — " if new_count else "no new videos — "
         await _do_get(number, prefix=prefix)
     elif cmd == "/undo":
-        cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        try:
+            from zoneinfo import ZoneInfo
+            local_midnight = datetime.now(ZoneInfo(TZ_NAME)).replace(hour=0, minute=0, second=0, microsecond=0)
+        except Exception:
+            local_midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff = local_midnight.astimezone(timezone.utc).isoformat()
         with db() as c:
             allow_map = {
                 r["channel_id"]: bool(r["allow_shorts"])
