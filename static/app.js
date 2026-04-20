@@ -88,8 +88,9 @@ const state = {
   signalConfigured: false,
 };
 
-function isShort(video) {
+function isShort(video, channel) {
   if (!state.hideShorts) return false;
+  if (channel && channel.allow_shorts) return false;
   if (video.is_live && video.is_live !== 'none') return false;
   if (!video.duration) return false;
   const parts = video.duration.split(':').map(Number);
@@ -134,20 +135,20 @@ function findFolder(folderId) {
 function channelViewMode(channel) {
   const id = channel.channel_id;
   if (state.manualExpand.has(id)) return 'expanded';
-  return (channel.videos || []).some(v => !v.is_read && !isShort(v)) ? 'compact' : 'collapsed';
+  return (channel.videos || []).some(v => !v.is_read && !isShort(v, channel)) ? 'compact' : 'collapsed';
 }
 
 function folderViewMode(folder) {
   const id = folder.id;
   if (state.folderExpand.has(id)) return 'expanded';
   const hasUnread = (folder.channels || []).some(ch =>
-    (ch.videos || []).some(v => !v.is_read && !isShort(v))
+    (ch.videos || []).some(v => !v.is_read && !isShort(v, ch))
   );
   return hasUnread ? 'compact' : 'collapsed';
 }
 
 function countUnread(channel) {
-  return (channel.videos || []).filter(v => !v.is_read && !isShort(v)).length;
+  return (channel.videos || []).filter(v => !v.is_read && !isShort(v, channel)).length;
 }
 
 function folderUnreadCount(folder) {
@@ -234,7 +235,7 @@ function renderFolder(folder) {
 
   let bodyHtml = '';
   if (mode === 'compact') {
-    const mixedVids = folderMixedStrip(folder).filter(v => !isShort(v));
+    const mixedVids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
     bodyHtml = `
       <div class="video-strip">
         ${mixedVids.map(v => renderVideoTile(v, v._channel, true)).join('')}
@@ -293,15 +294,21 @@ function renderChannel(ch, nested) {
 
   let bodyHtml = '';
   if (mode === 'compact') {
-    const unreadVids = ch.videos.filter(v => !v.is_read && !isShort(v));
+    const unreadVids = ch.videos.filter(v => !v.is_read && !isShort(v, ch));
     bodyHtml = `
       <div class="video-strip">
         ${unreadVids.map(v => renderVideoTile(v, ch, false)).join('')}
       </div>`;
   } else if (mode === 'expanded') {
-    const visibleVids = ch.videos.filter(v => !isShort(v));
+    const visibleVids = ch.videos.filter(v => !isShort(v, ch));
+    const allowShortsChecked = ch.allow_shorts ? 'checked' : '';
     bodyHtml = `
       <div class="videos-list">
+        <label class="allow-shorts-toggle">
+          <input type="checkbox" ${allowShortsChecked}
+                 data-action="toggle-allow-shorts" data-channel-id="${cid}">
+          Allow shorts from this channel
+        </label>
         ${visibleVids.length === 0
           ? '<div class="no-videos">No videos cached — click ↻ to refresh.</div>'
           : visibleVids.map(v => renderVideoRow(v, ch)).join('')
@@ -627,6 +634,17 @@ async function markChannelUnread(channelId) {
       ch.read_before = null;
       ch.videos.forEach(v => { v.is_read = false; });
     }
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function toggleAllowShorts(channelId, allow) {
+  try {
+    await api.post(`/api/channels/${channelId}/allow-shorts`, { allow });
+    const ch = findChannel(channelId);
+    if (ch) ch.allow_shorts = allow ? 1 : 0;
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -1370,6 +1388,14 @@ document.addEventListener('click', e => {
   // Channel: mark unread
   const muBtn = e.target.closest('[data-action="mark-unread"]');
   if (muBtn) { e.stopPropagation(); markChannelUnread(muBtn.dataset.channelId); return; }
+
+  // Channel: toggle allow-shorts
+  const asBtn = e.target.closest('[data-action="toggle-allow-shorts"]');
+  if (asBtn) {
+    e.stopPropagation();
+    toggleAllowShorts(asBtn.dataset.channelId, asBtn.checked);
+    return;
+  }
 
   // Channel: refresh
   const refBtn = e.target.closest('[data-action="refresh-channel"]');

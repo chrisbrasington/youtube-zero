@@ -152,13 +152,14 @@ async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = Non
         chs = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
         unread = []
         for ch in chs:
+            ch_allow_shorts = bool(ch.get("allow_shorts", 0))
             vids = _channel_videos(c, ch["channel_id"], ch["read_before"], set())
             for v in vids:
                 if v["is_read"]:
                     continue
                 if v["video_id"] in exclude_ids:
                     continue
-                if hide_shorts and _is_short(v):
+                if hide_shorts and not ch_allow_shorts and _is_short(v):
                     continue
                 v["channel_name"] = ch["name"]
                 unread.append(v)
@@ -420,6 +421,7 @@ def init_db():
             "ALTER TABLE videos ADD COLUMN is_live TEXT",
             "ALTER TABLE videos ADD COLUMN thumb_w INTEGER",
             "ALTER TABLE videos ADD COLUMN thumb_h INTEGER",
+            "ALTER TABLE channels ADD COLUMN allow_shorts INTEGER DEFAULT 0",
         ]:
             try:
                 c.execute(migration)
@@ -1081,6 +1083,18 @@ def channels_reorder(req: ReorderReq, background_tasks: BackgroundTasks):
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
+
+
+class AllowShortsReq(BaseModel):
+    allow: bool
+
+@app.post("/api/channels/{channel_id}/allow-shorts")
+def channels_allow_shorts(channel_id: str, req: AllowShortsReq, background_tasks: BackgroundTasks):
+    with db() as c:
+        c.execute("UPDATE channels SET allow_shorts=? WHERE channel_id=?", (1 if req.allow else 0, channel_id))
+        c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
+    return {"ok": True, "allow_shorts": req.allow}
 
 
 @app.post("/api/channels/{channel_id}/mark-unread")

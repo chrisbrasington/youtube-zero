@@ -637,6 +637,21 @@ input::placeholder { color: var(--dim); }
 .videos-list {
   border-top: 1px solid var(--border);
 }
+.allow-shorts-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 46px;
+  font-size: 16px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+}
+.allow-shorts-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 .video-row {
   display: flex;
