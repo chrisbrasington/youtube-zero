@@ -432,10 +432,19 @@ def init_db():
 init_db()
 
 
+def _quota_today() -> str:
+    """Date key aligned with Google's YouTube Data API quota reset (midnight Pacific)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+    except Exception:
+        return datetime.now(timezone.utc).date().isoformat()
+
+
 def add_quota(units: int):
     global _session_quota
     _session_quota += units
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = _quota_today()
     with db() as c:
         c.execute(
             """INSERT INTO quota_log (date, units) VALUES (?, ?)
@@ -679,7 +688,7 @@ async def events():
 @app.get("/api/settings")
 @app.get("/api/quota")
 def quota_get():
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = _quota_today()
     with db() as c:
         row = c.execute(
             "SELECT units FROM quota_log WHERE date=?", (today,)
