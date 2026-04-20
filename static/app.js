@@ -1804,6 +1804,48 @@ $('auto-refresh-slider').addEventListener('input', () => {
   syncAutoRefresh();
 });
 
+// ── Pull-to-refresh (mobile) ──────────────────────────────────────────────────
+
+(function setupPullToRefresh() {
+  const pane = $('channels-pane');
+  if (!pane) return;
+  let startY = null;
+  let pulling = false;
+  const THRESHOLD = 70;
+
+  pane.addEventListener('touchstart', (e) => {
+    if (pane.scrollTop <= 0) {
+      startY = e.touches[0].clientY;
+      pulling = false;
+    } else {
+      startY = null;
+    }
+  }, { passive: true });
+
+  pane.addEventListener('touchmove', (e) => {
+    if (startY === null) return;
+    const delta = e.touches[0].clientY - startY;
+    if (delta > 10) {
+      pulling = true;
+      const pct = Math.min(delta / THRESHOLD, 1);
+      setRefreshProgress(pct * 0.3);  // partial bar fills as you pull
+    }
+  }, { passive: true });
+
+  pane.addEventListener('touchend', (e) => {
+    if (startY === null) { setRefreshProgress(0); return; }
+    const delta = (e.changedTouches[0].clientY - startY);
+    if (pulling && delta >= THRESHOLD) {
+      setRefreshProgress(0);
+      refreshAll();
+    } else {
+      setRefreshProgress(0);
+    }
+    startY = null;
+    pulling = false;
+  }, { passive: true });
+})();
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 let signalToastTimer = null;
