@@ -640,8 +640,9 @@ input::placeholder { color: var(--dim); }
 .allow-shorts-toggle {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  padding: 8px 14px 8px 46px;
+  padding: 8px 14px;
   font-size: 16px;
   color: var(--muted);
   cursor: pointer;
