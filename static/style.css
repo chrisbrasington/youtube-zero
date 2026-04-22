@@ -788,7 +788,7 @@ input::placeholder { color: var(--dim); }
 /* ── Queue pane ──────────────────────────────────────────────────────────── */
 
 .queue-pane {
-  width: 340px;
+  width: 600px;
   min-width: 340px;
   flex-shrink: 0;
   display: flex;
