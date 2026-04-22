@@ -567,19 +567,35 @@ async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10)
         })
 
     if video_ids:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r2 = await client.get(f"{YT_API}/videos", params={
-                "part": "contentDetails,snippet",
-                "id": ",".join(video_ids),
-                "key": api_key,
-            })
-        add_quota(1)  # videos.list (durations + snippet)
-        meta_map = {}
-        for d in r2.json().get("items", []):
-            meta_map[d["id"]] = {
-                "duration": parse_duration(d["contentDetails"]["duration"]),
-                "is_live": d.get("snippet", {}).get("liveBroadcastContent", "none"),
-            }
+        # Use cached metadata when already fully resolved (duration set + not live/upcoming).
+        # Re-fetch only new videos and those still live/upcoming.
+        meta_map: dict[str, dict] = {}
+        with db() as c:
+            placeholders = ",".join("?" * len(video_ids))
+            cached = c.execute(
+                f"SELECT video_id, duration, is_live FROM videos WHERE video_id IN ({placeholders})",
+                video_ids,
+            ).fetchall()
+            for row in cached:
+                if row["duration"] and (row["is_live"] or "none") == "none":
+                    meta_map[row["video_id"]] = {
+                        "duration": row["duration"],
+                        "is_live": "none",
+                    }
+        needed = [v for v in video_ids if v not in meta_map]
+        if needed:
+            async with httpx.AsyncClient(timeout=15) as client:
+                r2 = await client.get(f"{YT_API}/videos", params={
+                    "part": "contentDetails,snippet",
+                    "id": ",".join(needed),
+                    "key": api_key,
+                })
+            add_quota(1)  # videos.list (durations + snippet)
+            for d in r2.json().get("items", []):
+                meta_map[d["id"]] = {
+                    "duration": parse_duration(d["contentDetails"]["duration"]),
+                    "is_live": d.get("snippet", {}).get("liveBroadcastContent", "none"),
+                }
         for v in videos:
             m = meta_map.get(v["video_id"], {})
             v["duration"] = m.get("duration", "")
