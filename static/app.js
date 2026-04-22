@@ -468,7 +468,10 @@ function renderQueue() {
     el.innerHTML = '<div class="queue-empty">Queue is empty</div>';
     return;
   }
-  el.innerHTML = state.queue.map(item => `
+  const subscribedIds = new Set(allChannels().map(c => c.channel_id));
+  el.innerHTML = state.queue.map(item => {
+    const isSubscribed = subscribedIds.has(item.channel_id);
+    return `
     <div class="q-item" draggable="true" data-drag-context="queue" data-video-id="${escAttr(item.video_id)}">
       <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
            onerror="this.src='data:image/svg+xml,<svg/>'">
@@ -485,6 +488,10 @@ function renderQueue() {
              target="_blank" rel="noopener noreferrer"
              data-action="watch-yt"
              data-video-id="${escAttr(item.video_id)}">↗ YouTube</a>
+          ${!isSubscribed && item.channel_id ? `<button class="btn-ghost"
+                  data-action="subscribe-from-queue"
+                  data-channel-id="${escAttr(item.channel_id)}"
+                  title="Subscribe to ${escAttr(item.channel_name)}">+ Channel</button>` : ''}
           <button class="btn-remove"
                   data-action="remove-queue"
                   data-video-id="${escAttr(item.video_id)}">Remove</button>
@@ -498,7 +505,8 @@ function renderQueue() {
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ── Render: player ────────────────────────────────────────────────────────────
@@ -570,6 +578,20 @@ async function addChannel() {
     status('Error: ' + e.message, 'err');
   } finally {
     $('btn-add-channel').disabled = false;
+  }
+}
+
+async function subscribeFromQueue(channelId) {
+  status('Adding…', 'loading');
+  try {
+    const ch = await api.post('/api/channels', { input: channelId });
+    state.feed.channels.push(ch);
+    render();
+    renderQueue();
+    status(`Added ${ch.name}`, 'ok');
+    setTimeout(() => status(''), 3000);
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
   }
 }
 
@@ -1458,6 +1480,10 @@ document.addEventListener('click', e => {
   // Remove from queue
   const rmBtn = e.target.closest('[data-action="remove-queue"]');
   if (rmBtn) { removeFromQueue(rmBtn.dataset.videoId); return; }
+
+  // Subscribe to channel from queue
+  const subBtn = e.target.closest('[data-action="subscribe-from-queue"]');
+  if (subBtn) { subscribeFromQueue(subBtn.dataset.channelId); return; }
 });
 
 // Move-to-folder select (change event)

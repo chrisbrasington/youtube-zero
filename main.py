@@ -173,6 +173,7 @@ _HELP_TEXT = (
     "/ping — pong\n"
     "/get — queue + visible videos\n"
     "/queue — queue only\n"
+    "/add <url> — add video to queue\n"
     "/refresh — refresh then /get\n"
     "/nuke — mark all visible as read\n"
     "/undo — today's videos visible again\n"
@@ -210,8 +211,90 @@ async def _do_get(number: str, prefix: str = ""):
         await _signal_send_plain(number, f"{prefix}sent {', '.join(parts)}{checked}")
 
 
+def _parse_yt_video_id(url: str) -> str | None:
+    url = (url or "").strip()
+    if not url:
+        return None
+    patterns = [
+        r"youtu\.be/([A-Za-z0-9_-]{11})",
+        r"youtube\.com/watch\?[^#]*v=([A-Za-z0-9_-]{11})",
+        r"youtube\.com/shorts/([A-Za-z0-9_-]{11})",
+        r"youtube\.com/embed/([A-Za-z0-9_-]{11})",
+        r"youtube\.com/live/([A-Za-z0-9_-]{11})",
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url):
+        return url
+    return None
+
+
+async def _add_url_to_queue(url: str, api_key: str) -> tuple[bool, str]:
+    vid = _parse_yt_video_id(url)
+    if not vid:
+        return False, "invalid YouTube URL"
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(f"{YT_API}/videos", params={
+            "part": "snippet,contentDetails",
+            "id": vid,
+            "key": api_key,
+        })
+    if r.status_code != 200:
+        return False, f"YouTube API error {r.status_code}"
+    add_quota(1)
+    items = r.json().get("items", [])
+    if not items:
+        return False, "video not found or private"
+    it = items[0]
+    sn = it["snippet"]
+    thumbnails = sn.get("thumbnails", {})
+    picked = thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}
+    with db() as c:
+        max_order = c.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM queue WHERE watched_at IS NULL"
+        ).fetchone()[0]
+        c.execute(
+            """INSERT INTO queue
+               (video_id, channel_id, channel_name, title, thumbnail_url, published_at, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(video_id) DO UPDATE SET
+                 watched_at = NULL,
+                 sort_order = excluded.sort_order,
+                 added_at   = CURRENT_TIMESTAMP""",
+            (
+                vid,
+                sn.get("channelId", ""),
+                sn.get("channelTitle", ""),
+                sn.get("title", ""),
+                picked.get("url", ""),
+                sn.get("publishedAt", ""),
+                max_order + 1,
+            ),
+        )
+        c.commit()
+    await _broadcast("refreshed")
+    return True, sn.get("title", "added")
+
+
 async def _handle_signal_command(cmd: str, number: str):
-    cmd = cmd.strip().lower()
+    raw = cmd.strip()
+    parts = raw.split(None, 1)
+    token = parts[0].lower() if parts else ""
+    arg = parts[1].strip() if len(parts) > 1 else ""
+    cmd = token  # preserve existing eq checks
+    if cmd == "/add":
+        if not arg:
+            await _signal_send_plain(number, "usage: /add <youtube url>")
+            return
+        api_key = get_api_key()
+        if not api_key:
+            await _signal_send_plain(number, "no API key configured")
+            return
+        ok, msg = await _add_url_to_queue(arg, api_key)
+        await _signal_send_plain(number, f"queued: {msg}" if ok else f"failed: {msg}")
+        return
     if cmd == "/ping":
         await _signal_send_plain(number, "pong")
     elif cmd == "/help":
