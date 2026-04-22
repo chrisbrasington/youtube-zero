@@ -1814,6 +1814,11 @@ $('auto-refresh-slider').addEventListener('input', () => {
   const THRESHOLD = 70;
 
   pane.addEventListener('touchstart', (e) => {
+    // Skip if touch started inside a swipe-dismissible element
+    if (e.target.closest('.video-tile, .video-row, .q-item')) {
+      startY = null;
+      return;
+    }
     if (pane.scrollTop <= 0) {
       startY = e.touches[0].clientY;
       pulling = false;
