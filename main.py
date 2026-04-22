@@ -583,6 +583,8 @@ def parse_channel_input(inp: str):
     m = re.search(r"youtube\.com/@([A-Za-z0-9_.-]+)", inp)
     if m:
         return "handle", m.group(1)
+    if re.fullmatch(r"UC[A-Za-z0-9_-]{20,}", inp):
+        return "id", inp
     if inp.startswith("@"):
         return "handle", inp[1:]
     return "handle", inp
