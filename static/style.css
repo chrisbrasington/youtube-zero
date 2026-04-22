@@ -67,11 +67,12 @@ body.app {
   white-space: nowrap;
 }
 
-.logo:visited,
-.logo:active,
-.logo:hover {
-  color: var(--accent);    /* prevents purple/blue states */
-  text-decoration: none;   /* keeps underline gone */
+a.logo,
+a.logo:link,
+a.logo:visited,
+a.logo:hover,
+a.logo:active {
+  text-decoration: none !important;
 }
 
 .header-right {
