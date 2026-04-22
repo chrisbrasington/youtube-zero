@@ -516,7 +516,10 @@ function renderPlayer() {
   $('player-box').className = `player-box${player.mode === 'theater' ? ' theater' : ''}`;
   const frame = $('player-frame');
   const src = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0`;
-  if (frame.src !== src) frame.src = src;
+  if (frame.src !== src) {
+    frame.src = src;
+    frame.addEventListener('load', () => frame.focus(), { once: true });
+  }
   $('btn-player-theater').textContent = player.mode === 'theater' ? '⬜ Normal' : '⬜ Theater';
   $('btn-player-watched').classList.toggle('hidden', !player.queueVideoId);
 }
