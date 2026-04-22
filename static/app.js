@@ -1846,6 +1846,71 @@ $('auto-refresh-slider').addEventListener('input', () => {
   }, { passive: true });
 })();
 
+// ── Swipe to dismiss (mobile) ─────────────────────────────────────────────────
+
+(function setupSwipeDismiss() {
+  const THRESHOLD = 100;
+
+  let el = null, type = null, vid = null;
+  let startX = 0, startY = 0, dx = 0, dy = 0, axis = null;
+
+  function pickTarget(target) {
+    const tile = target.closest('.video-tile');
+    if (tile) return { el: tile, type: 'video', vid: tile.dataset.videoId };
+    const row = target.closest('.video-row');
+    if (row) {
+      const v = row.querySelector('[data-video-id]');
+      return v ? { el: row, type: 'video', vid: v.dataset.videoId } : null;
+    }
+    const qi = target.closest('.q-item');
+    if (qi) return { el: qi, type: 'queue', vid: qi.dataset.videoId };
+    return null;
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    if (window.innerWidth > 600) return;
+    const m = pickTarget(e.target);
+    if (!m || !m.vid) return;
+    el = m.el; type = m.type; vid = m.vid;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = dy = 0;
+    axis = null;
+    el.style.transition = '';
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!el) return;
+    dx = e.touches[0].clientX - startX;
+    dy = e.touches[0].clientY - startY;
+    if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (axis === 'x') {
+      if (e.cancelable) e.preventDefault();
+      const d = Math.max(0, dx);
+      el.style.transform = `translateX(${d}px)`;
+      el.style.opacity = String(Math.max(0.3, 1 - d / 300));
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!el) return;
+    if (axis === 'x' && dx >= THRESHOLD) {
+      el.style.transition = 'transform .2s, opacity .2s';
+      el.style.transform = 'translateX(110%)';
+      el.style.opacity = '0';
+      if (type === 'video') toggleVideoRead(vid, false);
+      else if (type === 'queue') removeFromQueue(vid);
+    } else {
+      el.style.transition = 'transform .15s, opacity .15s';
+      el.style.transform = '';
+      el.style.opacity = '';
+    }
+    el = null; type = null; vid = null;
+  }, { passive: true });
+})();
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 let signalToastTimer = null;
