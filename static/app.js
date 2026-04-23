@@ -516,6 +516,7 @@ function renderPlayer() {
   if (!player.videoId) {
     overlay.classList.add('hidden');
     $('player-frame').src = '';
+    if (ytPlayer) { try { ytPlayer.destroy(); } catch {} ytPlayer = null; }
     return;
   }
   overlay.classList.remove('hidden');
@@ -523,10 +524,11 @@ function renderPlayer() {
   $('player-yt-link').href = `https://www.youtube.com/watch?v=${player.videoId}`;
   $('player-box').className = `player-box${player.mode === 'theater' ? ' theater' : ''}`;
   const frame = $('player-frame');
-  const src = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0`;
+  const origin = encodeURIComponent(location.origin);
+  const src = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0&enablejsapi=1&origin=${origin}`;
   if (frame.src !== src) {
     frame.src = src;
-    frame.addEventListener('load', () => frame.focus(), { once: true });
+    frame.addEventListener('load', () => setupYTPlayer(), { once: true });
   }
   $('btn-player-theater').textContent = player.mode === 'theater' ? '⬜ Normal' : '⬜ Theater';
   $('btn-player-watched').classList.toggle('hidden', !player.queueVideoId);
@@ -1686,6 +1688,26 @@ function applyFeedItemOrder(items, srcIdx, dstIdx) {
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 
+// YouTube IFrame API — lets us control playback without iframe focus stealing keys
+let ytPlayer = null;
+let ytApiReady = false;
+window.onYouTubeIframeAPIReady = () => { ytApiReady = true; };
+(function loadYTApi() {
+  if (document.querySelector('script[src*="youtube.com/iframe_api"]')) return;
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+})();
+
+function setupYTPlayer() {
+  if (!window.YT || !window.YT.Player) {
+    setTimeout(setupYTPlayer, 200);
+    return;
+  }
+  if (ytPlayer) { try { ytPlayer.destroy(); } catch {} ytPlayer = null; }
+  ytPlayer = new YT.Player('player-frame', {});
+}
+
 document.addEventListener('keydown', e => {
   if (!player.videoId || e.target.matches('input,textarea')) return;
   if (e.key === 'Escape') { closePlayer(); return; }
@@ -1706,6 +1728,28 @@ document.addEventListener('keydown', e => {
     closePlayer();
     return;
   }
+  // Forward playback keys to YT iframe player
+  if (!ytPlayer) return;
+  try {
+    if (/^[0-9]$/.test(e.key)) {
+      const pct = parseInt(e.key, 10) / 10;
+      const dur = ytPlayer.getDuration?.();
+      if (dur) ytPlayer.seekTo(dur * pct, true);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === ' ' || e.key === 'k') {
+      const st = ytPlayer.getPlayerState?.();
+      if (st === 1) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'j') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) - 10, true); e.preventDefault(); return; }
+    if (e.key === 'l') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) + 10, true); e.preventDefault(); return; }
+    if (e.key === 'ArrowLeft')  { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) - 5, true); e.preventDefault(); return; }
+    if (e.key === 'ArrowRight') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) + 5, true); e.preventDefault(); return; }
+    if (e.key === 'm') { ytPlayer.isMuted?.() ? ytPlayer.unMute() : ytPlayer.mute(); e.preventDefault(); return; }
+  } catch {}
 });
 
 // ── Player controls ───────────────────────────────────────────────────────────
