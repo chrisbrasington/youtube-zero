@@ -555,6 +555,8 @@ function render() {
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 
+let lastLoadAt = 0;
+
 async function loadAll() {
   try {
     [state.feed, state.queue] = await Promise.all([
@@ -562,6 +564,7 @@ async function loadAll() {
       api.get('/api/queue'),
     ]);
     render();
+    lastLoadAt = Date.now();
   } catch (e) {
     status('Failed to load: ' + e.message, 'err');
   }
@@ -2048,4 +2051,9 @@ function connectEventSource() {
   await loadSettings();       // reconcile DB → re-render only if value changed
   await loadSignalSettings(); // check Signal config, show/hide send buttons
   connectEventSource();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastLoadAt > 60_000) {
+      loadAll();
+    }
+  });
 })();
