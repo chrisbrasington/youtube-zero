@@ -1949,17 +1949,15 @@ $('auto-refresh-slider').addEventListener('input', () => {
   }, { passive: true });
 })();
 
-// ── Swipe to dismiss (touch + mouse) ──────────────────────────────────────────
+// ── Swipe to dismiss (mobile) ─────────────────────────────────────────────────
 
 (function setupSwipeDismiss() {
   const THRESHOLD = 100;
-  const IGNORE_SEL = 'button, a, input, select, textarea, [data-action="toggle-queue"], [data-action="signal-send"], [data-action="video-read"], [data-action="video-unread"]';
 
-  let el = null, type = null, vid = null, kind = null;
+  let el = null, type = null, vid = null;
   let startX = 0, startY = 0, dx = 0, dy = 0, axis = null;
 
-  function pickTarget(target, ptrType) {
-    if (target.closest(IGNORE_SEL)) return null;
+  function pickTarget(target) {
     const tile = target.closest('.video-tile');
     if (tile) return { el: tile, type: 'video', vid: tile.dataset.videoId };
     const row = target.closest('.video-row');
@@ -1967,47 +1965,40 @@ $('auto-refresh-slider').addEventListener('input', () => {
       const v = row.querySelector('[data-video-id]');
       return v ? { el: row, type: 'video', vid: v.dataset.videoId } : null;
     }
-    // Queue items are HTML5-draggable on desktop for reorder — only swipe via touch
-    if (ptrType === 'touch') {
-      const qi = target.closest('.q-item');
-      if (qi) return { el: qi, type: 'queue', vid: qi.dataset.videoId };
-    }
+    const qi = target.closest('.q-item');
+    if (qi) return { el: qi, type: 'queue', vid: qi.dataset.videoId };
     return null;
   }
 
-  document.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 && e.pointerType === 'mouse') return;  // left-click only
-    const m = pickTarget(e.target, e.pointerType);
+  document.addEventListener('touchstart', (e) => {
+    if (window.innerWidth > 600) return;
+    const m = pickTarget(e.target);
     if (!m || !m.vid) return;
-    el = m.el; type = m.type; vid = m.vid; kind = e.pointerType;
-    startX = e.clientX; startY = e.clientY;
-    dx = dy = 0; axis = null;
+    el = m.el; type = m.type; vid = m.vid;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = dy = 0;
+    axis = null;
     el.style.transition = '';
-  });
+  }, { passive: true });
 
-  document.addEventListener('pointermove', (e) => {
+  document.addEventListener('touchmove', (e) => {
     if (!el) return;
-    dx = e.clientX - startX;
-    dy = e.clientY - startY;
+    dx = e.touches[0].clientX - startX;
+    dy = e.touches[0].clientY - startY;
     if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
       axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
     }
     if (axis === 'x') {
-      if (kind === 'mouse' && e.cancelable) e.preventDefault();
+      if (e.cancelable) e.preventDefault();
       const d = Math.max(0, dx);
       el.style.transform = `translateX(${d}px)`;
       el.style.opacity = String(Math.max(0.3, 1 - d / 300));
-    } else if (axis === 'y') {
-      // vertical — release drag, let scroll happen
-      el.style.transform = '';
-      el.style.opacity = '';
-      el = null; type = null; vid = null; kind = null;
     }
-  });
+  }, { passive: false });
 
-  function finish() {
+  document.addEventListener('touchend', () => {
     if (!el) return;
-    const swiped = axis === 'x' && Math.abs(dx) > 5;
     if (axis === 'x' && dx >= THRESHOLD) {
       el.style.transition = 'transform .2s, opacity .2s';
       el.style.transform = 'translateX(110%)';
@@ -2019,15 +2010,8 @@ $('auto-refresh-slider').addEventListener('input', () => {
       el.style.transform = '';
       el.style.opacity = '';
     }
-    if (swiped) {
-      // Suppress the click that will fire after mouseup
-      const blocker = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-      document.addEventListener('click', blocker, { capture: true, once: true });
-    }
-    el = null; type = null; vid = null; kind = null;
-  }
-  document.addEventListener('pointerup', finish);
-  document.addEventListener('pointercancel', finish);
+    el = null; type = null; vid = null;
+  }, { passive: true });
 })();
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
