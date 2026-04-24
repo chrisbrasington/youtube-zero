@@ -2014,6 +2014,77 @@ $('auto-refresh-slider').addEventListener('input', () => {
   }, { passive: true });
 })();
 
+// ── Mouse drag to dismiss (desktop — video tiles/rows only) ───────────────────
+
+(function setupMouseDismiss() {
+  const THRESHOLD = 100;
+  const IGNORE_SEL = 'button, a, input, select, textarea, [data-action="toggle-queue"], [data-action="signal-send"], [data-action="video-read"], [data-action="video-unread"]';
+
+  let el = null, vid = null;
+  let startX = 0, startY = 0, dx = 0, dy = 0, axis = null, swiped = false;
+
+  function pickTarget(target) {
+    if (target.closest(IGNORE_SEL)) return null;
+    const tile = target.closest('.video-tile');
+    if (tile) return { el: tile, vid: tile.dataset.videoId };
+    const row = target.closest('.video-row');
+    if (row) {
+      const v = row.querySelector('[data-video-id]');
+      return v ? { el: row, vid: v.dataset.videoId } : null;
+    }
+    return null;
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const m = pickTarget(e.target);
+    if (!m || !m.vid) return;
+    el = m.el; vid = m.vid;
+    startX = e.clientX; startY = e.clientY;
+    dx = dy = 0; axis = null; swiped = false;
+    el.style.transition = '';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!el) return;
+    dx = e.clientX - startX;
+    dy = e.clientY - startY;
+    if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (axis === 'x') {
+      e.preventDefault();
+      const d = Math.max(0, dx);
+      el.style.transform = `translateX(${d}px)`;
+      el.style.opacity = String(Math.max(0.3, 1 - d / 300));
+    } else if (axis === 'y') {
+      el.style.transform = '';
+      el.style.opacity = '';
+      el = null; vid = null;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!el) return;
+    swiped = axis === 'x' && Math.abs(dx) > 5;
+    if (axis === 'x' && dx >= THRESHOLD) {
+      el.style.transition = 'transform .2s, opacity .2s';
+      el.style.transform = 'translateX(110%)';
+      el.style.opacity = '0';
+      toggleVideoRead(vid, false);
+    } else {
+      el.style.transition = 'transform .15s, opacity .15s';
+      el.style.transform = '';
+      el.style.opacity = '';
+    }
+    if (swiped) {
+      const blocker = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      document.addEventListener('click', blocker, { capture: true, once: true });
+    }
+    el = null; vid = null;
+  });
+})();
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 let signalToastTimer = null;
