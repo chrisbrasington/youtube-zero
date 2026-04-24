@@ -474,6 +474,10 @@ function renderQueue() {
     return `
     <div class="q-item" draggable="true" data-drag-context="queue" data-video-id="${escAttr(item.video_id)}">
       <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
+           data-action="play-from-queue"
+           data-video-id="${escAttr(item.video_id)}"
+           data-title="${escAttr(item.title)}"
+           style="cursor:pointer"
            onerror="this.src='data:image/svg+xml,<svg/>'">
       <div class="q-info">
         <div class="q-title">${esc(item.title)}</div>
@@ -1459,6 +1463,10 @@ document.addEventListener('click', e => {
   // Open player (tile or row thumb)
   const openEl = e.target.closest('[data-action="open-player"]');
   if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
+    if (e.ctrlKey || e.metaKey) {
+      window.open(`https://www.youtube.com/watch?v=${openEl.dataset.videoId}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
     openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
   }
 
@@ -1481,6 +1489,10 @@ document.addEventListener('click', e => {
   // Play from queue
   const playBtn = e.target.closest('[data-action="play-from-queue"]');
   if (playBtn) {
+    if (e.ctrlKey || e.metaKey) {
+      window.open(`https://www.youtube.com/watch?v=${playBtn.dataset.videoId}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
     openPlayer(playBtn.dataset.videoId, playBtn.dataset.title, playBtn.dataset.videoId); return;
   }
 
