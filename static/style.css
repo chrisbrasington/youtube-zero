@@ -1362,15 +1362,6 @@ input::placeholder { color: var(--dim); }
   .ch-right .btn-icon,
   .folder-right .btn-icon { padding: 3px 5px; }
   .folder-icon-btn { padding: 3px 5px; }
-
-  /* Bigger horizontal scrollbar on mobile — easier finger target */
-  .video-strip {
-    scrollbar-width: auto;
-    padding-bottom: 18px;
-  }
-  .video-strip::-webkit-scrollbar              { height: 12px; }
-  .video-strip::-webkit-scrollbar-thumb        { background: var(--border-l); border-radius: 6px; }
-  .video-strip::-webkit-scrollbar-thumb:hover  { background: var(--muted); }
 }
 
 /* Mobile: revert font/thumb bumps */
