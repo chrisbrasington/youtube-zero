@@ -1958,15 +1958,22 @@ $('auto-refresh-slider').addEventListener('input', () => {
   let startX = 0, startY = 0, dx = 0, dy = 0, axis = null;
 
   function pickTarget(target) {
-    const tile = target.closest('.video-tile');
-    if (tile) return { el: tile, type: 'video', vid: tile.dataset.videoId };
-    const row = target.closest('.video-row');
-    if (row) {
-      const v = row.querySelector('[data-video-id]');
-      return v ? { el: row, type: 'video', vid: v.dataset.videoId } : null;
+    // Only thumbnail area initiates swipe — text region passes through to scroll
+    if (target.closest('.tile-thumb-wrap')) {
+      const tile = target.closest('.video-tile');
+      if (tile) return { el: tile, type: 'video', vid: tile.dataset.videoId };
     }
-    const qi = target.closest('.q-item');
-    if (qi) return { el: qi, type: 'queue', vid: qi.dataset.videoId };
+    if (target.closest('.v-thumb-wrap')) {
+      const row = target.closest('.video-row');
+      if (row) {
+        const v = row.querySelector('[data-video-id]');
+        return v ? { el: row, type: 'video', vid: v.dataset.videoId } : null;
+      }
+    }
+    if (target.closest('.q-thumb')) {
+      const qi = target.closest('.q-item');
+      if (qi) return { el: qi, type: 'queue', vid: qi.dataset.videoId };
+    }
     return null;
   }
 
