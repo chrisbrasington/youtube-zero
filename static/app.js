@@ -83,7 +83,7 @@ const state = {
   queueOpen:        localStorage.getItem('queueOpen') === '1',
   sortMode:         'manual',
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
-  wrapStrip:        localStorage.getItem('wrapStrip') === '1',
+  wrapStrip:        (localStorage.getItem('wrapStrip') ?? '1') === '1',
   manualExpand:     new Set(),
   folderExpand:     new Set(),
   signalConfigured: false,
