@@ -93,6 +93,7 @@ Text any of these to yourself in Note-to-Self — the app listens and reacts.
 | `/nuke` | mark all visible videos as read |
 | `/undo` | make today's videos visible again |
 | `/clear` | empty the queue |
+| `/dump` | move queue items back to unread (find original channel/video and unmark) |
 | `/help` | list commands |
 
 ## YouTube API key

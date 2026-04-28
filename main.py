@@ -178,6 +178,7 @@ _HELP_TEXT = (
     "/nuke — mark all visible as read\n"
     "/undo — today's videos visible again\n"
     "/clear — empty queue\n"
+    "/dump — queue back to unread\n"
     "/help — this"
 )
 
@@ -310,6 +311,20 @@ async def _handle_signal_command(cmd: str, number: str):
             c.commit()
         await _broadcast("refreshed")
         await _signal_send_plain(number, "queue cleared ✓")
+    elif cmd == "/dump":
+        with db() as c:
+            items = [dict(r) for r in c.execute(
+                "SELECT video_id, channel_id FROM queue WHERE watched_at IS NULL"
+            ).fetchall()]
+            for it in items:
+                c.execute(
+                    "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?, ?, 'unread')",
+                    (it["video_id"], it["channel_id"]),
+                )
+            c.execute("DELETE FROM queue WHERE watched_at IS NULL")
+            c.commit()
+        await _broadcast("refreshed")
+        await _signal_send_plain(number, f"dumped {len(items)} back to unread ✓")
     elif cmd == "/nuke":
         now = datetime.now(timezone.utc).isoformat()
         with db() as c:
