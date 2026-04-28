@@ -1341,10 +1341,12 @@ body.wrap-strip .video-strip {
   /* Channels pane padding */
   .channels-pane { padding: 10px 12px; }
 
-  /* Video tile smaller */
-  .video-tile       { width: 130px; }
+  /* Video tile smaller — sized for 3-up on ~412px viewport (Pixel 9) */
+  .video-tile       { width: 115px; }
   .tile-thumb-wrap,
-  .tile-thumb       { width: 130px; height: 73px; }
+  .tile-thumb       { width: 115px; height: 65px; }
+  .video-strip      { padding: 10px 12px 12px 22px; gap: 6px; }
+  .channel-card.nested .video-strip { padding-left: 24px; }
 
   /* Add bar stacks */
   .add-bar { flex-wrap: wrap; }
