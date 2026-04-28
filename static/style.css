@@ -911,6 +911,10 @@ input::placeholder { color: var(--dim); }
   border-top: 1px solid var(--border);
   scrollbar-width: thin;
 }
+body.wrap-strip .video-strip {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
 
 .video-tile {
   flex-shrink: 0;

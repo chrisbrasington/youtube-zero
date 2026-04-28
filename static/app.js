@@ -83,6 +83,7 @@ const state = {
   queueOpen:        localStorage.getItem('queueOpen') === '1',
   sortMode:         'manual',
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
+  wrapStrip:        localStorage.getItem('wrapStrip') === '1',
   manualExpand:     new Set(),
   folderExpand:     new Set(),
   signalConfigured: false,
@@ -1836,6 +1837,17 @@ $('hide-shorts-check').addEventListener('change', async () => {
   render();
   api.post('/api/settings/hide-shorts', { hide_shorts: state.hideShorts })
     .catch(e => console.warn('hide-shorts save failed:', e));
+});
+
+function applyWrapStrip() {
+  document.body.classList.toggle('wrap-strip', state.wrapStrip);
+}
+$('wrap-strip-check').checked = state.wrapStrip;
+applyWrapStrip();
+$('wrap-strip-check').addEventListener('change', () => {
+  state.wrapStrip = $('wrap-strip-check').checked;
+  localStorage.setItem('wrapStrip', state.wrapStrip ? '1' : '0');
+  applyWrapStrip();
 });
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
