@@ -89,6 +89,7 @@ Text any of these to yourself in Note-to-Self — the app listens and reacts.
 | `/get` | send queued + visible unread videos (deduped) |
 | `/queue` | send queue items only |
 | `/add <url>` | add a YouTube URL to the queue (channel not required to be subscribed) |
+| `/play <url>` | play a YouTube URL on the TV (requires ADB-paired TV) |
 | `/refresh` | parallel refresh all channels, then `/get` |
 | `/nuke` | mark all visible videos as read |
 | `/undo` | make today's videos visible again |

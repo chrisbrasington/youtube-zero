@@ -174,6 +174,7 @@ _HELP_TEXT = (
     "/get — queue + visible videos\n"
     "/queue — queue only\n"
     "/add <url> — add video to queue\n"
+    "/play <url> — play video on TV\n"
     "/refresh — refresh then /get\n"
     "/nuke — mark all visible as read\n"
     "/undo — today's videos visible again\n"
@@ -295,6 +296,31 @@ async def _handle_signal_command(cmd: str, number: str):
             return
         ok, msg = await _add_url_to_queue(arg, api_key)
         await _signal_send_plain(number, f"queued: {msg}" if ok else f"failed: {msg}")
+        return
+    if cmd == "/play":
+        if not arg:
+            await _signal_send_plain(number, "usage: /play <youtube url>")
+            return
+        vid = _parse_yt_video_id(arg)
+        if not vid:
+            await _signal_send_plain(number, "invalid YouTube URL")
+            return
+        s = _tv_settings_load()
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                r = await client.post(f"{ADB_API_URL}/play", json={
+                    "ip": s["ip"],
+                    "video_id": vid,
+                    "use_smarttube": s["use_smarttube"],
+                })
+            except Exception as exc:
+                await _signal_send_plain(number, f"adb-api unavailable: {exc}")
+                return
+        if r.status_code == 200 and r.json().get("ok"):
+            _tv_persist_ip(s["ip"])
+            await _signal_send_plain(number, f"playing on TV ✓")
+        else:
+            await _signal_send_plain(number, f"failed: {r.text[:200]}")
         return
     if cmd == "/ping":
         await _signal_send_plain(number, "pong")

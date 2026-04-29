@@ -1597,6 +1597,10 @@ document.addEventListener('click', e => {
       window.open(`https://www.youtube.com/watch?v=${openEl.dataset.videoId}`, '_blank', 'noopener,noreferrer');
       return;
     }
+    if (e.altKey && state.tvConfigured) {
+      tvSend(openEl.dataset.videoId);
+      return;
+    }
     if (isMobile() && !openEl.closest('.q-item')) {
       const meta = videoMeta.get(openEl.dataset.videoId) || {};
       // Resolve current state from feed
@@ -1668,6 +1672,10 @@ document.addEventListener('click', e => {
   if (playBtn) {
     if (e.ctrlKey || e.metaKey) {
       window.open(`https://www.youtube.com/watch?v=${playBtn.dataset.videoId}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (e.altKey && state.tvConfigured) {
+      tvSend(playBtn.dataset.videoId);
       return;
     }
     openPlayer(playBtn.dataset.videoId, playBtn.dataset.title, playBtn.dataset.videoId); return;
