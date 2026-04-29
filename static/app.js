@@ -990,6 +990,8 @@ function openActionSheet(ctx) {
   btnS.style.display = state.signalConfigured ? '' : 'none';
   const btnT = document.querySelector('[data-action="sheet-play-tv"]');
   btnT.style.display = state.tvConfigured ? '' : 'none';
+  const btnC = document.querySelector('[data-action="sheet-copy"]');
+  if (btnC) btnC.style.display = ctx.videoId ? '' : 'none';
   $('action-sheet').classList.remove('hidden');
 }
 
@@ -1648,6 +1650,15 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-action="sheet-signal"]') && sheetCtx) {
     const c = sheetCtx; closeActionSheet();
     signalSendVideo(c.videoId, c.title, c.channelName, c.thumbnailUrl);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-copy"]') && sheetCtx) {
+    const c = sheetCtx;
+    closeActionSheet();
+
+    const url = `https://www.youtube.com/watch?v=${c.videoId}`;
+    navigator.clipboard.writeText(url);
+
     return;
   }
 
