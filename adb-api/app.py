@@ -47,9 +47,15 @@ async def devices():
 @app.post("/connect")
 async def connect(req: ConnectReq):
     target = f"{req.ip}:{req.port}"
-    code, out, err = await adb("connect", target, timeout=30)
+    code, out, err = await adb("connect", target, timeout=90)
     msg = (out + " " + err).lower()
     connected = "connected" in msg or "already" in msg
+    # After auth, verify via `adb devices`
+    if not connected:
+        _, dev_out, _ = await adb("devices", timeout=10)
+        if target in dev_out and "device" in dev_out:
+            connected = True
+            out = (out + "\n" + dev_out).strip()
     return {"ok": connected, "target": target, "stdout": out, "stderr": err}
 
 

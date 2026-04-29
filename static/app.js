@@ -1391,6 +1391,26 @@ async function saveTvSettings() {
   }
 }
 
+async function tvTest() {
+  const url = $('tv-test-url').value.trim();
+  const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/) || (/^[A-Za-z0-9_-]{11}$/.test(url) ? [null, url] : null);
+  if (!m) {
+    $('tv-status').textContent = 'Invalid YouTube URL';
+    $('tv-status').className = 'api-key-status err';
+    return;
+  }
+  try {
+    $('tv-status').textContent = 'Sending test…';
+    $('tv-status').className = 'api-key-status loading';
+    await api.post('/api/tv/play', { video_id: m[1] });
+    $('tv-status').textContent = 'Sent ✓';
+    $('tv-status').className = 'api-key-status ok';
+  } catch (e) {
+    $('tv-status').textContent = 'Error: ' + e.message;
+    $('tv-status').className = 'api-key-status err';
+  }
+}
+
 async function tvConnect() {
   try {
     $('tv-status').textContent = 'Connecting… check TV for prompt';
@@ -1910,6 +1930,7 @@ $('btn-clear-queue').addEventListener('click', clearQueue);
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);
 $('btn-tv-connect').addEventListener('click', tvConnect);
+$('btn-tv-test').addEventListener('click', tvTest);
 $('tv-ip-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveTvSettings(); });
 $('hide-shorts-check').addEventListener('change', async () => {
   state.hideShorts = $('hide-shorts-check').checked;

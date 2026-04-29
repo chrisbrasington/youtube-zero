@@ -977,7 +977,7 @@ def tv_settings_set(req: TvSettingsReq):
 @app.post("/api/tv/connect")
 async def tv_connect():
     s = _tv_settings_load()
-    async with httpx.AsyncClient(timeout=35) as client:
+    async with httpx.AsyncClient(timeout=100) as client:
         try:
             r = await client.post(f"{ADB_API_URL}/connect", json={"ip": s["ip"]})
         except Exception as exc:
