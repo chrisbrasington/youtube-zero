@@ -1405,6 +1405,8 @@ async function tvTest() {
     await api.post('/api/tv/play', { video_id: m[1] });
     $('tv-status').textContent = 'Sent ✓';
     $('tv-status').className = 'api-key-status ok';
+    state.tvConfigured = true;
+    render();
   } catch (e) {
     $('tv-status').textContent = 'Error: ' + e.message;
     $('tv-status').className = 'api-key-status err';
@@ -1419,6 +1421,8 @@ async function tvConnect() {
     if (r.ok) {
       $('tv-status').textContent = `Connected to ${r.target} ✓`;
       $('tv-status').className = 'api-key-status ok';
+      state.tvConfigured = true;
+      render();
     } else {
       $('tv-status').textContent = `Failed: ${r.stderr || r.stdout || 'unknown'}`;
       $('tv-status').className = 'api-key-status err';

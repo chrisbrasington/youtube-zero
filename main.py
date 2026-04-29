@@ -974,6 +974,12 @@ def tv_settings_set(req: TvSettingsReq):
     return {"ok": True, **_tv_settings_load()}
 
 
+def _tv_persist_ip(ip: str):
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings VALUES ('tv_ip', ?)", (ip,))
+        c.commit()
+
+
 @app.post("/api/tv/connect")
 async def tv_connect():
     s = _tv_settings_load()
@@ -984,7 +990,10 @@ async def tv_connect():
             raise HTTPException(503, f"adb-api unavailable: {exc}")
     if r.status_code != 200:
         raise HTTPException(502, f"adb-api error: {r.text[:200]}")
-    return r.json()
+    body = r.json()
+    if body.get("ok"):
+        _tv_persist_ip(s["ip"])
+    return body
 
 
 @app.post("/api/tv/play")
@@ -1001,7 +1010,10 @@ async def tv_play(req: TvPlayReq):
             raise HTTPException(503, f"adb-api unavailable: {exc}")
     if r.status_code != 200:
         raise HTTPException(502, f"adb-api error: {r.text[:200]}")
-    return r.json()
+    body = r.json()
+    if body.get("ok"):
+        _tv_persist_ip(s["ip"])
+    return body
 
 async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> dict | None:
     """Fetch thumbnail and build a signal-cli link_preview object. Returns None on any failure."""
