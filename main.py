@@ -935,7 +935,7 @@ def signal_delete():
 
 # ── TV (ADB) ──────────────────────────────────────────────────────────────────
 
-DEFAULT_TV_IP = "192.168.0.57"
+DEFAULT_TV_IP = "192.168.0.27"
 
 
 def _tv_settings_load() -> dict:

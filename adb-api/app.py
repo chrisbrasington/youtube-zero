@@ -17,7 +17,11 @@ async def adb(*args: str, timeout: int = 15) -> tuple[int, str, str]:
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        proc.kill()
+        try:
+            proc.kill()
+            await proc.wait()
+        except ProcessLookupError:
+            pass
         return 124, "", "timeout"
     return proc.returncode, out.decode(errors="replace").strip(), err.decode(errors="replace").strip()
 
