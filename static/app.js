@@ -1657,11 +1657,26 @@ document.addEventListener('click', e => {
     closeActionSheet();
 
     const url = `https://www.youtube.com/watch?v=${c.videoId}`;
-    navigator.clipboard.writeText(url);
 
+    const doCopy = (text) => {
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+      }
+
+      // fallback (Android-safe)
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    };
+
+    doCopy(url);
     return;
   }
-
   // Per-video read/unread
   const vr = e.target.closest('[data-action="video-read"]');
   if (vr) { e.stopPropagation(); toggleVideoRead(vr.dataset.videoId, false); return; }
