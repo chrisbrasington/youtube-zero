@@ -1252,6 +1252,63 @@ body.wrap-strip .video-strip {
 
 /* ── Icon picker popup ───────────────────────────────────────────────────── */
 
+/* ── Mobile action sheet ─────────────────────────────────────────────────── */
+
+.action-sheet {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 700;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.action-sheet.hidden { display: none; }
+.action-sheet-inner {
+  background: var(--bg2);
+  border-top: 1px solid var(--border-l);
+  border-radius: 14px 14px 0 0;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.action-sheet-title {
+  font-size: 14px;
+  color: var(--muted);
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.action-sheet-primary {
+  display: flex;
+  gap: 8px;
+}
+.sheet-btn {
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--border-l);
+  border-radius: 8px;
+  padding: 14px 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sheet-btn:active { background: var(--bg4); }
+.action-sheet-primary .sheet-btn {
+  flex: 1;
+  padding: 18px 12px;
+  font-size: 17px;
+}
+.sheet-play { color: var(--green); border-color: var(--green); }
+.sheet-tv   { color: #a78bfa; border-color: #a78bfa; }
+.sheet-cancel { background: transparent; color: var(--muted); margin-top: 4px; }
+
 .icon-picker {
   position: fixed;
   z-index: 600;
@@ -1418,6 +1475,12 @@ body.wrap-strip .video-strip {
   .ch-right .btn-icon,
   .folder-right .btn-icon { padding: 3px 5px; }
   .folder-icon-btn { padding: 3px 5px; }
+
+  /* Hide per-card action icons on mobile — tap opens action sheet instead */
+  .tile-q-btn, .tile-read-btn, .tile-signal-btn, .tile-tv-btn,
+  .v-q-btn, .v-read-btn, .v-signal-btn, .v-tv-btn {
+    display: none !important;
+  }
 }
 
 /* Mobile: revert font/thumb bumps */

@@ -975,6 +975,31 @@ async function watchOnYouTube(videoId) {
 
 // ── Actions: player ───────────────────────────────────────────────────────────
 
+// ── Mobile action sheet ───────────────────────────────────────────────────────
+
+let sheetCtx = null;  // {videoId, title, channelName, thumbnailUrl, isRead, inQueue}
+
+function openActionSheet(ctx) {
+  sheetCtx = ctx;
+  $('action-sheet-title').textContent = ctx.title;
+  const btnQ = document.querySelector('[data-action="sheet-queue"]');
+  btnQ.textContent = ctx.inQueue ? '✕ Remove from Queue' : '+ Add to Queue';
+  const btnM = document.querySelector('[data-action="sheet-mark"]');
+  btnM.textContent = ctx.isRead ? '↺ Mark Unread' : '✓ Mark as Read';
+  const btnS = document.querySelector('[data-action="sheet-signal"]');
+  btnS.style.display = state.signalConfigured ? '' : 'none';
+  const btnT = document.querySelector('[data-action="sheet-play-tv"]');
+  btnT.style.display = state.tvConfigured ? '' : 'none';
+  $('action-sheet').classList.remove('hidden');
+}
+
+function closeActionSheet() {
+  $('action-sheet').classList.add('hidden');
+  sheetCtx = null;
+}
+
+function isMobile() { return window.innerWidth <= 600; }
+
 function openPlayer(videoId, title, queueVideoId = null) {
   player.videoId      = videoId;
   player.title        = title;
@@ -1572,7 +1597,54 @@ document.addEventListener('click', e => {
       window.open(`https://www.youtube.com/watch?v=${openEl.dataset.videoId}`, '_blank', 'noopener,noreferrer');
       return;
     }
+    if (isMobile() && !openEl.closest('.q-item')) {
+      const meta = videoMeta.get(openEl.dataset.videoId) || {};
+      // Resolve current state from feed
+      let isRead = false, inQueue = false;
+      for (const ch of allChannels()) {
+        const v = (ch.videos || []).find(x => x.video_id === openEl.dataset.videoId);
+        if (v) { isRead = !!v.is_read; inQueue = !!v.in_queue; break; }
+      }
+      openActionSheet({
+        videoId: openEl.dataset.videoId,
+        title: openEl.dataset.title || meta.title || '',
+        channelName: meta.channel_name || '',
+        thumbnailUrl: meta.thumbnail_url || '',
+        isRead, inQueue,
+      });
+      return;
+    }
     openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
+  }
+
+  // Action sheet handlers
+  if (e.target.closest('[data-action="sheet-backdrop"]') === e.target) { closeActionSheet(); return; }
+  if (e.target.closest('[data-action="sheet-cancel"]')) { closeActionSheet(); return; }
+  if (e.target.closest('[data-action="sheet-play-here"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    openPlayer(c.videoId, c.title);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-play-tv"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    tvSend(c.videoId);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-queue"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    const meta = videoMeta.get(c.videoId) || { video_id: c.videoId, title: c.title, channel_name: c.channelName, thumbnail_url: c.thumbnailUrl, channel_id: '', published_at: '' };
+    toggleQueue(meta, c.inQueue);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-mark"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    toggleVideoRead(c.videoId, c.isRead);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-signal"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    signalSendVideo(c.videoId, c.title, c.channelName, c.thumbnailUrl);
+    return;
   }
 
   // Per-video read/unread

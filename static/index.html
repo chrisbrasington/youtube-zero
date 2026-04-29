@@ -138,6 +138,21 @@
 
   </div>
 
+  <!-- Mobile action sheet -->
+  <div id="action-sheet" class="action-sheet hidden" data-action="sheet-backdrop">
+    <div class="action-sheet-inner" onclick="event.stopPropagation()">
+      <div id="action-sheet-title" class="action-sheet-title"></div>
+      <div class="action-sheet-primary">
+        <button class="sheet-btn sheet-play" data-action="sheet-play-here">▶ Play Here</button>
+        <button class="sheet-btn sheet-tv" data-action="sheet-play-tv">📺 Play on TV</button>
+      </div>
+      <button class="sheet-btn sheet-queue" data-action="sheet-queue"></button>
+      <button class="sheet-btn sheet-mark"  data-action="sheet-mark"></button>
+      <button class="sheet-btn sheet-signal" data-action="sheet-signal">✉ Send to Signal</button>
+      <button class="sheet-btn sheet-cancel" data-action="sheet-cancel">Cancel</button>
+    </div>
+  </div>
+
   <!-- Icon picker popup -->
   <div id="icon-picker" class="icon-picker hidden">
     <input type="text" id="icon-search" placeholder="Search icons…" autocomplete="off">
