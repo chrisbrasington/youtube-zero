@@ -898,6 +898,18 @@ input::placeholder { color: var(--dim); }
 }
 .btn-signal:hover { color: #3b82f6; border-color: #3b82f6; }
 
+.btn-tv {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--border-l);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  font-size: 17px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-tv:hover { color: #a78bfa; border-color: #a78bfa; }
+
 .q-item.dragging  { opacity: .4; }
 .q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
 
@@ -1017,6 +1029,44 @@ body.wrap-strip .video-strip {
   z-index: 1;
 }
 .tile-signal-btn:hover { background: rgba(59,130,246,.85); border-color: #3b82f6; color: #fff; }
+
+.tile-tv-btn {
+  position: absolute;
+  bottom: 4px;
+  left: 30px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.3);
+  background: rgba(0,0,0,.55);
+  color: rgba(255,255,255,.8);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  z-index: 1;
+}
+.tile-tv-btn:hover { background: rgba(167,139,250,.85); border-color: #a78bfa; color: #fff; }
+
+.v-tv-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border-l);
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  line-height: 1;
+}
+.v-tv-btn:hover { color: #a78bfa; border-color: #a78bfa; }
 
 .v-signal-btn {
   flex-shrink: 0;

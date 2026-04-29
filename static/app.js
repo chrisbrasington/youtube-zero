@@ -87,6 +87,7 @@ const state = {
   manualExpand:     new Set(),
   folderExpand:     new Set(),
   signalConfigured: false,
+  tvConfigured:     false,
 };
 
 function isShort(video, channel) {
@@ -388,6 +389,10 @@ function renderVideoTile(video, channel, showChannel) {
                 data-channel-name="${escAttr(channel.name)}"
                 data-thumbnail-url="${escAttr(video.thumbnail_url || '')}"
                 title="Send to Signal Notes to Self">✉</button>` : ''}
+        ${state.tvConfigured ? `<button class="tile-tv-btn"
+                data-action="tv-send"
+                data-video-id="${vid}"
+                title="Play on TV">📺</button>` : ''}
       </div>
       <div class="tile-info">
         <div class="tile-title">${esc(video.title)}</div>
@@ -450,6 +455,10 @@ function renderVideoRow(video, channel) {
               data-channel-name="${escAttr(channel.name)}"
               data-thumbnail-url="${escAttr(video.thumbnail_url || '')}"
               title="Send to Signal Notes to Self">✉</button>` : ''}
+      ${state.tvConfigured ? `<button class="v-tv-btn"
+              data-action="tv-send"
+              data-video-id="${vid}"
+              title="Play on TV">📺</button>` : ''}
     </div>`;
 }
 
@@ -507,6 +516,10 @@ function renderQueue() {
                   data-channel-name="${escAttr(item.channel_name)}"
                   data-thumbnail-url="${escAttr(item.thumbnail_url || '')}"
                   title="Send to Signal Notes to Self">✉</button>` : ''}
+          ${state.tvConfigured ? `<button class="btn-tv"
+                  data-action="tv-send"
+                  data-video-id="${escAttr(item.video_id)}"
+                  title="Play on TV">📺</button>` : ''}
         </div>
       </div>
     </div>
@@ -1340,6 +1353,62 @@ async function signalSendVideo(videoId, title, channelName, thumbnailUrl) {
   }
 }
 
+async function tvSend(videoId) {
+  try {
+    status('Sending to TV…', 'loading');
+    await api.post('/api/tv/play', { video_id: videoId });
+    status('Sent to TV ✓', 'ok');
+    setTimeout(() => status(''), 3000);
+  } catch (e) {
+    status('TV error: ' + e.message, 'err');
+  }
+}
+
+async function loadTvSettings() {
+  try {
+    const s = await api.get('/api/settings/tv');
+    state.tvConfigured = !!s.configured;
+    $('tv-ip-input').value = s.ip || '';
+    $('tv-smarttube-check').checked = !!s.use_smarttube;
+  } catch {}
+}
+
+async function saveTvSettings() {
+  const ip = $('tv-ip-input').value.trim();
+  if (!ip) { $('tv-status').textContent = 'IP required'; $('tv-status').className = 'api-key-status err'; return; }
+  try {
+    const s = await api.post('/api/settings/tv', {
+      ip,
+      use_smarttube: $('tv-smarttube-check').checked,
+    });
+    state.tvConfigured = !!s.configured;
+    $('tv-status').textContent = 'Saved ✓';
+    $('tv-status').className = 'api-key-status ok';
+    render();
+  } catch (e) {
+    $('tv-status').textContent = 'Error: ' + e.message;
+    $('tv-status').className = 'api-key-status err';
+  }
+}
+
+async function tvConnect() {
+  try {
+    $('tv-status').textContent = 'Connecting… check TV for prompt';
+    $('tv-status').className = 'api-key-status loading';
+    const r = await api.post('/api/tv/connect', {});
+    if (r.ok) {
+      $('tv-status').textContent = `Connected to ${r.target} ✓`;
+      $('tv-status').className = 'api-key-status ok';
+    } else {
+      $('tv-status').textContent = `Failed: ${r.stderr || r.stdout || 'unknown'}`;
+      $('tv-status').className = 'api-key-status err';
+    }
+  } catch (e) {
+    $('tv-status').textContent = 'Error: ' + e.message;
+    $('tv-status').className = 'api-key-status err';
+  }
+}
+
 async function signalSendQueue() {
   try {
     await api.post('/api/signal/send-queue', {});
@@ -1464,9 +1533,17 @@ document.addEventListener('click', e => {
     return;
   }
 
+  // TV send
+  const tvBtn = e.target.closest('[data-action="tv-send"]');
+  if (tvBtn) {
+    e.stopPropagation();
+    tvSend(tvBtn.dataset.videoId);
+    return;
+  }
+
   // Open player (tile or row thumb)
   const openEl = e.target.closest('[data-action="open-player"]');
-  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
+  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
     if (e.ctrlKey || e.metaKey) {
       window.open(`https://www.youtube.com/watch?v=${openEl.dataset.videoId}`, '_blank', 'noopener,noreferrer');
       return;
@@ -1831,6 +1908,9 @@ $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
 $('btn-clear-queue').addEventListener('click', clearQueue);
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
+$('btn-tv-save').addEventListener('click', saveTvSettings);
+$('btn-tv-connect').addEventListener('click', tvConnect);
+$('tv-ip-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveTvSettings(); });
 $('hide-shorts-check').addEventListener('change', async () => {
   state.hideShorts = $('hide-shorts-check').checked;
   localStorage.setItem('hideShorts', state.hideShorts ? '1' : '0');
@@ -2081,6 +2161,8 @@ function connectEventSource() {
   await loadAll();            // build UI with state from localStorage
   await loadSettings();       // reconcile DB → re-render only if value changed
   await loadSignalSettings(); // check Signal config, show/hide send buttons
+  await loadTvSettings();
+  render();                   // re-render so TV buttons appear once configured
   connectEventSource();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && Date.now() - lastLoadAt > 60_000) {

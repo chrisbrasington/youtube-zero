@@ -85,6 +85,21 @@
         <div class="settings-hint" style="margin-bottom:6px">Open Signal → Settings → Linked Devices → Link New Device → scan:</div>
         <img id="signal-qr-img" alt="Signal QR code" style="max-width:220px;border-radius:8px;display:block">
       </div>
+      <hr class="settings-divider">
+      <strong>Send to TV (ADB)</strong>
+      <div class="settings-hint">
+        Android TV with ADB enabled. First connect prompts on the TV — accept "Allow USB debugging".
+      </div>
+      <div class="settings-row">
+        <input type="text" id="tv-ip-input" placeholder="192.168.0.57" autocomplete="off">
+        <button class="btn-primary" id="btn-tv-save">Save</button>
+        <button class="btn-ghost" id="btn-tv-connect">Connect</button>
+      </div>
+      <label class="settings-toggle">
+        <input type="checkbox" id="tv-smarttube-check">
+        Use SmartTube <span class="settings-hint" style="display:inline">(off = TV's default YouTube app)</span>
+      </label>
+      <div id="tv-status" class="api-key-status"></div>
     </div>
   </div>
 

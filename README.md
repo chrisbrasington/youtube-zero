@@ -96,6 +96,18 @@ Text any of these to yourself in Note-to-Self — the app listens and reacts.
 | `/dump` | move queue items back to unread (find original channel/video and unmark) |
 | `/help` | list commands |
 
+### Send to TV (Android TV via ADB)
+
+The `compose.yaml` includes an `adb-api` sidecar that wraps `adb` for Android TVs.
+
+1. On the TV: enable Developer Options → ADB debugging
+2. In the app: **⚙ Settings** → enter TV LAN IP → **Save** → **Connect**
+3. TV shows "Allow USB debugging from this computer?" — accept (key is stored)
+4. **📺** button appears next to **✉ Signal** on every video — tap to launch on TV
+5. **Use SmartTube** (default on) routes via [SmartTube](https://github.com/yuliskov/SmartTube) (`com.liskovsoft.smarttubetv.beta`); off lets the TV's default YouTube app handle it
+
+ADB keys persist via `./adb-data:/root/.android` so the trust prompt only shows once.
+
 ## YouTube API key
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/library/youtube.googleapis.com)

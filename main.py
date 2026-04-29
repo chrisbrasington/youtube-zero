@@ -445,6 +445,7 @@ DB_PATH = os.environ.get(
 )
 YT_API = "https://www.googleapis.com/youtube/v3"
 SIGNAL_API_URL = os.environ.get("SIGNAL_API_URL", "http://signal-api:8080")
+ADB_API_URL = os.environ.get("ADB_API_URL", "http://adb-api:8080")
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -930,6 +931,77 @@ def signal_delete():
         c.execute("DELETE FROM settings WHERE key='signal_number'")
         c.commit()
     return {"ok": True}
+
+
+# ── TV (ADB) ──────────────────────────────────────────────────────────────────
+
+DEFAULT_TV_IP = "192.168.0.57"
+
+
+def _tv_settings_load() -> dict:
+    with db() as c:
+        rows = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM settings").fetchall()}
+    return {
+        "ip": rows.get("tv_ip", DEFAULT_TV_IP),
+        "use_smarttube": rows.get("tv_use_smarttube", "1") == "1",
+        "configured": "tv_ip" in rows,
+    }
+
+
+class TvSettingsReq(BaseModel):
+    ip: str
+    use_smarttube: bool = True
+
+
+class TvPlayReq(BaseModel):
+    video_id: str
+
+
+@app.get("/api/settings/tv")
+def tv_settings_get():
+    return _tv_settings_load()
+
+
+@app.post("/api/settings/tv")
+def tv_settings_set(req: TvSettingsReq):
+    ip = req.ip.strip()
+    if not ip:
+        raise HTTPException(400, "TV IP required")
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings VALUES ('tv_ip', ?)", (ip,))
+        c.execute("INSERT OR REPLACE INTO settings VALUES ('tv_use_smarttube', ?)", ("1" if req.use_smarttube else "0",))
+        c.commit()
+    return {"ok": True, **_tv_settings_load()}
+
+
+@app.post("/api/tv/connect")
+async def tv_connect():
+    s = _tv_settings_load()
+    async with httpx.AsyncClient(timeout=35) as client:
+        try:
+            r = await client.post(f"{ADB_API_URL}/connect", json={"ip": s["ip"]})
+        except Exception as exc:
+            raise HTTPException(503, f"adb-api unavailable: {exc}")
+    if r.status_code != 200:
+        raise HTTPException(502, f"adb-api error: {r.text[:200]}")
+    return r.json()
+
+
+@app.post("/api/tv/play")
+async def tv_play(req: TvPlayReq):
+    s = _tv_settings_load()
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            r = await client.post(f"{ADB_API_URL}/play", json={
+                "ip": s["ip"],
+                "video_id": req.video_id,
+                "use_smarttube": s["use_smarttube"],
+            })
+        except Exception as exc:
+            raise HTTPException(503, f"adb-api unavailable: {exc}")
+    if r.status_code != 200:
+        raise HTTPException(502, f"adb-api error: {r.text[:200]}")
+    return r.json()
 
 async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> dict | None:
     """Fetch thumbnail and build a signal-cli link_preview object. Returns None on any failure."""
