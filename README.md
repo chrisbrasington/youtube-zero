@@ -14,21 +14,34 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 
 <img src="./.img/app2.png" align="right" width="200" style="margin-right: 16px;" />
 
-- Add any YouTube channel by URL, `@handle`, or name
-- Compact strip view — unread videos appear as tiles below each channel header by default, no clicking required
-- **+** badge on every tile queues instantly; queue persists until watched or removed
-- In-app video player with normal, theater, and fullscreen modes
-- Keyboard shortcuts for fast navigation (see [Player](#player))
-- Circle checkbox marks entire channel as read and collapses it
-- Per-video read/unread toggle in tile and expanded list view
-- Organize channels into folders; collapsed folder shows mixed tile strip
-- Drag channels to reorder, or sort by newest video
-- Auto-refresh on a configurable interval (5m – 24h)
-- **Hide Shorts** — filters videos under 1m 40s from all views
-- **☢ Clear All** — nuclear dismiss everything, queue untouched
-- **Signal integration** — send any video or your full queue to Signal Notes to Self
-- Real-time multi-client sync — all open tabs/devices update instantly on any change
-- Dark theme, no JavaScript framework, no build step
+### User Interface
+
+* Add YouTube channels via URL, `@handle`, or name
+* Compact strip view showing unread videos as tiles under each channel
+* Folder-based organization of channels
+* Collapsible folders with mixed tile strip display
+* Drag-and-drop channel reordering
+* Sort channels by newest video
+* Dark theme, no framework, no build step
+* Real-time multi-client synchronization across tabs and devices
+
+### Queuing
+
+* One-click queueing via **+** badge on video tiles
+* Persistent queue state until manually removed or marked watched
+* Queue remains unaffected by bulk clearing actions
+* Per-video read/unread state toggles in tile and list views
+* Channel-level read state toggle with collapse support
+* Global “Clear All” action (non-destructive to queue)
+
+### Playback (local & external)
+
+* <b>Play on TV via Android developer bridge container</b>
+* Embedded video player with normal, theater, and fullscreen modes
+* Keyboard shortcuts for navigation and playback control
+* Auto-refresh of feeds at configurable intervals (5 minutes to 24 hours)
+* Shorts filtering (removes videos under 1m 40s from all views)
+* Signal integration for sending individual videos or full queue to “Notes to Self”
 
 <div style="clear: both;"></div>
 
