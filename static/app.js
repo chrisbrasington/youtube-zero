@@ -1627,15 +1627,8 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-action="sheet-backdrop"]') === e.target) { closeActionSheet(); return; }
   if (e.target.closest('[data-action="sheet-cancel"]')) { closeActionSheet(); return; }
   if (e.target.closest('[data-action="sheet-play-here"]') && sheetCtx) {
-    const c = sheetCtx;
-    closeActionSheet();
-
-    const intentUrl =
-      `intent://www.youtube.com/watch?v=${c.videoId}` +
-      `#Intent;scheme=https;package=org.schabi.newpipe;end;`;
-
-    window.location.href = intentUrl;
-
+    const c = sheetCtx; closeActionSheet();
+    openPlayer(c.videoId, c.title);
     return;
   }
   if (e.target.closest('[data-action="sheet-play-tv"]') && sheetCtx) {
