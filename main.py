@@ -707,6 +707,10 @@ async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10)
 def save_videos(channel_id: str, videos: list):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
+        ch_row = c.execute(
+            "SELECT allow_shorts FROM channels WHERE channel_id=?", (channel_id,)
+        ).fetchone()
+        allow_shorts = bool(ch_row["allow_shorts"]) if ch_row else False
         for v in videos:
             v = dict(v)
             v["channel_id"] = channel_id
@@ -716,6 +720,13 @@ def save_videos(channel_id: str, videos: list):
                    VALUES (:video_id, :channel_id, :title, :thumbnail_url, :published_at, :duration, :is_live, :thumb_w, :thumb_h)""",
                 v,
             )
+            if not allow_shorts and _is_short(v):
+                c.execute(
+                    """INSERT INTO video_status (video_id, channel_id, status)
+                       VALUES (?, ?, 'read')
+                       ON CONFLICT(video_id) DO NOTHING""",
+                    (v["video_id"], channel_id),
+                )
         c.execute(
             "UPDATE channels SET last_refreshed=? WHERE channel_id=?",
             (now, channel_id),
