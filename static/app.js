@@ -1013,7 +1013,7 @@ function visiblePlayList() {
     }));
   }
   const out = [];
-  const items = topLevelItems();  // ordered folders+channels
+  const items = topLevelItems();
   function pushChannel(ch) {
     for (const v of (ch.videos || [])) {
       if (v.is_read) continue;
@@ -1023,7 +1023,17 @@ function visiblePlayList() {
   }
   for (const it of items) {
     if (it.type === 'folder') {
-      for (const ch of (it.item.channels || [])) pushChannel(ch);
+      const mode = folderViewMode(it.item);
+      if (mode === 'compact') {
+        // Mirror displayed mixed strip order — sorted by published_at desc
+        const vids = folderMixedStrip(it.item).filter(v => !isShort(v, v._channel));
+        for (const v of vids) {
+          out.push({ video_id: v.video_id, title: v.title, channel_name: v._channel.name });
+        }
+      } else if (mode === 'expanded') {
+        for (const ch of (it.item.channels || [])) pushChannel(ch);
+      }
+      // collapsed = nothing visible, skip
     } else {
       pushChannel(it.item);
     }
