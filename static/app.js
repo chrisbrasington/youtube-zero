@@ -2021,6 +2021,19 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: open queue + play first item
+  if (mod == e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
+    if (!state.queueOpen) {
+      tate.queueOpen = true;
+      localStorage.setItem('queueOpen', '1');
+      $('queue-pane').classList.remove('hidden');
+    }
+    renderQueueBadge();
+    const first = state.queue[0];
+    openPlayer(first.video_id, first.title, first.video_id);
+    return;
+  }
+ 
+  // Global: open/close queue
   if (!mod && !player.videoId && (e.key === 'q' || e.key === 'Q')) {
     if (!state.queue.length) {
       status('Queue empty', 'err');
