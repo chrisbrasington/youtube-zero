@@ -2080,7 +2080,22 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'm') {
-    toggleVideoRead(player.videoId, false);  // mark read, keep playing
+    let currentlyRead = false;
+    for (const ch of allChannels()) {
+      const v = (ch.videos || []).find(x => x.video_id === player.videoId);
+      if (v) { currentlyRead = !!v.is_read; break; }
+    }
+    toggleVideoRead(player.videoId, currentlyRead);
+    return;
+  }
+  if (e.key === 'q' || e.key === 'Q') {
+    let inQ = false;
+    for (const ch of allChannels()) {
+      const v = (ch.videos || []).find(x => x.video_id === player.videoId);
+      if (v) { inQ = !!v.in_queue; break; }
+    }
+    const meta = videoMeta.get(player.videoId);
+    if (meta) toggleQueue(meta, inQ);
     return;
   }
   if (e.key === 'n') { playNext(1);  return; }
