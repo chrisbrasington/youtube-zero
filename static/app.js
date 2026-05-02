@@ -2023,7 +2023,7 @@ document.addEventListener('keydown', e => {
   // Global: open queue + play first item
   if (mod == e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
     if (!state.queueOpen) {
-      tate.queueOpen = true;
+      state.queueOpen = true;
       localStorage.setItem('queueOpen', '1');
       $('queue-pane').classList.remove('hidden');
     }
