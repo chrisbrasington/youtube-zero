@@ -2010,6 +2010,24 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // Global: open queue + play first item
+  if (!player.videoId && (e.key === 'q' || e.key === 'Q')) {
+    if (!state.queue.length) {
+      status('Queue empty', 'err');
+      setTimeout(() => status(''), 2000);
+      return;
+    }
+    if (!state.queueOpen) {
+      state.queueOpen = true;
+      localStorage.setItem('queueOpen', '1');
+      $('queue-pane').classList.remove('hidden');
+      renderQueueBadge();
+    }
+    const first = state.queue[0];
+    openPlayer(first.video_id, first.title, first.video_id);
+    return;
+  }
+
   // Global: 1-9 → first video of Nth row
   if (!player.videoId && /^[1-9]$/.test(e.key)) {
     const n = parseInt(e.key, 10);
