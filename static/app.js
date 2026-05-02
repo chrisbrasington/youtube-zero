@@ -2011,6 +2011,15 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // Global: Escape closes queue when no player open
+  if (!mod && !player.videoId && e.key === 'Escape' && state.queueOpen) {
+    state.queueOpen = false;
+    localStorage.setItem('queueOpen', '0');
+    $('queue-pane').classList.add('hidden');
+    renderQueueBadge();
+    return;
+  }
+
   // Global: open queue + play first item
   if (!mod && !player.videoId && (e.key === 'q' || e.key === 'Q')) {
     if (!state.queue.length) {
