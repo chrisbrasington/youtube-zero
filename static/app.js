@@ -2003,15 +2003,16 @@ function setupYTPlayer() {
 
 document.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea')) return;
+  const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
 
   // Global: random play
-  if (!player.videoId && (e.key === 'r' || e.key === 'R')) {
+  if (!mod && !player.videoId && (e.key === 'r' || e.key === 'R')) {
     randomPlay();
     return;
   }
 
   // Global: open queue + play first item
-  if (!player.videoId && (e.key === 'q' || e.key === 'Q')) {
+  if (!mod && !player.videoId && (e.key === 'q' || e.key === 'Q')) {
     if (!state.queue.length) {
       status('Queue empty', 'err');
       setTimeout(() => status(''), 2000);
@@ -2029,7 +2030,7 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: 1-9 → first video of Nth row
-  if (!player.videoId && /^[1-9]$/.test(e.key)) {
+  if (!mod && !player.videoId && /^[1-9]$/.test(e.key)) {
     const n = parseInt(e.key, 10);
     const rows = topLevelItems();
     function firstVideo(it) {
