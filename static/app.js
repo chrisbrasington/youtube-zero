@@ -2027,14 +2027,19 @@ document.addEventListener('keydown', e => {
       setTimeout(() => status(''), 2000);
       return;
     }
-    if (!state.queueOpen) {
+    if (state.queueOpen) {
+      state.queueOpen = false;
+      localStorage.setItem('queueOpen', '0');
+      $('queue-pane').classList.add('hidden');
+    }
+    else {
       state.queueOpen = true;
       localStorage.setItem('queueOpen', '1');
       $('queue-pane').classList.remove('hidden');
-      renderQueueBadge();
     }
-    const first = state.queue[0];
-    openPlayer(first.video_id, first.title, first.video_id);
+    renderQueueBadge();
+    // const first = state.queue[0];
+    // openPlayer(first.video_id, first.title, first.video_id);
     return;
   }
 
