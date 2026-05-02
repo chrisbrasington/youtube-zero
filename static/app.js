@@ -1002,6 +1002,56 @@ function closeActionSheet() {
 
 function isMobile() { return window.innerWidth <= 600; }
 
+function visiblePlayList() {
+  // Returns ordered array of {video_id, title, channel_name, queue_id?}
+  if (state.queueOpen && state.queue.length) {
+    return state.queue.map(q => ({
+      video_id: q.video_id,
+      title: q.title,
+      channel_name: q.channel_name,
+      queue_id: q.video_id,
+    }));
+  }
+  const out = [];
+  const items = topLevelItems();  // ordered folders+channels
+  function pushChannel(ch) {
+    for (const v of (ch.videos || [])) {
+      if (v.is_read) continue;
+      if (isShort(v, ch)) continue;
+      out.push({ video_id: v.video_id, title: v.title, channel_name: ch.name });
+    }
+  }
+  for (const it of items) {
+    if (it.type === 'folder') {
+      for (const ch of (it.item.channels || [])) pushChannel(ch);
+    } else {
+      pushChannel(it.item);
+    }
+  }
+  return out;
+}
+
+function randomPlay() {
+  const list = visiblePlayList();
+  if (!list.length) {
+    status('Nothing to play', 'err');
+    setTimeout(() => status(''), 2000);
+    return;
+  }
+  const pick = list[Math.floor(Math.random() * list.length)];
+  openPlayer(pick.video_id, pick.title, pick.queue_id || null);
+}
+
+function playNext(direction = 1) {
+  const list = visiblePlayList();
+  if (!list.length) return;
+  let idx = list.findIndex(v => v.video_id === player.videoId);
+  if (idx < 0) idx = 0;
+  else idx = (idx + direction + list.length) % list.length;
+  const pick = list[idx];
+  openPlayer(pick.video_id, pick.title, pick.queue_id || null);
+}
+
 function openPlayer(videoId, title, queueVideoId = null) {
   player.videoId      = videoId;
   player.title        = title;
@@ -1942,10 +1992,19 @@ function setupYTPlayer() {
 }
 
 document.addEventListener('keydown', e => {
-  if (!player.videoId || e.target.matches('input,textarea')) return;
+  if (e.target.matches('input,textarea')) return;
+
+  // Global: random play
+  if (!player.videoId && (e.key === 'r' || e.key === 'R')) {
+    randomPlay();
+    return;
+  }
+
+  if (!player.videoId) return;
+
   if (e.key === 'Escape') { closePlayer(); return; }
   if (e.key === 'f') { $('player-frame').requestFullscreen?.(); return; }
-  if (e.key === 't') {
+  if (e.key === 't' || e.key === 'T') {
     player.mode = player.mode === 'theater' ? 'normal' : 'theater';
     renderPlayer();
     return;
@@ -1955,9 +2014,20 @@ document.addEventListener('keydown', e => {
     closePlayer();
     return;
   }
+  if (e.key === 'm') {
+    toggleVideoRead(player.videoId, false);  // mark read, keep playing
+    return;
+  }
+  if (e.key === 'n') { playNext(1);  return; }
+  if (e.key === 'p') { playNext(-1); return; }
   if (e.key === 's' && state.signalConfigured) {
     const meta = videoMeta.get(player.videoId);
     if (meta) signalSendVideo(meta.video_id, meta.title, meta.channel_name, meta.thumbnail_url);
+    closePlayer();
+    return;
+  }
+  if (e.key === 'Enter' && state.tvConfigured) {
+    tvSend(player.videoId);
     closePlayer();
     return;
   }
@@ -1981,7 +2051,6 @@ document.addEventListener('keydown', e => {
     if (e.key === 'l') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) + 10, true); e.preventDefault(); return; }
     if (e.key === 'ArrowLeft')  { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) - 5, true); e.preventDefault(); return; }
     if (e.key === 'ArrowRight') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) + 5, true); e.preventDefault(); return; }
-    if (e.key === 'm') { ytPlayer.isMuted?.() ? ytPlayer.unMute() : ytPlayer.mute(); e.preventDefault(); return; }
   } catch {}
 });
 
@@ -2011,6 +2080,7 @@ $('channel-input').addEventListener('paste', e => {
 });
 $('btn-new-folder').addEventListener('click', createFolder);
 $('btn-refresh-all').addEventListener('click', refreshAll);
+$('btn-random').addEventListener('click', randomPlay);
 $('btn-clear-all').addEventListener('click', clearAll);
 $('btn-sort').addEventListener('click', () => {
   state.sortMode = state.sortMode === 'manual' ? 'newest' : 'manual';
