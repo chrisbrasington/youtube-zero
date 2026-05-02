@@ -2006,8 +2006,56 @@ document.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
 
   // Global: random play
-  if (!mod && !player.videoId && (e.key === 'r' || e.key === 'R')) {
+  if (!mod && !player.videoId && e.key === 'r') {
     randomPlay();
+    return;
+  }
+
+  // Global: Shift+R → random across queue + visible feed
+  if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'R') {
+    const queueItems = state.queue.map(q => ({
+      video_id: q.video_id, title: q.title, queue_id: q.video_id, source: 'queue',
+    }));
+    // Reuse visiblePlayList logic for feed without queue precedence
+    const feedItems = (function() {
+      const out = [];
+      const items = topLevelItems();
+      function pushChannel(ch) {
+        for (const v of (ch.videos || [])) {
+          if (v.is_read) continue;
+          if (isShort(v, ch)) continue;
+          out.push({ video_id: v.video_id, title: v.title, source: 'feed' });
+        }
+      }
+      for (const it of items) {
+        if (it.type === 'folder') {
+          const mode = folderViewMode(it.item);
+          if (mode === 'compact') {
+            const vids = folderMixedStrip(it.item).filter(v => !isShort(v, v._channel));
+            for (const v of vids) out.push({ video_id: v.video_id, title: v.title, source: 'feed' });
+          } else if (mode === 'expanded') {
+            for (const ch of (it.item.channels || [])) pushChannel(ch);
+          }
+        } else {
+          pushChannel(it.item);
+        }
+      }
+      return out;
+    })();
+    const combined = queueItems.concat(feedItems);
+    if (!combined.length) {
+      status('Nothing to play', 'err');
+      setTimeout(() => status(''), 2000);
+      return;
+    }
+    const pick = combined[Math.floor(Math.random() * combined.length)];
+    if (pick.source === 'queue' && !state.queueOpen) {
+      state.queueOpen = true;
+      localStorage.setItem('queueOpen', '1');
+      $('queue-pane').classList.remove('hidden');
+      renderQueueBadge();
+    }
+    openPlayer(pick.video_id, pick.title, pick.queue_id || null);
     return;
   }
 
