@@ -2010,6 +2010,43 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // Global: 1-9 → first video of Nth row
+  if (!player.videoId && /^[1-9]$/.test(e.key)) {
+    const n = parseInt(e.key, 10);
+    const rows = topLevelItems();
+    function firstVideo(it) {
+      if (it.type === 'folder') {
+        const mode = folderViewMode(it.item);
+        if (mode === 'compact') {
+          const vids = folderMixedStrip(it.item).filter(v => !isShort(v, v._channel));
+          if (!vids.length) return null;
+          return { video_id: vids[0].video_id, title: vids[0].title };
+        }
+        for (const ch of (it.item.channels || [])) {
+          const v = (ch.videos || []).find(x => !x.is_read && !isShort(x, ch));
+          if (v) return { video_id: v.video_id, title: v.title };
+        }
+        return null;
+      }
+      const ch = it.item;
+      const v = (ch.videos || []).find(x => !x.is_read && !isShort(x, ch));
+      return v ? { video_id: v.video_id, title: v.title } : null;
+    }
+    if (n > rows.length) {
+      status(`Only ${rows.length} row(s)`, 'err');
+      setTimeout(() => status(''), 2500);
+      return;
+    }
+    const pick = firstVideo(rows[n - 1]);
+    if (!pick) {
+      status(`Row ${n} has no playable video`, 'err');
+      setTimeout(() => status(''), 2500);
+      return;
+    }
+    openPlayer(pick.video_id, pick.title);
+    return;
+  }
+
   if (!player.videoId) return;
 
   if (e.key === 'Escape') { closePlayer(); return; }
