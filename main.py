@@ -1340,6 +1340,17 @@ class AllowShortsReq(BaseModel):
 def channels_allow_shorts(channel_id: str, req: AllowShortsReq, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("UPDATE channels SET allow_shorts=? WHERE channel_id=?", (1 if req.allow else 0, channel_id))
+        if req.allow:
+            # Force-unread any shorts in this channel (overrides both prior read_before and read overrides)
+            vids = [dict(r) for r in c.execute(
+                "SELECT * FROM videos WHERE channel_id=?", (channel_id,)
+            ).fetchall()]
+            for v in vids:
+                if _is_short(v):
+                    c.execute(
+                        "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?, ?, 'unread')",
+                        (v["video_id"], channel_id),
+                    )
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True, "allow_shorts": req.allow}
