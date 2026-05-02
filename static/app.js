@@ -2020,39 +2020,30 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Global: open queue + play first item
-  if (mod == e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
-    if (!state.queueOpen) {
-      state.queueOpen = true;
-      localStorage.setItem('queueOpen', '1');
-      $('queue-pane').classList.remove('hidden');
-    }
-    renderQueueBadge();
-    const first = state.queue[0];
-    openPlayer(first.video_id, first.title, first.video_id);
-    return;
-  }
- 
-  // Global: open/close queue
-  if (!mod && !player.videoId && (e.key === 'q' || e.key === 'Q')) {
+  // Global: shift+Q → open queue + play first item
+  if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Q') {
     if (!state.queue.length) {
       status('Queue empty', 'err');
       setTimeout(() => status(''), 2000);
       return;
     }
-    if (state.queueOpen) {
-      state.queueOpen = false;
-      localStorage.setItem('queueOpen', '0');
-      $('queue-pane').classList.add('hidden');
-    }
-    else {
+    if (!state.queueOpen) {
       state.queueOpen = true;
       localStorage.setItem('queueOpen', '1');
       $('queue-pane').classList.remove('hidden');
+      renderQueueBadge();
     }
+    const first = state.queue[0];
+    openPlayer(first.video_id, first.title, first.video_id);
+    return;
+  }
+
+  // Global: q → toggle queue visibility
+  if (!mod && !player.videoId && e.key === 'q') {
+    state.queueOpen = !state.queueOpen;
+    localStorage.setItem('queueOpen', state.queueOpen ? '1' : '0');
+    $('queue-pane').classList.toggle('hidden', !state.queueOpen);
     renderQueueBadge();
-    // const first = state.queue[0];
-    // openPlayer(first.video_id, first.title, first.video_id);
     return;
   }
 
