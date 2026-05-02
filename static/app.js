@@ -2047,6 +2047,30 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // Global: Shift+1..9 → play Nth queue item
+  if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
+    const n = parseInt(e.code.slice(5), 10);
+    if (!state.queue.length) {
+      status('Queue empty', 'err');
+      setTimeout(() => status(''), 2000);
+      return;
+    }
+    if (n > state.queue.length) {
+      status(`Queue has ${state.queue.length} item(s)`, 'err');
+      setTimeout(() => status(''), 2500);
+      return;
+    }
+    if (!state.queueOpen) {
+      state.queueOpen = true;
+      localStorage.setItem('queueOpen', '1');
+      $('queue-pane').classList.remove('hidden');
+      renderQueueBadge();
+    }
+    const item = state.queue[n - 1];
+    openPlayer(item.video_id, item.title, item.video_id);
+    return;
+  }
+
   // Global: 1-9 → first video of Nth row
   if (!mod && !player.videoId && /^[1-9]$/.test(e.key)) {
     const n = parseInt(e.key, 10);
