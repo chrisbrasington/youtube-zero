@@ -1276,6 +1276,12 @@ async def channels_add(req: AddChannelReq, background_tasks: BackgroundTasks):
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(400, "No YouTube API key. Add one in settings (⚙).")
+    if _parse_yt_video_id(req.input.strip()):
+        ok, msg = await _add_url_to_queue(req.input.strip(), api_key)
+        if not ok:
+            raise HTTPException(400, msg)
+        background_tasks.add_task(_broadcast, "refreshed")
+        return {"video_found": True, "title": msg}
     ltype, val = parse_channel_input(req.input)
     info = await yt_get_channel(ltype, val, api_key)
     with db() as c:

@@ -601,10 +601,15 @@ async function addChannel() {
   status('Adding…', 'loading');
   try {
     const ch = await api.post('/api/channels', { input });
-    state.feed.channels.push(ch);
     $('channel-input').value = '';
-    render();
-    status(`Added ${ch.name}`, 'ok');
+    if (ch.video_found) {
+      renderQueue();
+      status(`Video found: ${ch.title}`, 'ok');
+    } else {
+      state.feed.channels.push(ch);
+      render();
+      status(`Added ${ch.name}`, 'ok');
+    }
     setTimeout(() => status(''), 3000);
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -639,9 +644,13 @@ async function addChannels(inputs) {
     status(`Adding ${i + 1}/${valid.length}: ${valid[i]}…`, 'loading');
     try {
       const ch = await api.post('/api/channels', { input: valid[i] });
-      state.feed.channels.push(ch);
+      if (ch.video_found) {
+        renderQueue();
+      } else {
+        state.feed.channels.push(ch);
+        render();
+      }
       added++;
-      render();
     } catch {
       failed++;
     }
