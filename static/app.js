@@ -319,8 +319,9 @@ function renderChannel(ch, nested) {
       </div>`;
   }
 
+  const muted = !!ch.muted;
   return `
-    <div class="channel-card ${nested ? 'nested' : ''}" id="ch-${cid}"
+    <div class="channel-card ${nested ? 'nested' : ''} ${muted ? 'muted' : ''}" id="ch-${cid}"
          data-channel-id="${cid}" ${draggable}>
       <div class="channel-header" data-action="toggle-channel" data-channel-id="${cid}">
         <div class="ch-check ${allDone ? 'done' : ''}"
@@ -329,7 +330,7 @@ function renderChannel(ch, nested) {
         <img class="ch-thumb" src="${escAttr(ch.thumbnail_url || '')}"
              alt="${escAttr(ch.name)}" onerror="this.style.opacity='0'">
         <div class="ch-info">
-          <div class="ch-name">${esc(ch.name)}</div>
+          <div class="ch-name">${esc(ch.name)}${muted ? ' <span class="ch-muted-tag">muted</span>' : ''}</div>
           <div class="ch-meta">${ch.handle ? '@' + esc(ch.handle) + ' · ' : ''}${esc(refreshed)}</div>
         </div>
         <div class="ch-right">
@@ -337,6 +338,10 @@ function renderChannel(ch, nested) {
           <select class="ch-folder-select"
                   data-action="set-folder" data-channel-id="${cid}"
                   title="Move to folder">${folderOptions}</select>
+          <button class="ch-btn mute ${muted ? 'on' : ''}"
+                  data-action="toggle-mute" data-channel-id="${cid}"
+                  data-muted="${muted ? '1' : '0'}"
+                  title="${muted ? 'Unmute channel' : 'Mute channel — hides videos, auto-marks new ones read'}">${muted ? '🔇' : '🔊'}</button>
           <button class="ch-btn unread" data-action="mark-unread" data-channel-id="${cid}" title="Mark all as unread">↺</button>
           <button class="ch-btn refresh" data-action="refresh-channel" data-channel-id="${cid}" title="Refresh">↻</button>
           <button class="ch-btn delete" data-action="delete-channel" data-channel-id="${cid}" title="Remove">✕</button>
@@ -763,6 +768,16 @@ async function toggleAllowShorts(channelId, allow) {
     await api.post(`/api/channels/${channelId}/allow-shorts`, { allow });
     const ch = findChannel(channelId);
     if (ch) ch.allow_shorts = allow ? 1 : 0;
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function toggleMute(channelId, muted) {
+  try {
+    await api.post(`/api/channels/${channelId}/mute`, { muted });
+    state.feed = await api.get('/api/feed');
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -1692,6 +1707,14 @@ document.addEventListener('click', e => {
   if (asBtn) {
     e.stopPropagation();
     toggleAllowShorts(asBtn.dataset.channelId, asBtn.checked);
+    return;
+  }
+
+  // Channel: toggle mute
+  const mtBtn = e.target.closest('[data-action="toggle-mute"]');
+  if (mtBtn) {
+    e.stopPropagation();
+    toggleMute(mtBtn.dataset.channelId, mtBtn.dataset.muted !== '1');
     return;
   }
 

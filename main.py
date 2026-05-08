@@ -719,6 +719,7 @@ def init_db():
             "ALTER TABLE videos ADD COLUMN thumb_w INTEGER",
             "ALTER TABLE videos ADD COLUMN thumb_h INTEGER",
             "ALTER TABLE channels ADD COLUMN allow_shorts INTEGER DEFAULT 0",
+            "ALTER TABLE channels ADD COLUMN muted INTEGER DEFAULT 0",
         ]:
             try:
                 c.execute(migration)
@@ -896,9 +897,10 @@ def save_videos(channel_id: str, videos: list):
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
         ch_row = c.execute(
-            "SELECT allow_shorts FROM channels WHERE channel_id=?", (channel_id,)
+            "SELECT allow_shorts, muted FROM channels WHERE channel_id=?", (channel_id,)
         ).fetchone()
         allow_shorts = bool(ch_row["allow_shorts"]) if ch_row else False
+        muted        = bool(ch_row["muted"]) if ch_row else False
         for v in videos:
             v = dict(v)
             v["channel_id"] = channel_id
@@ -908,7 +910,7 @@ def save_videos(channel_id: str, videos: list):
                    VALUES (:video_id, :channel_id, :title, :thumbnail_url, :published_at, :duration, :is_live, :thumb_w, :thumb_h)""",
                 v,
             )
-            if not allow_shorts and _is_short(v):
+            if muted or (not allow_shorts and _is_short(v)):
                 c.execute(
                     """INSERT INTO video_status (video_id, channel_id, status)
                        VALUES (?, ?, 'read')
@@ -1507,6 +1509,9 @@ def channels_reorder(req: ReorderReq, background_tasks: BackgroundTasks):
 class AllowShortsReq(BaseModel):
     allow: bool
 
+class MuteReq(BaseModel):
+    muted: bool
+
 @app.post("/api/channels/{channel_id}/allow-shorts")
 def channels_allow_shorts(channel_id: str, req: AllowShortsReq, background_tasks: BackgroundTasks):
     with db() as c:
@@ -1525,6 +1530,23 @@ def channels_allow_shorts(channel_id: str, req: AllowShortsReq, background_tasks
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True, "allow_shorts": req.allow}
+
+
+@app.post("/api/channels/{channel_id}/mute")
+def channels_mute(channel_id: str, req: MuteReq, background_tasks: BackgroundTasks):
+    now = datetime.now(timezone.utc).isoformat()
+    with db() as c:
+        c.execute("UPDATE channels SET muted=? WHERE channel_id=?", (1 if req.muted else 0, channel_id))
+        if req.muted:
+            # Mark current unread videos as read so they vanish immediately.
+            c.execute("UPDATE channels SET read_before=? WHERE channel_id=?", (now, channel_id))
+            c.execute(
+                "DELETE FROM video_status WHERE channel_id=? AND status='unread'",
+                (channel_id,),
+            )
+        c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
+    return {"ok": True, "muted": req.muted}
 
 
 @app.post("/api/channels/{channel_id}/mark-unread")
