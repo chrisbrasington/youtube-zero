@@ -297,8 +297,13 @@ async def _add_url_to_queue(url: str, api_key: str) -> tuple[bool, str]:
         return False, "video not found or private"
     it = items[0]
     sn = it["snippet"]
+    cd = it.get("contentDetails", {}) or {}
     thumbnails = sn.get("thumbnails", {})
     picked = thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}
+    duration  = parse_duration(cd.get("duration", ""))
+    is_live   = sn.get("liveBroadcastContent", "none") or "none"
+    thumb_w   = picked.get("width")
+    thumb_h   = picked.get("height")
     with db() as c:
         max_order = c.execute(
             "SELECT COALESCE(MAX(sort_order), -1) FROM queue WHERE watched_at IS NULL"
@@ -310,7 +315,8 @@ async def _add_url_to_queue(url: str, api_key: str) -> tuple[bool, str]:
                ON CONFLICT(video_id) DO UPDATE SET
                  watched_at = NULL,
                  sort_order = excluded.sort_order,
-                 added_at   = CURRENT_TIMESTAMP""",
+                 added_at   = CURRENT_TIMESTAMP,
+                 is_deep    = 0""",
             (
                 vid,
                 sn.get("channelId", ""),
@@ -321,9 +327,92 @@ async def _add_url_to_queue(url: str, api_key: str) -> tuple[bool, str]:
                 max_order + 1,
             ),
         )
+        # Also cache video metadata so duration shows in queue UI even when
+        # the channel isn't subscribed.
+        c.execute(
+            """INSERT INTO videos
+               (video_id, channel_id, title, thumbnail_url, published_at, duration, is_live, thumb_w, thumb_h)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(video_id) DO UPDATE SET
+                 duration = excluded.duration,
+                 is_live  = excluded.is_live,
+                 thumb_w  = excluded.thumb_w,
+                 thumb_h  = excluded.thumb_h""",
+            (
+                vid,
+                sn.get("channelId", ""),
+                sn.get("title", ""),
+                picked.get("url", ""),
+                sn.get("publishedAt", ""),
+                duration,
+                is_live,
+                thumb_w,
+                thumb_h,
+            ),
+        )
         c.commit()
     await _broadcast("refreshed")
     return True, sn.get("title", "added")
+
+
+async def _backfill_queue_video_meta():
+    """One-shot at startup: fetch metadata (duration, etc.) for queue items
+    that have no row in `videos`. Cheap — 1 quota unit per 50 ids."""
+    await asyncio.sleep(3)  # let app boot
+    api_key = get_api_key()
+    if not api_key:
+        return
+    with db() as c:
+        rows = c.execute(
+            "SELECT q.video_id FROM queue q LEFT JOIN videos v ON v.video_id=q.video_id "
+            "WHERE q.watched_at IS NULL AND v.video_id IS NULL"
+        ).fetchall()
+    ids = [r["video_id"] for r in rows]
+    if not ids:
+        return
+    async with httpx.AsyncClient(timeout=15) as client:
+        for i in range(0, len(ids), 50):
+            chunk = ids[i:i+50]
+            try:
+                r = await client.get(f"{YT_API}/videos", params={
+                    "part": "snippet,contentDetails",
+                    "id": ",".join(chunk),
+                    "key": api_key,
+                })
+            except Exception:
+                continue
+            if r.status_code != 200:
+                continue
+            add_quota(1)
+            with db() as c:
+                for it in r.json().get("items", []):
+                    sn = it.get("snippet", {})
+                    cd = it.get("contentDetails", {}) or {}
+                    thumbs = sn.get("thumbnails", {})
+                    picked = thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}
+                    c.execute(
+                        """INSERT INTO videos
+                           (video_id, channel_id, title, thumbnail_url, published_at, duration, is_live, thumb_w, thumb_h)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(video_id) DO UPDATE SET
+                             duration = excluded.duration,
+                             is_live  = excluded.is_live,
+                             thumb_w  = excluded.thumb_w,
+                             thumb_h  = excluded.thumb_h""",
+                        (
+                            it["id"],
+                            sn.get("channelId", ""),
+                            sn.get("title", ""),
+                            picked.get("url", ""),
+                            sn.get("publishedAt", ""),
+                            parse_duration(cd.get("duration", "")),
+                            sn.get("liveBroadcastContent", "none") or "none",
+                            picked.get("width"),
+                            picked.get("height"),
+                        ),
+                    )
+                c.commit()
+    await _broadcast("refreshed")
 
 
 async def _handle_signal_command(cmd: str, number: str):
@@ -527,6 +616,7 @@ async def _signal_listener():
 async def lifespan(app):
     asyncio.create_task(_background_refresh())
     asyncio.create_task(_signal_listener())
+    asyncio.create_task(_backfill_queue_video_meta())
     yield
 
 
