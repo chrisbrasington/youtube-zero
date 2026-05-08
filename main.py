@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import random
 import re
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
@@ -145,6 +146,17 @@ async def _send_queue_to_signal(number: str) -> list[str]:
     return [i["video_id"] for i in items]
 
 
+async def _send_deep_to_signal(number: str) -> list[str]:
+    with db() as c:
+        items = [dict(r) for r in c.execute(
+            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=1 "
+            "ORDER BY COALESCE(sort_order, id)"
+        ).fetchall()]
+    for item in items:
+        await _signal_send_one(number, item["video_id"], item["title"], item["channel_name"], item.get("thumbnail_url") or "")
+    return [i["video_id"] for i in items]
+
+
 async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = None) -> int:
     exclude_ids = exclude_ids or set()
     with db() as c:
@@ -169,11 +181,44 @@ async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = Non
     return len(unread)
 
 
+def _visible_unread_list(exclude_ids: set[str] | None = None) -> list[dict]:
+    exclude_ids = exclude_ids or set()
+    with db() as c:
+        rows = c.execute("SELECT key, value FROM settings").fetchall()
+        hide_shorts = {r["key"]: r["value"] for r in rows}.get("hide_shorts", "0") == "1"
+        chs = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+        out = []
+        for ch in chs:
+            ch_allow_shorts = bool(ch.get("allow_shorts", 0))
+            vids = _channel_videos(c, ch["channel_id"], ch["read_before"], set())
+            for v in vids:
+                if v["is_read"]:
+                    continue
+                if v["video_id"] in exclude_ids:
+                    continue
+                if hide_shorts and not ch_allow_shorts and _is_short(v):
+                    continue
+                v["channel_name"] = ch["name"]
+                out.append(v)
+        return out
+
+
+def _queue_list(is_deep: bool) -> list[dict]:
+    with db() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=? "
+            "ORDER BY COALESCE(sort_order, id)",
+            (1 if is_deep else 0,),
+        ).fetchall()]
+
+
 _HELP_TEXT = (
     "commands:\n"
     "/ping — pong\n"
     "/get — queue + visible videos\n"
     "/queue — queue only\n"
+    "/deep — deep queue only\n"
+    "/random — one random video (visible → queue → deep)\n"
     "/add <url> — add video to queue\n"
     "/play <url> — play video on TV\n"
     "/refresh — refresh then /get\n"
@@ -332,6 +377,29 @@ async def _handle_signal_command(cmd: str, number: str):
     elif cmd == "/queue":
         queued_ids = await _send_queue_to_signal(number)
         await _signal_send_plain(number, f"sent {len(queued_ids)} from queue" if queued_ids else "queue empty ✓")
+    elif cmd == "/deep":
+        deep_ids = await _send_deep_to_signal(number)
+        await _signal_send_plain(number, f"sent {len(deep_ids)} from deep queue" if deep_ids else "deep queue empty ✓")
+    elif cmd == "/random":
+        # Priority: visible unread → shallow queue → deep queue. Random within first non-empty.
+        queued_shallow = _queue_list(is_deep=False)
+        queued_deep    = _queue_list(is_deep=True)
+        queued_ids     = {q["video_id"] for q in queued_shallow} | {q["video_id"] for q in queued_deep}
+        visible = _visible_unread_list(exclude_ids=queued_ids)
+        if visible:
+            v = random.choice(visible)
+            await _signal_send_one(number, v["video_id"], v["title"], v["channel_name"], v.get("thumbnail_url") or "")
+            await _signal_send_plain(number, f"random visible ({len(visible)} pool) ✓")
+        elif queued_shallow:
+            v = random.choice(queued_shallow)
+            await _signal_send_one(number, v["video_id"], v["title"], v["channel_name"], v.get("thumbnail_url") or "")
+            await _signal_send_plain(number, f"random queue ({len(queued_shallow)} pool) ✓")
+        elif queued_deep:
+            v = random.choice(queued_deep)
+            await _signal_send_one(number, v["video_id"], v["title"], v["channel_name"], v.get("thumbnail_url") or "")
+            await _signal_send_plain(number, f"random deep ({len(queued_deep)} pool) ✓")
+        else:
+            await _signal_send_plain(number, "nothing visible or queued ✓")
     elif cmd == "/clear":
         with db() as c:
             c.execute("DELETE FROM queue WHERE watched_at IS NULL")
@@ -1514,8 +1582,10 @@ def clear_all(background_tasks: BackgroundTasks):
 def queue_list():
     with db() as c:
         items = c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL "
-            "ORDER BY COALESCE(is_deep,0), COALESCE(sort_order, id)"
+            "SELECT q.*, v.duration AS duration, v.is_live AS is_live "
+            "FROM queue q LEFT JOIN videos v ON v.video_id = q.video_id "
+            "WHERE q.watched_at IS NULL "
+            "ORDER BY COALESCE(q.is_deep,0), COALESCE(q.sort_order, q.id)"
         ).fetchall()
     return [dict(i) for i in items]
 

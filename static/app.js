@@ -489,12 +489,14 @@ function qItemHtml(item, subscribedIds, group) {
   return `
     <div class="q-item" draggable="true" data-drag-context="queue"
          data-video-id="${escAttr(item.video_id)}" data-group="${group}">
-      <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
+      <div class="q-thumb-wrap"
            data-action="play-from-queue"
            data-video-id="${escAttr(item.video_id)}"
-           data-title="${escAttr(item.title)}"
-           style="cursor:pointer"
-           onerror="this.src='data:image/svg+xml,<svg/>'">
+           data-title="${escAttr(item.title)}">
+        <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
+             onerror="this.src='data:image/svg+xml,<svg/>'">
+        ${item.duration ? `<span class="q-dur">${esc(item.duration)}</span>` : ''}
+      </div>
       <div class="q-info">
         <div class="q-title">${esc(item.title)}</div>
         <div class="q-channel">${esc(item.channel_name)}</div>
