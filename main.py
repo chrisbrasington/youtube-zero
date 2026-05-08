@@ -137,7 +137,8 @@ async def _signal_send_plain(number: str, message: str):
 async def _send_queue_to_signal(number: str) -> list[str]:
     with db() as c:
         items = [dict(r) for r in c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY COALESCE(sort_order, id)"
+            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=0 "
+            "ORDER BY COALESCE(sort_order, id)"
         ).fetchall()]
     for item in items:
         await _signal_send_one(number, item["video_id"], item["title"], item["channel_name"], item.get("thumbnail_url") or "")
@@ -528,7 +529,8 @@ def init_db():
                 published_at TEXT,
                 sort_order INTEGER,
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                watched_at TEXT
+                watched_at TEXT,
+                is_deep INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS video_status (
                 video_id   TEXT PRIMARY KEY,
@@ -554,6 +556,7 @@ def init_db():
             "ALTER TABLE channels ADD COLUMN folder_id INTEGER REFERENCES folders(id)",
             "ALTER TABLE folders ADD COLUMN icon TEXT DEFAULT '📁'",
             "ALTER TABLE queue ADD COLUMN sort_order INTEGER",
+            "ALTER TABLE queue ADD COLUMN is_deep INTEGER DEFAULT 0",
             "ALTER TABLE videos ADD COLUMN is_live TEXT",
             "ALTER TABLE videos ADD COLUMN thumb_w INTEGER",
             "ALTER TABLE videos ADD COLUMN thumb_h INTEGER",
@@ -810,6 +813,9 @@ class ApiKeyReq(BaseModel):
 
 class ReorderReq(BaseModel):
     ids: list[str]
+
+class DeepReq(BaseModel):
+    is_deep: bool
 
 class FolderReq(BaseModel):
     name: str
@@ -1101,7 +1107,8 @@ async def signal_send_queue():
             raise HTTPException(400, "Signal not configured")
         number = row["value"]
         items = [dict(r) for r in c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY COALESCE(sort_order, id)"
+            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=0 "
+            "ORDER BY COALESCE(sort_order, id)"
         ).fetchall()]
     if not items:
         raise HTTPException(400, "Queue is empty")
@@ -1507,7 +1514,8 @@ def clear_all(background_tasks: BackgroundTasks):
 def queue_list():
     with db() as c:
         items = c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL ORDER BY COALESCE(sort_order, id)"
+            "SELECT * FROM queue WHERE watched_at IS NULL "
+            "ORDER BY COALESCE(is_deep,0), COALESCE(sort_order, id)"
         ).fetchall()
     return [dict(i) for i in items]
 
@@ -1528,7 +1536,8 @@ def queue_add(req: QueueAddReq, background_tasks: BackgroundTasks):
                ON CONFLICT(video_id) DO UPDATE SET
                  watched_at  = NULL,
                  sort_order  = excluded.sort_order,
-                 added_at    = CURRENT_TIMESTAMP""",
+                 added_at    = CURRENT_TIMESTAMP,
+                 is_deep     = 0""",
             data,
         )
         c.commit()
@@ -1546,9 +1555,12 @@ def queue_reorder(req: ReorderReq):
 
 
 @app.delete("/api/queue")
-def queue_clear(background_tasks: BackgroundTasks):
+def queue_clear(background_tasks: BackgroundTasks, deep: bool = False):
     with db() as c:
-        c.execute("DELETE FROM queue WHERE watched_at IS NULL")
+        if deep:
+            c.execute("DELETE FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=1")
+        else:
+            c.execute("DELETE FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=0")
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
@@ -1558,6 +1570,24 @@ def queue_clear(background_tasks: BackgroundTasks):
 def queue_remove(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
         c.execute("DELETE FROM queue WHERE video_id=?", (video_id,))
+        c.commit()
+    background_tasks.add_task(_broadcast, "refreshed")
+    return {"ok": True}
+
+
+@app.post("/api/queue/{video_id}/deep")
+def queue_set_deep(video_id: str, req: DeepReq, background_tasks: BackgroundTasks):
+    target = 1 if req.is_deep else 0
+    with db() as c:
+        max_order = c.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM queue "
+            "WHERE watched_at IS NULL AND COALESCE(is_deep,0)=?",
+            (target,),
+        ).fetchone()[0]
+        c.execute(
+            "UPDATE queue SET is_deep=?, sort_order=? WHERE video_id=?",
+            (target, max_order + 1, video_id),
+        )
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}

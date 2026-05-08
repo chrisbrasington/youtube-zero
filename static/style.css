@@ -859,59 +859,111 @@ input::placeholder { color: var(--dim); }
 
 .q-channel { font-size: 17px; color: var(--muted); margin-top: 2px; }
 
-.q-actions { display: flex; gap: 5px; margin-top: 7px; }
+.q-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
 
-.btn-watch {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--r-sm);
-  padding: 3px 10px;
-  font-size: 17px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background .15s;
-}
-.btn-watch:hover { background: var(--accent-h); }
-
-.btn-remove {
+/* Shared icon-only action button for queue rows */
+.q-icon-btn {
   background: transparent;
-  color: var(--dim);
+  color: var(--muted);
   border: 1px solid var(--border-l);
   border-radius: var(--r-sm);
-  padding: 3px 8px;
-  font-size: 17px;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: all .15s;
+  text-decoration: none;
+  transition: all .12s;
+  flex-shrink: 0;
 }
-.btn-remove:hover { color: var(--accent); border-color: var(--accent); }
+.q-icon-btn:hover { color: var(--text); border-color: var(--muted); background: var(--bg4); }
 
-.btn-signal {
-  background: transparent;
-  color: var(--dim);
-  border: 1px solid var(--border-l);
-  border-radius: var(--r-sm);
-  padding: 3px 8px;
-  font-size: 17px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-signal:hover { color: #3b82f6; border-color: #3b82f6; }
-
-.btn-tv {
-  background: transparent;
-  color: var(--dim);
-  border: 1px solid var(--border-l);
-  border-radius: var(--r-sm);
-  padding: 3px 8px;
-  font-size: 17px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-tv:hover { color: #a78bfa; border-color: #a78bfa; }
+/* Per-action accent on hover */
+.q-icon-btn.q-play:hover    { color: #fff; background: var(--accent); border-color: var(--accent); }
+.q-icon-btn.q-remove:hover  { color: var(--accent); border-color: var(--accent); background: transparent; }
+.q-icon-btn.q-signal:hover  { color: #3b82f6; border-color: #3b82f6; background: transparent; }
+.q-icon-btn.q-tv:hover      { color: #a78bfa; border-color: #a78bfa; background: transparent; }
+.q-icon-btn.q-deep-toggle:hover { color: #f59e0b; border-color: #f59e0b; background: transparent; }
 
 .q-item.dragging  { opacity: .4; }
 .q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
+
+/* ── Deep queue section ──────────────────────────────────────────────────── */
+
+.deep-section {
+  margin-top: 10px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.deep-section.drag-into .deep-header {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: rgba(255,68,68,.06);
+}
+
+.deep-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+}
+.deep-header:hover { background: var(--bg4); }
+
+.deep-caret { font-size: 14px; color: var(--muted); width: 12px; text-align: center; flex-shrink: 0; }
+.deep-title { font-size: 15px; font-weight: 600; color: var(--text); flex-shrink: 0; }
+.deep-count {
+  font-size: 12px;
+  background: var(--bg4);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 1px 8px;
+  flex-shrink: 0;
+}
+
+.deep-preview {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  flex: 1;
+  margin-left: 6px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.deep-preview::-webkit-scrollbar { display: none; }
+
+.deep-preview-thumb {
+  width: 56px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--bg4);
+  flex-shrink: 0;
+}
+.deep-preview-more {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 4px;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.deep-section.expanded .q-group[data-group="deep"] {
+  margin-top: 8px;
+}
+/* Slightly dimmed look for deep items when expanded */
+.deep-section.expanded .q-item {
+  background: var(--bg2);
+}
 
 /* ── Compact video strip (default channel view) ──────────────────────────── */
 
@@ -1571,4 +1623,12 @@ input[type="password"] { font-size: 13px; }
   .btn-ghost, .btn-danger { font-size: 12px; }
   .v-thumb { width: 108px; height: 60px; }
   .q-thumb { width: 80px; height: 45px; }
+  .q-icon-btn { width: 28px; height: 28px; font-size: 14px; }
+  .q-actions { gap: 3px; }
+
+  .deep-header { padding: 5px 6px; gap: 6px; flex-wrap: nowrap; }
+  .deep-title { font-size: 13px; }
+  .deep-count { font-size: 11px; padding: 1px 6px; }
+  .deep-preview-thumb { width: 44px; height: 25px; }
+  .deep-preview { gap: 3px; }
 }

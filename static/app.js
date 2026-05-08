@@ -81,6 +81,7 @@ const state = {
   feed:             { folders: [], channels: [] },
   queue:            [],
   queueOpen:        localStorage.getItem('queueOpen') === '1',
+  deepOpen:         localStorage.getItem('deepOpen') === '1',
   sortMode:         'manual',
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
   wrapStrip:        (localStorage.getItem('wrapStrip') ?? '1') === '1',
@@ -464,25 +465,30 @@ function renderVideoRow(video, channel) {
 
 // ── Render: queue ─────────────────────────────────────────────────────────────
 
+function shallowQueue() { return state.queue.filter(q => !q.is_deep); }
+function deepQueue()    { return state.queue.filter(q =>  q.is_deep); }
+
 function renderQueueBadge() {
-  const n = state.queue.length;
+  const n = shallowQueue().length;
   const badge = $('queue-badge');
   badge.textContent = n;
   badge.className = 'queue-badge' + (n === 0 ? ' empty' : '');
   $('btn-queue').className = 'btn-queue' + (state.queueOpen ? ' active' : '');
 }
 
-function renderQueue() {
-  const el = $('queue-list');
-  if (state.queue.length === 0) {
-    el.innerHTML = '<div class="queue-empty">Queue is empty</div>';
-    return;
-  }
-  const subscribedIds = new Set(allChannels().map(c => c.channel_id));
-  el.innerHTML = state.queue.map(item => {
-    const isSubscribed = subscribedIds.has(item.channel_id);
-    return `
-    <div class="q-item" draggable="true" data-drag-context="queue" data-video-id="${escAttr(item.video_id)}">
+function qItemHtml(item, subscribedIds, group) {
+  const isSubscribed = subscribedIds.has(item.channel_id);
+  const isDeep = group === 'deep';
+  const deepBtn = isDeep
+    ? `<button class="q-icon-btn q-deep-toggle" data-action="queue-undeep"
+              data-video-id="${escAttr(item.video_id)}"
+              title="Move back to main queue">⤒</button>`
+    : `<button class="q-icon-btn q-deep-toggle" data-action="queue-deep"
+              data-video-id="${escAttr(item.video_id)}"
+              title="Move to deep queue">⤓</button>`;
+  return `
+    <div class="q-item" draggable="true" data-drag-context="queue"
+         data-video-id="${escAttr(item.video_id)}" data-group="${group}">
       <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
            data-action="play-from-queue"
            data-video-id="${escAttr(item.video_id)}"
@@ -493,38 +499,82 @@ function renderQueue() {
         <div class="q-title">${esc(item.title)}</div>
         <div class="q-channel">${esc(item.channel_name)}</div>
         <div class="q-actions">
-          <button class="btn-play"
+          <button class="q-icon-btn q-play"
                   data-action="play-from-queue"
                   data-video-id="${escAttr(item.video_id)}"
-                  data-title="${escAttr(item.title)}">▶ Play</button>
-          <a class="btn-yt-open"
+                  data-title="${escAttr(item.title)}"
+                  title="Play">▶</button>
+          <a class="q-icon-btn"
              href="https://www.youtube.com/watch?v=${escAttr(item.video_id)}"
              target="_blank" rel="noopener noreferrer"
              data-action="watch-yt"
-             data-video-id="${escAttr(item.video_id)}">↗ YouTube</a>
-          ${!isSubscribed && item.channel_id ? `<button class="btn-ghost"
+             data-video-id="${escAttr(item.video_id)}"
+             title="Open on YouTube (marks watched)">↗</a>
+          ${!isSubscribed && item.channel_id ? `<button class="q-icon-btn"
                   data-action="subscribe-from-queue"
                   data-channel-id="${escAttr(item.channel_id)}"
-                  title="Subscribe to ${escAttr(item.channel_name)}">+ Channel</button>` : ''}
-          <button class="btn-remove"
-                  data-action="remove-queue"
-                  data-video-id="${escAttr(item.video_id)}">Remove</button>
-          ${state.signalConfigured ? `<button class="btn-signal"
+                  title="Subscribe to ${escAttr(item.channel_name)}">+</button>` : ''}
+          ${state.signalConfigured ? `<button class="q-icon-btn q-signal"
                   data-action="signal-send"
                   data-video-id="${escAttr(item.video_id)}"
                   data-title="${escAttr(item.title)}"
                   data-channel-name="${escAttr(item.channel_name)}"
                   data-thumbnail-url="${escAttr(item.thumbnail_url || '')}"
                   title="Send to Signal Notes to Self">✉</button>` : ''}
-          ${state.tvConfigured ? `<button class="btn-tv"
+          ${state.tvConfigured ? `<button class="q-icon-btn q-tv"
                   data-action="tv-send"
                   data-video-id="${escAttr(item.video_id)}"
                   title="Play on TV">📺</button>` : ''}
+          ${deepBtn}
+          <button class="q-icon-btn q-remove"
+                  data-action="remove-queue"
+                  data-video-id="${escAttr(item.video_id)}"
+                  title="Remove from queue">✕</button>
         </div>
       </div>
     </div>
   `;
-  }).join('');
+}
+
+function renderQueue() {
+  const el = $('queue-list');
+  const subscribedIds = new Set(allChannels().map(c => c.channel_id));
+  const shallow = shallowQueue();
+  const deep    = deepQueue();
+
+  let html = '';
+  if (shallow.length === 0 && deep.length === 0) {
+    html += '<div class="queue-empty">Queue is empty</div>';
+  } else if (shallow.length === 0) {
+    html += '<div class="queue-empty queue-empty-shallow">Main queue is empty</div>';
+  } else {
+    html += `<div class="q-group" data-group="shallow">${
+      shallow.map(it => qItemHtml(it, subscribedIds, 'shallow')).join('')
+    }</div>`;
+  }
+
+  if (deep.length > 0) {
+    const expanded = state.deepOpen;
+    html += `
+      <div class="deep-section ${expanded ? 'expanded' : 'collapsed'}">
+        <div class="deep-header" data-action="toggle-deep" role="button" tabindex="0">
+          <span class="deep-caret">${expanded ? '▾' : '▸'}</span>
+          <span class="deep-title">Deep Queue</span>
+          <span class="deep-count">${deep.length}</span>
+          ${!expanded ? `<div class="deep-preview">${
+            deep.slice(0, 12).map(it => `
+              <img class="deep-preview-thumb" src="${escAttr(it.thumbnail_url)}"
+                   alt="" title="${escAttr(it.title)}"
+                   onerror="this.src='data:image/svg+xml,<svg/>'">`).join('')
+          }${deep.length > 12 ? `<span class="deep-preview-more">+${deep.length - 12}</span>` : ''}</div>` : ''}
+        </div>
+        ${expanded ? `<div class="q-group" data-group="deep">${
+          deep.map(it => qItemHtml(it, subscribedIds, 'deep')).join('')
+        }</div>` : ''}
+      </div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 // ── Render: player ────────────────────────────────────────────────────────────
@@ -949,12 +999,13 @@ async function addToQueue(meta) {
   }
 }
 
-async function clearQueue() {
-  if (state.queue.length === 0) return;
+async function clearQueue(deep = false) {
+  const target = state.queue.filter(q => !!q.is_deep === deep);
+  if (target.length === 0) return;
   try {
-    await api.del('/api/queue');
-    const clearedIds = state.queue.map(q => q.video_id);
-    state.queue = [];
+    await api.del(`/api/queue${deep ? '?deep=1' : ''}`);
+    const clearedIds = target.map(q => q.video_id);
+    state.queue = state.queue.filter(q => !!q.is_deep !== deep);
     clearedIds.forEach(id => setInQueue(id, false));
     render();
   } catch (e) {
@@ -967,6 +1018,16 @@ async function removeFromQueue(videoId) {
     await api.del(`/api/queue/${videoId}`);
     state.queue = state.queue.filter(q => q.video_id !== videoId);
     setInQueue(videoId, false);
+    render();
+  } catch (e) {
+    status('Error: ' + e.message, 'err');
+  }
+}
+
+async function setQueueDeep(videoId, isDeep) {
+  try {
+    await api.post(`/api/queue/${videoId}/deep`, { is_deep: !!isDeep });
+    state.queue = await api.get('/api/queue');
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -1013,8 +1074,10 @@ function isMobile() { return window.innerWidth <= 600; }
 
 function visiblePlayList() {
   // Returns ordered array of {video_id, title, channel_name, queue_id?}
-  if (state.queueOpen && state.queue.length) {
-    return state.queue.map(q => ({
+  // Deep queue items are intentionally excluded — they're parked, not playable.
+  const shallow = shallowQueue();
+  if (state.queueOpen && shallow.length) {
+    return shallow.map(q => ({
       video_id: q.video_id,
       title: q.title,
       channel_name: q.channel_name,
@@ -1787,6 +1850,23 @@ document.addEventListener('click', e => {
   // Subscribe to channel from queue
   const subBtn = e.target.closest('[data-action="subscribe-from-queue"]');
   if (subBtn) { subscribeFromQueue(subBtn.dataset.channelId); return; }
+
+  // Move into deep queue
+  const deepBtn = e.target.closest('[data-action="queue-deep"]');
+  if (deepBtn) { e.stopPropagation(); setQueueDeep(deepBtn.dataset.videoId, true); return; }
+
+  // Move out of deep queue
+  const undeepBtn = e.target.closest('[data-action="queue-undeep"]');
+  if (undeepBtn) { e.stopPropagation(); setQueueDeep(undeepBtn.dataset.videoId, false); return; }
+
+  // Toggle deep section expand/collapse
+  const deepHdr = e.target.closest('[data-action="toggle-deep"]');
+  if (deepHdr) {
+    state.deepOpen = !state.deepOpen;
+    localStorage.setItem('deepOpen', state.deepOpen ? '1' : '0');
+    renderQueue();
+    return;
+  }
 });
 
 // Move-to-folder select (change event)
@@ -1842,14 +1922,25 @@ document.addEventListener('dragend', () => {
 });
 
 document.addEventListener('dragover', e => {
-  // Queue reorder
+  // Queue reorder / cross-group move
   if (queueDragSrcId) {
+    document.querySelectorAll('.q-item, .deep-section').forEach(q =>
+      q.classList.remove('drag-over', 'drag-into')
+    );
     const target = e.target.closest('.q-item');
     if (target && target.dataset.videoId !== queueDragSrcId) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      document.querySelectorAll('.q-item').forEach(q => q.classList.remove('drag-over'));
       target.classList.add('drag-over');
+      return;
+    }
+    // Drop on deep header (collapsed) → move into deep
+    const deepHdr = e.target.closest('.deep-section');
+    const srcItem = state.queue.find(q => q.video_id === queueDragSrcId);
+    if (deepHdr && srcItem && !srcItem.is_deep) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      deepHdr.classList.add('drag-into');
     }
     return;
   }
@@ -1897,19 +1988,51 @@ document.addEventListener('dragover', e => {
 });
 
 document.addEventListener('drop', e => {
-  // Queue reorder
+  // Queue reorder / cross-group move
   if (queueDragSrcId) {
-    const target = e.target.closest('.q-item');
-    if (!target || target.dataset.videoId === queueDragSrcId) return;
+    const srcId = queueDragSrcId;
+    const src   = state.queue.find(q => q.video_id === srcId);
+    if (!src) return;
+
+    // Drop on deep section header (collapsed) → move into deep
+    const deepHdr = e.target.closest('.deep-section');
+    const target  = e.target.closest('.q-item');
+
+    if (deepHdr && !target && !src.is_deep) {
+      e.preventDefault();
+      setQueueDeep(srcId, true);
+      return;
+    }
+
+    if (!target || target.dataset.videoId === srcId) return;
     e.preventDefault();
-    const si = state.queue.findIndex(q => q.video_id === queueDragSrcId);
+
+    const targetGroup = target.dataset.group;       // 'shallow' | 'deep'
+    const srcGroup    = src.is_deep ? 'deep' : 'shallow';
+
+    if (targetGroup !== srcGroup) {
+      // Cross-group: flip is_deep, then reorder within target group
+      src.is_deep = targetGroup === 'deep' ? 1 : 0;
+    }
+
+    // Reorder within state.queue
+    const si = state.queue.findIndex(q => q.video_id === srcId);
     const di = state.queue.findIndex(q => q.video_id === target.dataset.videoId);
     if (si === -1 || di === -1) return;
     const [m] = state.queue.splice(si, 1);
     state.queue.splice(di, 0, m);
     state.queue.forEach((q, i) => { q.sort_order = i; });
     renderQueue();
-    api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }).catch(() => {});
+    renderQueueBadge();
+
+    if (targetGroup !== srcGroup) {
+      // Persist is_deep change first, then reorder so per-group sort_orders stick
+      api.post(`/api/queue/${srcId}/deep`, { is_deep: targetGroup === 'deep' })
+        .then(() => api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }))
+        .catch(() => {});
+    } else {
+      api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }).catch(() => {});
+    }
     return;
   }
 
@@ -2077,9 +2200,10 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Global: shift+Q → open queue + play first item
+  // Global: shift+Q → open queue + play first shallow item
   if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Q') {
-    if (!state.queue.length) {
+    const shallow = shallowQueue();
+    if (!shallow.length) {
       status('Queue empty', 'err');
       setTimeout(() => status(''), 2000);
       return;
@@ -2090,7 +2214,7 @@ document.addEventListener('keydown', e => {
       $('queue-pane').classList.remove('hidden');
       renderQueueBadge();
     }
-    const first = state.queue[0];
+    const first = shallow[0];
     openPlayer(first.video_id, first.title, first.video_id);
     return;
   }
@@ -2104,16 +2228,17 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Global: Shift+1..9 → play Nth queue item
+  // Global: Shift+1..9 → play Nth shallow queue item
   if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
     const n = parseInt(e.code.slice(5), 10);
-    if (!state.queue.length) {
+    const shallow = shallowQueue();
+    if (!shallow.length) {
       status('Queue empty', 'err');
       setTimeout(() => status(''), 2000);
       return;
     }
-    if (n > state.queue.length) {
-      status(`Queue has ${state.queue.length} item(s)`, 'err');
+    if (n > shallow.length) {
+      status(`Queue has ${shallow.length} item(s)`, 'err');
       setTimeout(() => status(''), 2500);
       return;
     }
@@ -2123,7 +2248,7 @@ document.addEventListener('keydown', e => {
       $('queue-pane').classList.remove('hidden');
       renderQueueBadge();
     }
-    const item = state.queue[n - 1];
+    const item = shallow[n - 1];
     openPlayer(item.video_id, item.title, item.video_id);
     return;
   }
@@ -2286,7 +2411,7 @@ $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') sav
 $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
-$('btn-clear-queue').addEventListener('click', clearQueue);
+$('btn-clear-queue').addEventListener('click', () => clearQueue(false));
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);
 $('btn-tv-connect').addEventListener('click', tvConnect);
