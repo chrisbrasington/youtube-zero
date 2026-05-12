@@ -1075,6 +1075,10 @@ function openActionSheet(ctx) {
   btnM.textContent = ctx.isRead ? '↺ Mark Unread' : '✓ Mark as Read';
   const btnS = document.querySelector('[data-action="sheet-signal"]');
   btnS.style.display = state.signalConfigured ? '' : 'none';
+  const btnShare = document.querySelector('[data-action="sheet-share"]');
+  if (btnShare) btnShare.style.display = navigator.share ? '' : 'none';
+  const secRow = document.querySelector('.action-sheet-secondary');
+  if (secRow) secRow.classList.toggle('hidden', !state.signalConfigured && !navigator.share);
   const btnT = document.querySelector('[data-action="sheet-play-tv"]');
   btnT.style.display = state.tvConfigured ? '' : 'none';
   const btnC = document.querySelector('[data-action="sheet-copy"]');
@@ -1807,6 +1811,14 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-action="sheet-signal"]') && sheetCtx) {
     const c = sheetCtx; closeActionSheet();
     signalSendVideo(c.videoId, c.title, c.channelName, c.thumbnailUrl);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-share"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    navigator.share({
+      title: c.title,
+      url: `https://www.youtube.com/watch?v=${c.videoId}`,
+    }).catch(() => {});
     return;
   }
   if (e.target.closest('[data-action="sheet-copy"]') && sheetCtx) {
