@@ -1811,8 +1811,21 @@ document.addEventListener('click', e => {
   }
   if (e.target.closest('[data-action="sheet-share"]') && sheetCtx) {
     const c = sheetCtx; closeActionSheet();
+    const shareUrl = `https://www.youtube.com/watch?v=${c.videoId}`;
     if (navigator.share) {
-      navigator.share({ title: c.title, url: `https://www.youtube.com/watch?v=${c.videoId}` }).catch(() => {});
+      navigator.share({ title: c.title, url: shareUrl }).catch(() => {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(shareUrl);
+        }
+      });
+    } else {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareUrl);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = shareUrl; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      }
     }
     return;
   }
