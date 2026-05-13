@@ -2784,14 +2784,24 @@ function watchSetupYT() {
 
 function watchArmUnmute() {
   const banner = $('watch-unmute');
-  const unmute = () => {
-    try { watchPlayer?.unMute?.(); watchPlayer?.setVolume?.(100); } catch {}
+  let poll = null;
+  const cleanup = () => {
     banner?.classList.add('hidden');
-    document.removeEventListener('click', unmute, true);
-    document.removeEventListener('keydown', unmute, true);
+    document.removeEventListener('click', onUserAct, true);
+    document.removeEventListener('keydown', onUserAct, true);
+    if (poll) { clearInterval(poll); poll = null; }
   };
-  document.addEventListener('click', unmute, true);
-  document.addEventListener('keydown', unmute, true);
+  const onUserAct = () => {
+    try { watchPlayer?.unMute?.(); watchPlayer?.setVolume?.(100); } catch {}
+    cleanup();
+  };
+  document.addEventListener('click', onUserAct, true);
+  document.addEventListener('keydown', onUserAct, true);
+  poll = setInterval(() => {
+    try {
+      if (watchPlayer?.isMuted && !watchPlayer.isMuted()) cleanup();
+    } catch {}
+  }, 500);
 }
 
 function watchPlay(videoId) {
@@ -2866,9 +2876,29 @@ function watchInit(route) {
     if (e.key === 'f') {
       $('watch-frame').requestFullscreen?.().catch(() => {});
       e.preventDefault();
-    } else if (e.key === 'n') {
-      watchAdvance({ fromEnd: false });
+      return;
     }
+    if (e.key === 'n') { watchAdvance({ fromEnd: false }); return; }
+    if (!watchPlayer) return;
+    try {
+      if (/^[0-9]$/.test(e.key)) {
+        const pct = parseInt(e.key, 10) / 10;
+        const dur = watchPlayer.getDuration?.();
+        if (dur) watchPlayer.seekTo(dur * pct, true);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === ' ' || e.key === 'k') {
+        const st = watchPlayer.getPlayerState?.();
+        if (st === 1) watchPlayer.pauseVideo(); else watchPlayer.playVideo();
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'j')          { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) - 10, true); e.preventDefault(); return; }
+      if (e.key === 'l')          { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) + 10, true); e.preventDefault(); return; }
+      if (e.key === 'ArrowLeft')  { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) - 5,  true); e.preventDefault(); return; }
+      if (e.key === 'ArrowRight') { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) + 5,  true); e.preventDefault(); return; }
+    } catch {}
   });
 }
 
