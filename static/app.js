@@ -2463,7 +2463,7 @@ $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
 $('btn-clear-queue').addEventListener('click', () => clearQueue(false));
-$('btn-watch-queue').addEventListener('click', () => { location.href = '/watch'; });
+$('btn-watch-queue').addEventListener('click', () => watchStartQueue());
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);
 $('btn-tv-connect').addEventListener('click', tvConnect);
@@ -2711,9 +2711,10 @@ function connectEventSource() {
   };
 }
 
-// ── Watch page (/watch, /watch/test, /watch/folder) ───────────────────────────
+// ── Watch module (in-page overlay; also handles /watch URL) ──────────────────
 
 let watchPlayer = null;
+let watchDomBound = false;
 
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
@@ -2723,32 +2724,58 @@ function watchRouteFor(path) {
   return null;
 }
 
+// In-page entry points — preserve click gesture so audio autoplay works.
+
+function watchStartQueue() {
+  const list = shallowQueue().map(q => ({
+    video_id: q.video_id, title: q.title,
+    channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
+    duration: q.duration,
+  }));
+  if (!list.length) {
+    status('Queue empty', 'err'); setTimeout(() => status(''), 2000);
+    return;
+  }
+  watchEnter({
+    mode: 'queue', inPage: true, mutedStart: false, badgeLabel: '',
+    list,
+    mark: async (id) => {
+      await api.post(`/api/queue/${id}/watched`);
+      state.queue = state.queue.filter(q => q.video_id !== id);
+      setInQueue(id, false);
+    },
+  });
+}
+
 function watchStartFolder(folderId) {
   const folder = findFolder(folderId);
   if (!folder) return;
   const vids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
   if (!vids.length) {
-    status('Folder has no videos to watch', 'err');
-    setTimeout(() => status(''), 2000);
+    status('Folder has no videos to watch', 'err'); setTimeout(() => status(''), 2000);
     return;
   }
-  const payload = {
-    folderName: folder.name,
-    videos: vids.map(v => ({
-      video_id:      v.video_id,
-      title:         v.title,
-      channel_name:  v._channel.name,
-      thumbnail_url: v.thumbnail_url,
-      duration:      v.duration,
+  watchEnter({
+    mode: 'folder', inPage: true, mutedStart: false,
+    badgeLabel: `📁 ${folder.name}`,
+    list: vids.map(v => ({
+      video_id: v.video_id, title: v.title,
+      channel_name: v._channel.name, thumbnail_url: v.thumbnail_url,
+      duration: v.duration,
     })),
-  };
-  sessionStorage.setItem('tempWatch', JSON.stringify(payload));
-  location.href = '/watch/folder';
+    mark: async (id) => {
+      await api.post(`/api/videos/${id}/read`);
+      for (const ch of allChannels()) {
+        const v = (ch.videos || []).find(x => x.video_id === id);
+        if (v) v.is_read = true;
+      }
+    },
+  });
 }
 
 function watchRenderQueue() {
   const el = $('watch-queue-list');
-  const list = state.watch.list || [];
+  const list = state.watch?.list || [];
   $('watch-queue-count').textContent = list.length;
   if (!list.length) {
     el.innerHTML = '<div class="queue-empty">Empty</div>';
@@ -2784,6 +2811,7 @@ function watchSetupYT() {
 
 function watchArmUnmute() {
   const banner = $('watch-unmute');
+  banner?.classList.remove('hidden');
   let poll = null;
   const cleanup = () => {
     banner?.classList.add('hidden');
@@ -2813,14 +2841,19 @@ function watchPlay(videoId) {
     watchPlayer.loadVideoById(videoId);
   } else {
     const origin = encodeURIComponent(location.origin);
-    const frame = $('watch-frame');
-    frame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0&enablejsapi=1&origin=${origin}`;
-    frame.addEventListener('load', () => { watchSetupYT(); watchArmUnmute(); }, { once: true });
+    const mute   = state.watch.mutedStart ? '&mute=1' : '';
+    const frame  = $('watch-frame');
+    frame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}`;
+    frame.addEventListener('load', () => {
+      watchSetupYT();
+      if (state.watch?.mutedStart) watchArmUnmute();
+    }, { once: true });
   }
   watchRenderQueue();
 }
 
 async function watchAdvance({ fromEnd }) {
+  if (!state.watch) return;
   const cur = state.watch.currentVideoId;
   let removed = false;
   if (fromEnd && cur && state.watch.mark) {
@@ -2836,42 +2869,30 @@ async function watchAdvance({ fromEnd }) {
     const idx = list.findIndex(v => v.video_id === cur);
     next = idx >= 0 ? list[idx + 1] : list[0];
   }
-  if (!next) { location.href = '/'; return; }
+  if (!next) { watchExit(); return; }
   watchPlay(next.video_id);
 }
 
-function watchBadgeLabel(route, folderName) {
-  if (route.mode === 'queue-test') return 'TEST';
-  if (route.mode === 'folder')     return folderName ? `📁 ${folderName}` : 'FOLDER';
-  return '';
-}
+function watchBindDom() {
+  if (watchDomBound) return;
+  watchDomBound = true;
 
-function watchInit(route) {
-  state.watch = {
-    active: true,
-    mode: route.mode,
-    currentVideoId: null,
-    list: [],
-    mark: null,
-  };
-  document.body.classList.add('route-watch');
-  $('watch-layout').classList.remove('hidden');
-
-  $('btn-watch-exit').addEventListener('click', () => { location.href = '/'; });
+  $('btn-watch-exit').addEventListener('click', () => watchExit());
   $('btn-watch-fullscreen').addEventListener('click', () => {
     $('watch-frame').requestFullscreen?.().catch(() => {});
   });
   $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
+  $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
 
   $('watch-queue-list').addEventListener('click', e => {
     const item = e.target.closest('[data-watch-play]');
     if (!item) return;
     const id = item.dataset.videoId;
-    if (id && id !== state.watch.currentVideoId) watchPlay(id);
+    if (id && id !== state.watch?.currentVideoId) watchPlay(id);
   });
 
   document.addEventListener('keydown', e => {
-    if (!state.watch.active) return;
+    if (!state.watch?.active) return;
     if (e.target.matches('input,textarea')) return;
     if (e.key === 'f') {
       $('watch-frame').requestFullscreen?.().catch(() => {});
@@ -2879,6 +2900,7 @@ function watchInit(route) {
       return;
     }
     if (e.key === 'n') { watchAdvance({ fromEnd: false }); return; }
+    if (e.key === 'N') { watchAdvance({ fromEnd: true }); return; }
     if (!watchPlayer) return;
     try {
       if (/^[0-9]$/.test(e.key)) {
@@ -2902,9 +2924,52 @@ function watchInit(route) {
   });
 }
 
-async function watchBoot(route) {
-  watchInit(route);
-  let folderName = '';
+function watchEnter(config) {
+  state.watch = {
+    active: true,
+    mode: config.mode,
+    inPage: !!config.inPage,
+    mutedStart: !!config.mutedStart,
+    list: config.list || [],
+    mark: config.mark || null,
+    currentVideoId: null,
+  };
+  document.body.classList.add('route-watch');
+  $('watch-layout').classList.remove('hidden');
+
+  if (config.badgeLabel) {
+    $('watch-mode-badge').textContent = config.badgeLabel;
+    $('watch-mode-badge').classList.remove('hidden');
+  } else {
+    $('watch-mode-badge').classList.add('hidden');
+  }
+
+  watchBindDom();
+
+  if (!state.watch.list.length) { watchExit(); return; }
+  watchRenderQueue();
+  watchPlay(state.watch.list[0].video_id);
+}
+
+function watchExit() {
+  if (!state.watch) return;
+  const inPage = state.watch.inPage;
+  state.watch = null;
+  document.body.classList.remove('route-watch');
+  $('watch-layout').classList.add('hidden');
+  $('watch-unmute').classList.add('hidden');
+  try { watchPlayer?.stopVideo?.(); } catch {}
+  if (inPage) {
+    render();
+  } else {
+    location.href = '/';
+  }
+}
+
+async function watchBootUrl(route) {
+  let list = [];
+  let mark = null;
+  let badgeLabel = '';
 
   if (route.mode === 'queue' || route.mode === 'queue-test') {
     try {
@@ -2914,36 +2979,30 @@ async function watchBoot(route) {
       location.href = '/';
       return;
     }
-    state.watch.list = shallowQueue().map(q => ({
+    list = shallowQueue().map(q => ({
       video_id: q.video_id, title: q.title,
       channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
       duration: q.duration,
     }));
-    state.watch.mark = route.mode === 'queue-test' ? null : async (id) => {
+    mark = route.mode === 'queue-test' ? null : async (id) => {
       await api.post(`/api/queue/${id}/watched`);
       state.queue = state.queue.filter(q => q.video_id !== id);
       setInQueue(id, false);
     };
+    badgeLabel = route.mode === 'queue-test' ? 'TEST' : '';
   } else if (route.mode === 'folder') {
     const raw = sessionStorage.getItem('tempWatch');
     sessionStorage.removeItem('tempWatch');
     if (!raw) { location.href = '/'; return; }
     let data;
     try { data = JSON.parse(raw); } catch { location.href = '/'; return; }
-    state.watch.list = Array.isArray(data.videos) ? data.videos : [];
-    folderName = data.folderName || '';
-    state.watch.mark = async (id) => { await api.post(`/api/videos/${id}/read`); };
+    list = Array.isArray(data.videos) ? data.videos : [];
+    badgeLabel = data.folderName ? `📁 ${data.folderName}` : '';
+    mark = async (id) => { await api.post(`/api/videos/${id}/read`); };
   }
 
-  const label = watchBadgeLabel(route, folderName);
-  if (label) {
-    $('watch-mode-badge').textContent = label;
-    $('watch-mode-badge').classList.remove('hidden');
-  }
-
-  if (!state.watch.list.length) { location.href = '/'; return; }
-  watchRenderQueue();
-  watchPlay(state.watch.list[0].video_id);
+  if (!list.length) { location.href = '/'; return; }
+  watchEnter({ mode: route.mode, inPage: false, mutedStart: true, list, mark, badgeLabel });
 }
 
 (async () => {
@@ -2952,7 +3011,7 @@ async function watchBoot(route) {
 
   const route = watchRouteFor(location.pathname);
   if (route) {
-    await watchBoot(route);
+    await watchBootUrl(route);
     return;
   }
 

@@ -176,6 +176,7 @@
         <span id="watch-title" class="watch-title"></span>
         <span id="watch-mode-badge" class="watch-mode-badge hidden">TEST</span>
         <button class="btn-icon player-btn" id="btn-watch-skip" title="Skip to next (n)">⏭</button>
+        <button class="btn-icon player-btn" id="btn-watch-skip-mark" title="Mark watched and skip (Shift+N)">✓⏭</button>
         <a id="watch-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
         <button class="btn-icon player-btn" id="btn-watch-fullscreen" title="Fullscreen (f)">⛶</button>
         <button class="btn-icon player-btn" id="btn-watch-exit" title="Exit watch mode">✕</button>
@@ -184,7 +185,7 @@
         <iframe id="watch-frame" class="watch-frame"
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowfullscreen></iframe>
-        <div id="watch-unmute" class="watch-unmute">🔇 Muted — click or press any key to unmute</div>
+        <div id="watch-unmute" class="watch-unmute hidden">🔇 Muted — click or press any key to unmute</div>
       </div>
     </div>
     <div class="watch-queue-pane">
