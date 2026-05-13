@@ -2515,6 +2515,34 @@ $('force-mobile-check').addEventListener('change', () => {
   syncMobileUI();
 });
 
+async function clearBrowserCache() {
+  const st = $('clear-cache-status');
+  st.textContent = 'Clearing…';
+  try {
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(n => caches.delete(n)));
+    }
+  } catch {}
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch {}
+  try {
+    await Promise.all([
+      fetch('/',                 { cache: 'reload' }),
+      fetch('/static/app.js',    { cache: 'reload' }),
+      fetch('/static/style.css', { cache: 'reload' }),
+    ]);
+  } catch {}
+  const u = new URL(location.href);
+  u.searchParams.set('_cb', Date.now());
+  location.replace(u.toString());
+}
+$('btn-clear-cache').addEventListener('click', clearBrowserCache);
+
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 
 const REFRESH_STEPS  = [5, 10, 15, 30, 60, 120, 240, 720, 1440];

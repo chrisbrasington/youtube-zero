@@ -1581,9 +1581,9 @@ body.mobile-ui {
   }
 }
 
-/* Mobile: revert font/thumb bumps */
-body.mobile-ui {
-  &.app { font-size: 15px; }
+/* Mobile: revert font/thumb bumps — real-viewport only, NOT for force-mobile */
+@media (max-width: 600px) {
+  body.app { font-size: 15px; }
   .logo { font-size: 17px; }
   /* ── Quota pill ──────────────────────────────────────────────────────────── */
 
