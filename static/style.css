@@ -1483,7 +1483,7 @@ body.wrap-strip .video-strip {
 
 /* ── Mobile / portrait ───────────────────────────────────────────────────── */
 
-@media (max-width: 600px) {
+body.mobile-ui {
   /* Header: two rows on mobile */
   .header {
     padding: 8px 10px;
@@ -1582,8 +1582,8 @@ body.wrap-strip .video-strip {
 }
 
 /* Mobile: revert font/thumb bumps */
-@media (max-width: 600px) {
-  body.app { font-size: 15px; }
+body.mobile-ui {
+  &.app { font-size: 15px; }
   .logo { font-size: 17px; }
   /* ── Quota pill ──────────────────────────────────────────────────────────── */
 
@@ -1785,7 +1785,7 @@ body.route-watch .watch-layout { display: flex; }
 
 .watch-layout.theater .watch-queue-pane { display: none; }
 
-@media (max-width: 900px) {
+body.narrow-ui {
   .watch-layout { flex-direction: column; }
   .watch-video-pane { flex: 0 0 auto; }
   .watch-frame-wrap {

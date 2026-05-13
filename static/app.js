@@ -85,6 +85,7 @@ const state = {
   sortMode:         'manual',
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
   wrapStrip:        (localStorage.getItem('wrapStrip') ?? '1') === '1',
+  forceMobile:      localStorage.getItem('forceMobile') === '1',
   manualExpand:     new Set(),
   folderExpand:     new Set(),
   signalConfigured: false,
@@ -1088,7 +1089,17 @@ function closeActionSheet() {
   sheetCtx = null;
 }
 
-function isMobile() { return window.innerWidth <= 600; }
+function isMobile() {
+  if (state.forceMobile) return true;
+  return window.innerWidth <= 600;
+}
+
+function syncMobileUI() {
+  const narrow = state.forceMobile || matchMedia('(max-width: 900px)').matches;
+  const mobile = state.forceMobile || matchMedia('(max-width: 600px)').matches;
+  document.body.classList.toggle('narrow-ui', narrow);
+  document.body.classList.toggle('mobile-ui', mobile);
+}
 
 function visiblePlayList() {
   // Returns ordered array of {video_id, title, channel_name, queue_id?}
@@ -2494,6 +2505,16 @@ $('wrap-strip-check').addEventListener('change', () => {
   applyWrapStrip();
 });
 
+$('force-mobile-check').checked = state.forceMobile;
+syncMobileUI();
+matchMedia('(max-width: 600px)').addEventListener('change', syncMobileUI);
+matchMedia('(max-width: 900px)').addEventListener('change', syncMobileUI);
+$('force-mobile-check').addEventListener('change', () => {
+  state.forceMobile = $('force-mobile-check').checked;
+  localStorage.setItem('forceMobile', state.forceMobile ? '1' : '0');
+  syncMobileUI();
+});
+
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 
 const REFRESH_STEPS  = [5, 10, 15, 30, 60, 120, 240, 720, 1440];
@@ -2634,7 +2655,7 @@ $('auto-refresh-slider').addEventListener('input', () => {
   }
 
   document.addEventListener('touchstart', (e) => {
-    if (window.innerWidth > 600) return;
+    if (!isMobile()) return;
     const m = pickTarget(e.target);
     if (!m || !m.vid) return;
     el = m.el; type = m.type; vid = m.vid;
