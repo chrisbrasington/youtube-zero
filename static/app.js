@@ -2270,6 +2270,12 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // Global: w → start watching queue in-page
+  if (!mod && !player.videoId && e.key === 'w') {
+    watchStartQueue();
+    return;
+  }
+
   // Global: q → toggle queue visibility
   if (!mod && !player.videoId && e.key === 'q') {
     state.queueOpen = !state.queueOpen;
