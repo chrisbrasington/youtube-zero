@@ -267,6 +267,7 @@ function renderFolder(folder) {
         <span class="folder-name">${esc(folder.name)}</span>
         <div class="folder-right">
           ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
+          ${unread > 0 ? `<button class="ch-btn watch-folder" data-action="watch-folder" data-folder-id="${fid}" title="Watch all visible videos in this folder">▶</button>` : ''}
           <button class="ch-btn refresh" data-action="refresh-folder" data-folder-id="${fid}" title="Refresh all channels">↻</button>
           <button class="ch-btn" data-action="rename-folder" data-folder-id="${fid}" title="Rename">✏</button>
           <button class="ch-btn delete" data-action="delete-folder" data-folder-id="${fid}" title="Delete folder">✕</button>
@@ -1686,6 +1687,10 @@ document.addEventListener('click', e => {
   const rfBtn = e.target.closest('[data-action="refresh-folder"]');
   if (rfBtn) { e.stopPropagation(); refreshFolder(parseInt(rfBtn.dataset.folderId, 10)); return; }
 
+  // Folder: watch all visible videos
+  const wfBtn = e.target.closest('[data-action="watch-folder"]');
+  if (wfBtn) { e.stopPropagation(); watchStartFolder(parseInt(wfBtn.dataset.folderId, 10)); return; }
+
   // Folder: rename
   const renameBtn = e.target.closest('[data-action="rename-folder"]');
   if (renameBtn) { e.stopPropagation(); renameFolder(parseInt(renameBtn.dataset.folderId, 10)); return; }
@@ -2458,6 +2463,7 @@ $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
 $('btn-clear-queue').addEventListener('click', () => clearQueue(false));
+$('btn-watch-queue').addEventListener('click', () => { location.href = '/watch'; });
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);
 $('btn-tv-connect').addEventListener('click', tvConnect);
@@ -2705,26 +2711,50 @@ function connectEventSource() {
   };
 }
 
-// ── Watch page (/watch, /watch/test) ──────────────────────────────────────────
+// ── Watch page (/watch, /watch/test, /watch/folder) ───────────────────────────
 
 let watchPlayer = null;
 
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
-  if (p === '/watch') return { active: true, test: false };
-  if (p === '/watch/test') return { active: true, test: true };
+  if (p === '/watch')        return { mode: 'queue' };
+  if (p === '/watch/test')   return { mode: 'queue-test' };
+  if (p === '/watch/folder') return { mode: 'folder' };
   return null;
+}
+
+function watchStartFolder(folderId) {
+  const folder = findFolder(folderId);
+  if (!folder) return;
+  const vids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
+  if (!vids.length) {
+    status('Folder has no videos to watch', 'err');
+    setTimeout(() => status(''), 2000);
+    return;
+  }
+  const payload = {
+    folderName: folder.name,
+    videos: vids.map(v => ({
+      video_id:      v.video_id,
+      title:         v.title,
+      channel_name:  v._channel.name,
+      thumbnail_url: v.thumbnail_url,
+      duration:      v.duration,
+    })),
+  };
+  sessionStorage.setItem('tempWatch', JSON.stringify(payload));
+  location.href = '/watch/folder';
 }
 
 function watchRenderQueue() {
   const el = $('watch-queue-list');
-  const shallow = shallowQueue();
-  $('watch-queue-count').textContent = shallow.length;
-  if (!shallow.length) {
-    el.innerHTML = '<div class="queue-empty">Queue empty</div>';
+  const list = state.watch.list || [];
+  $('watch-queue-count').textContent = list.length;
+  if (!list.length) {
+    el.innerHTML = '<div class="queue-empty">Empty</div>';
     return;
   }
-  el.innerHTML = shallow.map(it => `
+  el.innerHTML = list.map(it => `
     <div class="q-item ${it.video_id === state.watch.currentVideoId ? 'playing' : ''}"
          data-watch-play data-video-id="${escAttr(it.video_id)}">
       <div class="q-thumb-wrap">
@@ -2753,7 +2783,7 @@ function watchSetupYT() {
 
 function watchPlay(videoId) {
   state.watch.currentVideoId = videoId;
-  const item = state.queue.find(q => q.video_id === videoId);
+  const item = (state.watch.list || []).find(v => v.video_id === videoId);
   $('watch-title').textContent = item ? item.title : '';
   $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
   if (watchPlayer && watchPlayer.loadVideoById) {
@@ -2769,31 +2799,40 @@ function watchPlay(videoId) {
 
 async function watchAdvance({ fromEnd }) {
   const cur = state.watch.currentVideoId;
-  const shouldMark = fromEnd && !state.watch.test;
-  if (shouldMark && cur) {
-    try {
-      await api.post(`/api/queue/${cur}/watched`);
-      state.queue = state.queue.filter(q => q.video_id !== cur);
-      setInQueue(cur, false);
-    } catch {}
+  let removed = false;
+  if (fromEnd && cur && state.watch.mark) {
+    try { await state.watch.mark(cur); } catch {}
+    state.watch.list = (state.watch.list || []).filter(v => v.video_id !== cur);
+    removed = true;
   }
-  const shallow = shallowQueue();
+  const list = state.watch.list || [];
   let next;
-  if (shouldMark || !cur) {
-    next = shallow[0];
+  if (removed || !cur) {
+    next = list[0];
   } else {
-    const idx = shallow.findIndex(q => q.video_id === cur);
-    next = idx >= 0 ? shallow[idx + 1] : shallow[0];
+    const idx = list.findIndex(v => v.video_id === cur);
+    next = idx >= 0 ? list[idx + 1] : list[0];
   }
   if (!next) { location.href = '/'; return; }
   watchPlay(next.video_id);
 }
 
+function watchBadgeLabel(route, folderName) {
+  if (route.mode === 'queue-test') return 'TEST';
+  if (route.mode === 'folder')     return folderName ? `📁 ${folderName}` : 'FOLDER';
+  return '';
+}
+
 function watchInit(route) {
-  state.watch = { active: true, test: route.test, currentVideoId: null };
+  state.watch = {
+    active: true,
+    mode: route.mode,
+    currentVideoId: null,
+    list: [],
+    mark: null,
+  };
   document.body.classList.add('route-watch');
   $('watch-layout').classList.remove('hidden');
-  $('watch-mode-badge').classList.toggle('hidden', !route.test);
 
   $('btn-watch-exit').addEventListener('click', () => { location.href = '/'; });
   $('btn-watch-fullscreen').addEventListener('click', () => {
@@ -2822,17 +2861,46 @@ function watchInit(route) {
 
 async function watchBoot(route) {
   watchInit(route);
-  try {
-    state.queue = await api.get('/api/queue');
-  } catch (e) {
-    alert('Failed to load queue: ' + e.message);
-    location.href = '/';
-    return;
+  let folderName = '';
+
+  if (route.mode === 'queue' || route.mode === 'queue-test') {
+    try {
+      state.queue = await api.get('/api/queue');
+    } catch (e) {
+      alert('Failed to load queue: ' + e.message);
+      location.href = '/';
+      return;
+    }
+    state.watch.list = shallowQueue().map(q => ({
+      video_id: q.video_id, title: q.title,
+      channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
+      duration: q.duration,
+    }));
+    state.watch.mark = route.mode === 'queue-test' ? null : async (id) => {
+      await api.post(`/api/queue/${id}/watched`);
+      state.queue = state.queue.filter(q => q.video_id !== id);
+      setInQueue(id, false);
+    };
+  } else if (route.mode === 'folder') {
+    const raw = sessionStorage.getItem('tempWatch');
+    sessionStorage.removeItem('tempWatch');
+    if (!raw) { location.href = '/'; return; }
+    let data;
+    try { data = JSON.parse(raw); } catch { location.href = '/'; return; }
+    state.watch.list = Array.isArray(data.videos) ? data.videos : [];
+    folderName = data.folderName || '';
+    state.watch.mark = async (id) => { await api.post(`/api/videos/${id}/read`); };
   }
-  const shallow = shallowQueue();
-  if (!shallow.length) { location.href = '/'; return; }
+
+  const label = watchBadgeLabel(route, folderName);
+  if (label) {
+    $('watch-mode-badge').textContent = label;
+    $('watch-mode-badge').classList.remove('hidden');
+  }
+
+  if (!state.watch.list.length) { location.href = '/'; return; }
   watchRenderQueue();
-  watchPlay(shallow[0].video_id);
+  watchPlay(state.watch.list[0].video_id);
 }
 
 (async () => {
