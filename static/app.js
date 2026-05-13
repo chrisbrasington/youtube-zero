@@ -2861,12 +2861,54 @@ function watchSetupYT() {
           if (state.watch?.mutedStart) e.target.mute();
           e.target.playVideo();
         } catch {}
+        watchBindMediaSession();
+        watchUpdateMediaSession();
       },
       onStateChange: (e) => {
         if (e.data === YT.PlayerState.ENDED) watchAdvance({ fromEnd: true });
+        if ('mediaSession' in navigator) {
+          if (e.data === YT.PlayerState.PLAYING) navigator.mediaSession.playbackState = 'playing';
+          else if (e.data === YT.PlayerState.PAUSED) navigator.mediaSession.playbackState = 'paused';
+        }
       },
     },
   });
+}
+
+function watchPrev() {
+  if (!state.watch) return;
+  const list = state.watch.list || [];
+  const idx = list.findIndex(v => v.video_id === state.watch.currentVideoId);
+  if (idx > 0) watchPlay(list[idx - 1].video_id);
+}
+
+function watchUpdateMediaSession() {
+  if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
+  if (!state.watch) return;
+  const item = (state.watch.list || []).find(v => v.video_id === state.watch.currentVideoId);
+  if (!item) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: item.title || '',
+      artist: item.channel_name || '',
+      artwork: item.thumbnail_url ? [{ src: item.thumbnail_url, sizes: '480x360', type: 'image/jpeg' }] : [],
+    });
+  } catch {}
+}
+
+let watchMsBound = false;
+function watchBindMediaSession() {
+  if (watchMsBound) return;
+  if (!('mediaSession' in navigator)) return;
+  watchMsBound = true;
+  const ms = navigator.mediaSession;
+  const safe = (name, fn) => { try { ms.setActionHandler(name, fn); } catch {} };
+  safe('play',          () => { try { watchPlayer?.playVideo();  } catch {} });
+  safe('pause',         () => { try { watchPlayer?.pauseVideo(); } catch {} });
+  safe('nexttrack',     () => watchAdvance({ fromEnd: true }));
+  safe('previoustrack', () => watchPrev());
+  safe('seekbackward',  (d) => { try { watchPlayer?.seekTo((watchPlayer.getCurrentTime?.() || 0) - (d?.seekOffset || 10), true); } catch {} });
+  safe('seekforward',   (d) => { try { watchPlayer?.seekTo((watchPlayer.getCurrentTime?.() || 0) + (d?.seekOffset || 10), true); } catch {} });
 }
 
 function watchArmUnmute() {
@@ -2910,6 +2952,7 @@ function watchPlay(videoId) {
     }, { once: true });
   }
   watchRenderQueue();
+  watchUpdateMediaSession();
 }
 
 async function watchAdvance({ fromEnd }) {
@@ -3035,6 +3078,9 @@ function watchExit() {
   $('watch-layout').classList.add('hidden');
   $('watch-unmute').classList.add('hidden');
   try { watchPlayer?.stopVideo?.(); } catch {}
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch {}
+  }
   if (inPage) {
     render();
   } else {
