@@ -2774,6 +2774,7 @@ function watchSetupYT() {
   if (watchPlayer) return;
   watchPlayer = new YT.Player('watch-frame', {
     events: {
+      onReady: (e) => { try { e.target.playVideo(); } catch {} },
       onStateChange: (e) => {
         if (e.data === YT.PlayerState.ENDED) watchAdvance({ fromEnd: true });
       },
