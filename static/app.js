@@ -2792,6 +2792,7 @@ async function watchAdvance({ fromEnd }) {
 function watchInit(route) {
   state.watch = { active: true, test: route.test, currentVideoId: null };
   document.body.classList.add('route-watch');
+  $('watch-layout').classList.remove('hidden');
   $('watch-mode-badge').classList.toggle('hidden', !route.test);
 
   $('btn-watch-exit').addEventListener('click', () => { location.href = '/'; });
@@ -2815,8 +2816,6 @@ function watchInit(route) {
       e.preventDefault();
     } else if (e.key === 'n') {
       watchAdvance({ fromEnd: false });
-    } else if (e.key === 'Escape' && !document.fullscreenElement) {
-      location.href = '/';
     }
   });
 }
