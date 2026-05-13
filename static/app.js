@@ -2807,7 +2807,12 @@ function watchSetupYT() {
   if (watchPlayer) return;
   watchPlayer = new YT.Player('watch-frame', {
     events: {
-      onReady: (e) => { try { e.target.playVideo(); } catch {} },
+      onReady: (e) => {
+        try {
+          if (state.watch?.mutedStart) e.target.mute();
+          e.target.playVideo();
+        } catch {}
+      },
       onStateChange: (e) => {
         if (e.data === YT.PlayerState.ENDED) watchAdvance({ fromEnd: true });
       },
@@ -2879,6 +2884,17 @@ async function watchAdvance({ fromEnd }) {
   watchPlay(next.video_id);
 }
 
+function watchTeardownOnUnload() {
+  const stop = () => {
+    try { watchPlayer?.stopVideo?.(); } catch {}
+    const f = document.getElementById('watch-frame');
+    if (f) f.src = '';
+  };
+  window.addEventListener('pagehide', stop);
+  window.addEventListener('beforeunload', stop);
+}
+watchTeardownOnUnload();
+
 function watchBindDom() {
   if (watchDomBound) return;
   watchDomBound = true;
@@ -2907,6 +2923,7 @@ function watchBindDom() {
     }
     if (e.key === 'n') { watchAdvance({ fromEnd: false }); return; }
     if (e.key === 'N') { watchAdvance({ fromEnd: true }); return; }
+    if (e.key === 'w') { watchExit(); return; }
     if (!watchPlayer) return;
     try {
       if (/^[0-9]$/.test(e.key)) {
