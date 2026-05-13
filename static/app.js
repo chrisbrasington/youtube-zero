@@ -2179,6 +2179,7 @@ function setupYTPlayer() {
 }
 
 document.addEventListener('keydown', e => {
+  if (state.watch?.active) return;
   if (e.target.matches('input,textarea')) return;
   const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
 
@@ -2704,9 +2705,147 @@ function connectEventSource() {
   };
 }
 
+// ── Watch page (/watch, /watch/test) ──────────────────────────────────────────
+
+let watchPlayer = null;
+
+function watchRouteFor(path) {
+  const p = path.replace(/\/+$/, '') || '/';
+  if (p === '/watch') return { active: true, test: false };
+  if (p === '/watch/test') return { active: true, test: true };
+  return null;
+}
+
+function watchRenderQueue() {
+  const el = $('watch-queue-list');
+  const shallow = shallowQueue();
+  $('watch-queue-count').textContent = shallow.length;
+  if (!shallow.length) {
+    el.innerHTML = '<div class="queue-empty">Queue empty</div>';
+    return;
+  }
+  el.innerHTML = shallow.map(it => `
+    <div class="q-item ${it.video_id === state.watch.currentVideoId ? 'playing' : ''}"
+         data-watch-play data-video-id="${escAttr(it.video_id)}">
+      <div class="q-thumb-wrap">
+        <img class="q-thumb" src="${escAttr(it.thumbnail_url)}" alt=""
+             onerror="this.src='data:image/svg+xml,<svg/>'">
+        ${it.duration ? `<span class="q-dur">${esc(it.duration)}</span>` : ''}
+      </div>
+      <div class="q-info">
+        <div class="q-title">${esc(it.title)}</div>
+        <div class="q-channel">${esc(it.channel_name)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function watchSetupYT() {
+  if (!window.YT || !window.YT.Player) { setTimeout(watchSetupYT, 200); return; }
+  if (watchPlayer) return;
+  watchPlayer = new YT.Player('watch-frame', {
+    events: {
+      onStateChange: (e) => {
+        if (e.data === YT.PlayerState.ENDED) watchAdvance({ fromEnd: true });
+      },
+    },
+  });
+}
+
+function watchPlay(videoId) {
+  state.watch.currentVideoId = videoId;
+  const item = state.queue.find(q => q.video_id === videoId);
+  $('watch-title').textContent = item ? item.title : '';
+  $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
+  if (watchPlayer && watchPlayer.loadVideoById) {
+    watchPlayer.loadVideoById(videoId);
+  } else {
+    const origin = encodeURIComponent(location.origin);
+    const frame = $('watch-frame');
+    frame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&enablejsapi=1&origin=${origin}`;
+    frame.addEventListener('load', () => watchSetupYT(), { once: true });
+  }
+  watchRenderQueue();
+}
+
+async function watchAdvance({ fromEnd }) {
+  const cur = state.watch.currentVideoId;
+  const shouldMark = fromEnd && !state.watch.test;
+  if (shouldMark && cur) {
+    try {
+      await api.post(`/api/queue/${cur}/watched`);
+      state.queue = state.queue.filter(q => q.video_id !== cur);
+      setInQueue(cur, false);
+    } catch {}
+  }
+  const shallow = shallowQueue();
+  let next;
+  if (shouldMark || !cur) {
+    next = shallow[0];
+  } else {
+    const idx = shallow.findIndex(q => q.video_id === cur);
+    next = idx >= 0 ? shallow[idx + 1] : shallow[0];
+  }
+  if (!next) { location.href = '/'; return; }
+  watchPlay(next.video_id);
+}
+
+function watchInit(route) {
+  state.watch = { active: true, test: route.test, currentVideoId: null };
+  document.body.classList.add('route-watch');
+  $('watch-mode-badge').classList.toggle('hidden', !route.test);
+
+  $('btn-watch-exit').addEventListener('click', () => { location.href = '/'; });
+  $('btn-watch-fullscreen').addEventListener('click', () => {
+    $('watch-frame').requestFullscreen?.().catch(() => {});
+  });
+  $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
+
+  $('watch-queue-list').addEventListener('click', e => {
+    const item = e.target.closest('[data-watch-play]');
+    if (!item) return;
+    const id = item.dataset.videoId;
+    if (id && id !== state.watch.currentVideoId) watchPlay(id);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (!state.watch.active) return;
+    if (e.target.matches('input,textarea')) return;
+    if (e.key === 'f') {
+      $('watch-frame').requestFullscreen?.().catch(() => {});
+      e.preventDefault();
+    } else if (e.key === 'n') {
+      watchAdvance({ fromEnd: false });
+    } else if (e.key === 'Escape' && !document.fullscreenElement) {
+      location.href = '/';
+    }
+  });
+}
+
+async function watchBoot(route) {
+  watchInit(route);
+  try {
+    state.queue = await api.get('/api/queue');
+  } catch (e) {
+    alert('Failed to load queue: ' + e.message);
+    location.href = '/';
+    return;
+  }
+  const shallow = shallowQueue();
+  if (!shallow.length) { location.href = '/'; return; }
+  watchRenderQueue();
+  watchPlay(shallow[0].video_id);
+}
+
 (async () => {
   loadAutoRefreshPrefs();
   syncAutoRefresh();
+
+  const route = watchRouteFor(location.pathname);
+  if (route) {
+    await watchBoot(route);
+    return;
+  }
+
   updateQuota();
   if (state.queueOpen) $('queue-pane').classList.remove('hidden');
   await loadAll();            // build UI with state from localStorage

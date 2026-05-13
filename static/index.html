@@ -168,6 +168,30 @@
     <div id="icon-grid" class="icon-grid"></div>
   </div>
 
+  <!-- Watch page layout (/watch, /watch/test) -->
+  <div id="watch-layout" class="watch-layout hidden">
+    <div class="watch-video-pane">
+      <div class="watch-header">
+        <span id="watch-title" class="watch-title"></span>
+        <span id="watch-mode-badge" class="watch-mode-badge hidden">TEST</span>
+        <button class="btn-icon player-btn" id="btn-watch-skip" title="Skip to next (n)">⏭</button>
+        <a id="watch-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
+        <button class="btn-icon player-btn" id="btn-watch-fullscreen" title="Fullscreen (f)">⛶</button>
+        <button class="btn-icon player-btn" id="btn-watch-exit" title="Exit watch mode">✕</button>
+      </div>
+      <iframe id="watch-frame" class="watch-frame"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowfullscreen></iframe>
+    </div>
+    <div class="watch-queue-pane">
+      <div class="queue-header">
+        <span class="queue-title">Up Next</span>
+        <span id="watch-queue-count" class="queue-badge">0</span>
+      </div>
+      <div id="watch-queue-list" class="queue-list"></div>
+    </div>
+  </div>
+
   <!-- Player overlay -->
   <div id="player-overlay" class="player-overlay hidden" data-action="close-player-backdrop">
     <div id="player-box" class="player-box" onclick="event.stopPropagation()">
