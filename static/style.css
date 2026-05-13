@@ -1785,11 +1785,24 @@ body.route-watch .watch-layout { display: flex; }
 
 @media (max-width: 900px) {
   .watch-layout { flex-direction: column; }
+  .watch-video-pane { flex: 0 0 auto; }
+  .watch-frame-wrap {
+    flex: 0 0 auto;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    min-height: 0;
+  }
+  .watch-frame {
+    width: 100%;
+    height: 100%;
+  }
   .watch-queue-pane {
+    flex: 1;
+    min-height: 0;
     width: 100%;
     min-width: 0;
     border-left: none;
     border-top: 1px solid var(--border);
-    max-height: 40vh;
+    max-height: unset;
   }
 }
