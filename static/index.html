@@ -180,9 +180,12 @@
         <button class="btn-icon player-btn" id="btn-watch-fullscreen" title="Fullscreen (f)">⛶</button>
         <button class="btn-icon player-btn" id="btn-watch-exit" title="Exit watch mode">✕</button>
       </div>
-      <iframe id="watch-frame" class="watch-frame"
-              allow="autoplay; fullscreen; picture-in-picture"
-              allowfullscreen></iframe>
+      <div class="watch-frame-wrap">
+        <iframe id="watch-frame" class="watch-frame"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowfullscreen></iframe>
+        <div id="watch-unmute" class="watch-unmute">🔇 Muted — click or press any key to unmute</div>
+      </div>
     </div>
     <div class="watch-queue-pane">
       <div class="queue-header">
