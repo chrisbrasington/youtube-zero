@@ -2924,6 +2924,10 @@ function watchBindDom() {
     if (e.key === 'n') { watchAdvance({ fromEnd: false }); return; }
     if (e.key === 'N') { watchAdvance({ fromEnd: true }); return; }
     if (e.key === 'w') { watchExit(); return; }
+    if (e.key === 't' || e.key === 'T') {
+      $('watch-layout').classList.toggle('theater');
+      return;
+    }
     if (!watchPlayer) return;
     try {
       if (/^[0-9]$/.test(e.key)) {

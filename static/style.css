@@ -1783,6 +1783,8 @@ body.route-watch .header { display: none; }
 
 body.route-watch .watch-layout { display: flex; }
 
+.watch-layout.theater .watch-queue-pane { display: none; }
+
 @media (max-width: 900px) {
   .watch-layout { flex-direction: column; }
   .watch-video-pane { flex: 0 0 auto; }
