@@ -3074,8 +3074,10 @@ function watchExit() {
   if (!state.watch) return;
   const inPage = state.watch.inPage;
   state.watch = null;
+  if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
   document.body.classList.remove('route-watch');
   $('watch-layout').classList.add('hidden');
+  $('watch-layout').classList.remove('theater');
   $('watch-unmute').classList.add('hidden');
   try { watchPlayer?.stopVideo?.(); } catch {}
   if ('mediaSession' in navigator) {
