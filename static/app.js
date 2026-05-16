@@ -2998,6 +2998,19 @@ function watchBindDom() {
   $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
 
+  const landscapeMq = matchMedia('(orientation: landscape)');
+  const onOrientation = () => {
+    if (!state.watch?.active || !isMobile()) return;
+    const frame = $('watch-frame');
+    if (!frame) return;
+    if (landscapeMq.matches) {
+      if (!document.fullscreenElement) frame.requestFullscreen?.().catch(() => {});
+    } else {
+      if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
+    }
+  };
+  landscapeMq.addEventListener?.('change', onOrientation);
+
   $('watch-queue-list').addEventListener('click', e => {
     const item = e.target.closest('[data-watch-play]');
     if (!item) return;
