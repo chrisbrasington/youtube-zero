@@ -1196,6 +1196,13 @@ function openPlayer(videoId, title, queueVideoId = null) {
       channel_name: meta.channel_name || '',
       thumbnail_url: meta.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
     }],
+    mark: async (id) => {
+      try { await api.post(`/api/videos/${id}/read`); } catch {}
+      for (const ch of allChannels()) {
+        const v = (ch.videos || []).find(x => x.video_id === id);
+        if (v) v.is_read = true;
+      }
+    },
   });
 }
 
