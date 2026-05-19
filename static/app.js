@@ -3104,38 +3104,15 @@ function watchBindDom() {
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
 
   const landscapeMq = matchMedia('(orientation: landscape)');
-  const onOrientation = async () => {
+  const onOrientation = () => {
     if (!state.watch?.active || !isMobile()) return;
     if (landscapeMq.matches) {
-      if (document.fullscreenElement) return;
-      try {
-        await watchRequestFullscreen();
-        state.watch.pendingFs = false;
-      } catch {
-        state.watch.pendingFs = true;
-      }
-      if (!document.fullscreenElement) state.watch.pendingFs = true;
+      if (!document.fullscreenElement) watchRequestFullscreen();
     } else {
-      state.watch.pendingFs = false;
       if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
     }
   };
   landscapeMq.addEventListener?.('change', onOrientation);
-
-  document.addEventListener('fullscreenchange', () => {
-    if (!state.watch?.active) return;
-    if (!document.fullscreenElement) state.watch.pendingFs = false;
-  });
-
-  const armedTap = (e) => {
-    if (!state.watch?.active || !state.watch.pendingFs) return;
-    if (!isMobile() || !landscapeMq.matches) return;
-    if (document.fullscreenElement) { state.watch.pendingFs = false; return; }
-    if (e.target.closest('button, a, [data-action], input, textarea')) return;
-    state.watch.pendingFs = false;
-    watchRequestFullscreen();
-  };
-  document.addEventListener('pointerdown', armedTap, true);
 
   $('watch-queue-list').addEventListener('click', e => {
     const item = e.target.closest('[data-watch-play]');
