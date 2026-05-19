@@ -1187,9 +1187,15 @@ function openPlayer(videoId, title, queueVideoId = null) {
     });
     return;
   }
+  const meta = videoMeta.get(videoId) || {};
   watchEnter({
     mode: 'single', inPage: true, mutedStart: false, singleShot: true,
-    list: [{ video_id: videoId, title, channel_name: '' }],
+    list: [{
+      video_id: videoId,
+      title: title || meta.title || '',
+      channel_name: meta.channel_name || '',
+      thumbnail_url: meta.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+    }],
   });
 }
 
@@ -2770,10 +2776,6 @@ $('auto-refresh-slider').addEventListener('input', () => {
         return v ? { el: row, type: 'video', vid: v.dataset.videoId } : null;
       }
     }
-    if (target.closest('.q-thumb')) {
-      const qi = target.closest('.q-item');
-      if (qi) return { el: qi, type: 'queue', vid: qi.dataset.videoId };
-    }
     return null;
   }
 
@@ -2811,7 +2813,6 @@ $('auto-refresh-slider').addEventListener('input', () => {
       el.style.transform = 'translateX(110%)';
       el.style.opacity = '0';
       if (type === 'video') toggleVideoRead(vid, false);
-      else if (type === 'queue') removeFromQueue(vid);
     } else {
       el.style.transition = 'transform .15s, opacity .15s';
       el.style.transform = '';
@@ -3103,21 +3104,44 @@ function watchBindDom() {
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
 
   const landscapeMq = matchMedia('(orientation: landscape)');
-  const onOrientation = () => {
+  const onOrientation = async () => {
     if (!state.watch?.active || !isMobile()) return;
     if (landscapeMq.matches) {
-      if (!document.fullscreenElement) watchRequestFullscreen();
+      if (document.fullscreenElement) return;
+      try {
+        await watchRequestFullscreen();
+        state.watch.pendingFs = false;
+      } catch {
+        state.watch.pendingFs = true;
+      }
+      if (!document.fullscreenElement) state.watch.pendingFs = true;
     } else {
+      state.watch.pendingFs = false;
       if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
     }
   };
   landscapeMq.addEventListener?.('change', onOrientation);
 
+  const armedTap = (e) => {
+    if (!state.watch?.active || !state.watch.pendingFs) return;
+    if (!isMobile() || !landscapeMq.matches) return;
+    if (document.fullscreenElement) { state.watch.pendingFs = false; return; }
+    if (e.target.closest('button, a, [data-action], input, textarea')) return;
+    state.watch.pendingFs = false;
+    watchRequestFullscreen();
+  };
+  document.addEventListener('pointerdown', armedTap, true);
+
   $('watch-queue-list').addEventListener('click', e => {
     const item = e.target.closest('[data-watch-play]');
     if (!item) return;
     const id = item.dataset.videoId;
-    if (id && id !== state.watch?.currentVideoId) watchPlay(id);
+    if (!id) return;
+    if (id === state.watch?.currentVideoId) {
+      if (!document.fullscreenElement) watchRequestFullscreen();
+      return;
+    }
+    watchPlay(id);
   });
 
   document.addEventListener('keydown', e => {
