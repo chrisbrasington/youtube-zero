@@ -1104,6 +1104,8 @@ function syncMobileUI() {
   document.body.classList.toggle('mobile-ui', mobile);
 }
 
+function uiPlayerActive() { return !!(player.videoId || state.watch?.active); }
+
 function visiblePlayList() {
   // Returns ordered array of {video_id, title, channel_name, queue_id?}
   // Deep queue items are intentionally excluded — they're parked, not playable.
@@ -1167,10 +1169,28 @@ function playNext(direction = 1) {
 }
 
 function openPlayer(videoId, title, queueVideoId = null) {
-  player.videoId      = videoId;
-  player.title        = title;
-  player.queueVideoId = queueVideoId;
-  renderPlayer();
+  const shallow = shallowQueue();
+  if (queueVideoId && shallow.some(q => q.video_id === queueVideoId)) {
+    watchEnter({
+      mode: 'queue', inPage: true, mutedStart: false,
+      list: shallow.map(q => ({
+        video_id: q.video_id, title: q.title,
+        channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
+        duration: q.duration,
+      })),
+      startId: queueVideoId,
+      mark: async (id) => {
+        await api.post(`/api/queue/${id}/watched`);
+        state.queue = state.queue.filter(q => q.video_id !== id);
+        setInQueue(id, false);
+      },
+    });
+    return;
+  }
+  watchEnter({
+    mode: 'single', inPage: true, mutedStart: false, singleShot: true,
+    list: [{ video_id: videoId, title, channel_name: '' }],
+  });
 }
 
 function closePlayer() {
@@ -1949,6 +1969,80 @@ function anyCard(el) {
 }
 
 let queueDragSrcId = null;
+let touchDrag = null;
+
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch') return;
+  const qItem = e.target.closest('.q-item[draggable]');
+  if (!qItem) return;
+  if (e.target.closest('button, a, [data-action]')) return;
+  const startX = e.clientX, startY = e.clientY;
+  touchDrag = {
+    srcId: qItem.dataset.videoId,
+    srcEl: qItem,
+    pointerId: e.pointerId,
+    active: false,
+    target: null,
+    deep: null,
+    timer: setTimeout(() => {
+      if (!touchDrag) return;
+      touchDrag.active = true;
+      queueDragSrcId = touchDrag.srcId;
+      qItem.classList.add('dragging');
+      try { qItem.setPointerCapture?.(touchDrag.pointerId); } catch {}
+    }, 350),
+    startX, startY,
+  };
+});
+
+document.addEventListener('pointermove', e => {
+  if (!touchDrag || e.pointerId !== touchDrag.pointerId) return;
+  if (!touchDrag.active) {
+    if (Math.hypot(e.clientX - touchDrag.startX, e.clientY - touchDrag.startY) > 10) {
+      clearTimeout(touchDrag.timer);
+      touchDrag = null;
+    }
+    return;
+  }
+  e.preventDefault();
+  document.querySelectorAll('.q-item, .deep-section').forEach(q =>
+    q.classList.remove('drag-over', 'drag-into')
+  );
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (!el) { touchDrag.target = null; touchDrag.deep = null; return; }
+  const target = el.closest('.q-item');
+  if (target && target.dataset.videoId !== touchDrag.srcId) {
+    target.classList.add('drag-over');
+    touchDrag.target = target;
+    touchDrag.deep = null;
+    return;
+  }
+  const deepHdr = el.closest('.deep-section');
+  const src = state.queue.find(q => q.video_id === touchDrag.srcId);
+  if (deepHdr && src && !src.is_deep) {
+    deepHdr.classList.add('drag-into');
+    touchDrag.target = null;
+    touchDrag.deep = deepHdr;
+    return;
+  }
+  touchDrag.target = null;
+  touchDrag.deep = null;
+}, { passive: false });
+
+function endTouchDrag(commit) {
+  if (!touchDrag) return;
+  clearTimeout(touchDrag.timer);
+  if (touchDrag.active && commit) {
+    commitQueueDrop(touchDrag.srcId, touchDrag.target, touchDrag.deep);
+  }
+  document.querySelectorAll('.q-item, .deep-section').forEach(q =>
+    q.classList.remove('drag-over', 'drag-into', 'dragging')
+  );
+  queueDragSrcId = null;
+  touchDrag = null;
+}
+document.addEventListener('pointerup',     e => { if (touchDrag && e.pointerId === touchDrag.pointerId) endTouchDrag(true);  });
+document.addEventListener('pointercancel', e => { if (touchDrag && e.pointerId === touchDrag.pointerId) endTouchDrag(false); });
 
 document.addEventListener('dragstart', e => {
   // Queue item drag
@@ -2051,52 +2145,49 @@ document.addEventListener('dragover', e => {
   }
 });
 
+function commitQueueDrop(srcId, target, deepHdr) {
+  const src = state.queue.find(q => q.video_id === srcId);
+  if (!src) return;
+
+  if (deepHdr && !target && !src.is_deep) {
+    setQueueDeep(srcId, true);
+    return;
+  }
+
+  if (!target || target.dataset.videoId === srcId) return;
+
+  const targetGroup = target.dataset.group;
+  const srcGroup    = src.is_deep ? 'deep' : 'shallow';
+
+  if (targetGroup !== srcGroup) {
+    src.is_deep = targetGroup === 'deep' ? 1 : 0;
+  }
+
+  const si = state.queue.findIndex(q => q.video_id === srcId);
+  const di = state.queue.findIndex(q => q.video_id === target.dataset.videoId);
+  if (si === -1 || di === -1) return;
+  const [m] = state.queue.splice(si, 1);
+  state.queue.splice(di, 0, m);
+  state.queue.forEach((q, i) => { q.sort_order = i; });
+  renderQueue();
+  renderQueueBadge();
+
+  if (targetGroup !== srcGroup) {
+    api.post(`/api/queue/${srcId}/deep`, { is_deep: targetGroup === 'deep' })
+      .then(() => api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }))
+      .catch(() => {});
+  } else {
+    api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }).catch(() => {});
+  }
+}
+
 document.addEventListener('drop', e => {
-  // Queue reorder / cross-group move
   if (queueDragSrcId) {
     const srcId = queueDragSrcId;
-    const src   = state.queue.find(q => q.video_id === srcId);
-    if (!src) return;
-
-    // Drop on deep section header (collapsed) → move into deep
     const deepHdr = e.target.closest('.deep-section');
     const target  = e.target.closest('.q-item');
-
-    if (deepHdr && !target && !src.is_deep) {
-      e.preventDefault();
-      setQueueDeep(srcId, true);
-      return;
-    }
-
-    if (!target || target.dataset.videoId === srcId) return;
-    e.preventDefault();
-
-    const targetGroup = target.dataset.group;       // 'shallow' | 'deep'
-    const srcGroup    = src.is_deep ? 'deep' : 'shallow';
-
-    if (targetGroup !== srcGroup) {
-      // Cross-group: flip is_deep, then reorder within target group
-      src.is_deep = targetGroup === 'deep' ? 1 : 0;
-    }
-
-    // Reorder within state.queue
-    const si = state.queue.findIndex(q => q.video_id === srcId);
-    const di = state.queue.findIndex(q => q.video_id === target.dataset.videoId);
-    if (si === -1 || di === -1) return;
-    const [m] = state.queue.splice(si, 1);
-    state.queue.splice(di, 0, m);
-    state.queue.forEach((q, i) => { q.sort_order = i; });
-    renderQueue();
-    renderQueueBadge();
-
-    if (targetGroup !== srcGroup) {
-      // Persist is_deep change first, then reorder so per-group sort_orders stick
-      api.post(`/api/queue/${srcId}/deep`, { is_deep: targetGroup === 'deep' })
-        .then(() => api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }))
-        .catch(() => {});
-    } else {
-      api.post('/api/queue/reorder', { ids: state.queue.map(q => q.video_id) }).catch(() => {});
-    }
+    if (target || deepHdr) e.preventDefault();
+    commitQueueDrop(srcId, target, deepHdr);
     return;
   }
 
@@ -2203,13 +2294,13 @@ document.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
 
   // Global: random play
-  if (!mod && !player.videoId && e.key === 'r') {
+  if (!mod && !uiPlayerActive() && e.key === 'r') {
     randomPlay();
     return;
   }
 
   // Global: Shift+R → random across queue + visible feed
-  if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'R') {
+  if (!uiPlayerActive() && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'R') {
     const queueItems = state.queue.map(q => ({
       video_id: q.video_id, title: q.title, queue_id: q.video_id, source: 'queue',
     }));
@@ -2257,7 +2348,7 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: Escape closes queue when no player open
-  if (!mod && !player.videoId && e.key === 'Escape' && state.queueOpen) {
+  if (!mod && !uiPlayerActive() && e.key === 'Escape' && state.queueOpen) {
     state.queueOpen = false;
     localStorage.setItem('queueOpen', '0');
     $('queue-pane').classList.add('hidden');
@@ -2266,7 +2357,7 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: shift+Q → open queue + play first shallow item
-  if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Q') {
+  if (!uiPlayerActive() && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Q') {
     const shallow = shallowQueue();
     if (!shallow.length) {
       status('Queue empty', 'err');
@@ -2285,13 +2376,13 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: w → start watching queue in-page
-  if (!mod && !player.videoId && e.key === 'w') {
+  if (!mod && !uiPlayerActive() && e.key === 'w') {
     watchStartQueue();
     return;
   }
 
   // Global: q → toggle queue visibility
-  if (!mod && !player.videoId && e.key === 'q') {
+  if (!mod && !uiPlayerActive() && e.key === 'q') {
     state.queueOpen = !state.queueOpen;
     localStorage.setItem('queueOpen', state.queueOpen ? '1' : '0');
     $('queue-pane').classList.toggle('hidden', !state.queueOpen);
@@ -2300,7 +2391,7 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: Shift+1..9 → play Nth shallow queue item
-  if (!player.videoId && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
+  if (!uiPlayerActive() && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
     const n = parseInt(e.code.slice(5), 10);
     const shallow = shallowQueue();
     if (!shallow.length) {
@@ -2325,7 +2416,7 @@ document.addEventListener('keydown', e => {
   }
 
   // Global: 1-9 → first video of Nth row
-  if (!mod && !player.videoId && /^[1-9]$/.test(e.key)) {
+  if (!mod && !uiPlayerActive() && /^[1-9]$/.test(e.key)) {
     const n = parseInt(e.key, 10);
     const rows = topLevelItems();
     function firstVideo(it) {
@@ -2962,22 +3053,22 @@ function watchPlay(videoId) {
 async function watchAdvance({ fromEnd }) {
   if (!state.watch) return;
   const cur = state.watch.currentVideoId;
+  const list0 = state.watch.list || [];
+  const curIdx = cur ? list0.findIndex(v => v.video_id === cur) : -1;
   let removed = false;
   if (fromEnd && cur && state.watch.mark) {
     try { await state.watch.mark(cur); } catch {}
-    state.watch.list = (state.watch.list || []).filter(v => v.video_id !== cur);
+    state.watch.list = list0.filter(v => v.video_id !== cur);
     removed = true;
   }
   const list = state.watch.list || [];
-  let next;
-  if (removed || !cur) {
-    next = list[0];
-  } else {
-    const idx = list.findIndex(v => v.video_id === cur);
-    next = idx >= 0 ? list[idx + 1] : list[0];
-  }
-  if (!next) { watchExit(); return; }
-  watchPlay(next.video_id);
+  if (!list.length) { watchExit(); return; }
+  if (state.watch.singleShot && fromEnd) { watchExit(); return; }
+  let nextIdx;
+  if (curIdx < 0) nextIdx = 0;
+  else if (removed) nextIdx = curIdx < list.length ? curIdx : 0;
+  else nextIdx = (curIdx + 1) % list.length;
+  watchPlay(list[nextIdx].video_id);
 }
 
 function watchTeardownOnUnload() {
@@ -3073,6 +3164,7 @@ function watchEnter(config) {
     mode: config.mode,
     inPage: !!config.inPage,
     mutedStart: !!config.mutedStart,
+    singleShot: !!config.singleShot,
     list: config.list || [],
     mark: config.mark || null,
     currentVideoId: null,
@@ -3091,7 +3183,10 @@ function watchEnter(config) {
 
   if (!state.watch.list.length) { watchExit(); return; }
   watchRenderQueue();
-  watchPlay(state.watch.list[0].video_id);
+  const startId = config.startId && state.watch.list.find(v => v.video_id === config.startId)
+    ? config.startId
+    : state.watch.list[0].video_id;
+  watchPlay(startId);
 }
 
 function watchExit() {

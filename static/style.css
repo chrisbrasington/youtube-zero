@@ -930,7 +930,7 @@ input::placeholder { color: var(--dim); }
 .q-icon-btn.q-tv:hover      { color: #a78bfa; border-color: #a78bfa; background: transparent; }
 .q-icon-btn.q-deep-toggle:hover { color: #f59e0b; border-color: #f59e0b; background: transparent; }
 
-.q-item.dragging  { opacity: .4; }
+.q-item.dragging  { opacity: .4; touch-action: none; }
 .q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
 
 /* ── Deep queue section ──────────────────────────────────────────────────── */
