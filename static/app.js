@@ -3122,6 +3122,11 @@ function watchBindDom() {
   };
   landscapeMq.addEventListener?.('change', onOrientation);
 
+  document.addEventListener('fullscreenchange', () => {
+    if (!state.watch?.active) return;
+    if (!document.fullscreenElement) state.watch.pendingFs = false;
+  });
+
   const armedTap = (e) => {
     if (!state.watch?.active || !state.watch.pendingFs) return;
     if (!isMobile() || !landscapeMq.matches) return;
