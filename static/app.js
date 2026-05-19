@@ -1095,7 +1095,10 @@ function isMobile() {
 }
 
 function syncMobileUI() {
-  const narrow = state.forceMobile || matchMedia('(max-width: 900px)').matches;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const landscape = matchMedia('(orientation: landscape)').matches;
+  const isShort = state.forceMobile || matchMedia('(max-width: 900px)').matches;
+  const narrow = isShort && !(coarse && landscape && !state.forceMobile);
   const mobile = state.forceMobile || matchMedia('(max-width: 600px)').matches;
   document.body.classList.toggle('narrow-ui', narrow);
   document.body.classList.toggle('mobile-ui', mobile);
@@ -2509,6 +2512,7 @@ $('force-mobile-check').checked = state.forceMobile;
 syncMobileUI();
 matchMedia('(max-width: 600px)').addEventListener('change', syncMobileUI);
 matchMedia('(max-width: 900px)').addEventListener('change', syncMobileUI);
+matchMedia('(orientation: landscape)').addEventListener('change', syncMobileUI);
 $('force-mobile-check').addEventListener('change', () => {
   state.forceMobile = $('force-mobile-check').checked;
   localStorage.setItem('forceMobile', state.forceMobile ? '1' : '0');
@@ -2987,13 +2991,22 @@ function watchTeardownOnUnload() {
 }
 watchTeardownOnUnload();
 
+async function watchRequestFullscreen() {
+  const frame = $('watch-frame');
+  const wrap = frame?.parentElement;
+  for (const el of [wrap, frame]) {
+    if (!el?.requestFullscreen) continue;
+    try { await el.requestFullscreen(); return; } catch {}
+  }
+}
+
 function watchBindDom() {
   if (watchDomBound) return;
   watchDomBound = true;
 
   $('btn-watch-exit').addEventListener('click', () => watchExit());
   $('btn-watch-fullscreen').addEventListener('click', () => {
-    $('watch-frame').requestFullscreen?.().catch(() => {});
+    watchRequestFullscreen();
   });
   $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
@@ -3001,10 +3014,8 @@ function watchBindDom() {
   const landscapeMq = matchMedia('(orientation: landscape)');
   const onOrientation = () => {
     if (!state.watch?.active || !isMobile()) return;
-    const frame = $('watch-frame');
-    if (!frame) return;
     if (landscapeMq.matches) {
-      if (!document.fullscreenElement) frame.requestFullscreen?.().catch(() => {});
+      if (!document.fullscreenElement) watchRequestFullscreen();
     } else {
       if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
     }
