@@ -3,14 +3,6 @@ services:
     build: .
     ports:
       - "8000:8000"
-    labels:
-      homepage.group: Apps
-      homepage.name: YouTube Zero
-      homepage.icon: youtube
-      homepage.href: http://__host__:8000
-      homepage.description: Notify Signal on new YouTube videos
-      homepage.server: my-docker
-      homepage.container: youtube-zero-youtube-zero-1
     volumes:
       - ./data:/data:Z  # database persisted to ./data/youtube_zero.db on the host
     environment:
@@ -29,13 +21,6 @@ services:
     volumes:
       - ./adb-data:/root/.android:Z  # persists ADB keys + accepted-device list
     restart: unless-stopped
-    labels:
-      homepage.group: Apps
-      homepage.name: ADB API
-      homepage.icon: mdi-android
-      homepage.description: ADB shim for YouTube Zero
-      homepage.server: my-docker
-      homepage.container: youtube-zero-adb-api-1
 
   signal-api:
     image: bbernhard/signal-cli-rest-api:latest
@@ -44,10 +29,3 @@ services:
     volumes:
       - ./signal-data:/home/.local/share/signal-cli:z
     restart: unless-stopped
-    labels:
-      homepage.group: Apps
-      homepage.name: Signal API
-      homepage.icon: signal
-      homepage.description: Signal REST gateway
-      homepage.server: my-docker
-      homepage.container: youtube-zero-signal-api-1

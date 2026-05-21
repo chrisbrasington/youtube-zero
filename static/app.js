@@ -2873,27 +2873,6 @@ function connectEventSource() {
 
 let watchPlayer = null;
 let watchDomBound = false;
-let watchSilentAudio = null;
-
-// Silent looping WAV so parent claims OS-level mediaSession ownership
-// (otherwise the YT iframe captures bluetooth media keys).
-function watchStartSilentAudio() {
-  if (watchSilentAudio) return;
-  try {
-    const a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
-    a.loop = true;
-    a.volume = 0.0001;
-    const p = a.play();
-    if (p && p.catch) p.catch(() => {});
-    watchSilentAudio = a;
-  } catch {}
-}
-
-function watchStopSilentAudio() {
-  if (!watchSilentAudio) return;
-  try { watchSilentAudio.pause(); } catch {}
-  watchSilentAudio = null;
-}
 
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
@@ -3214,8 +3193,6 @@ function watchEnter(config) {
   }
 
   watchBindDom();
-  watchStartSilentAudio();
-  watchBindMediaSession();
 
   if (!state.watch.list.length) { watchExit(); return; }
   watchRenderQueue();
@@ -3235,7 +3212,6 @@ function watchExit() {
   $('watch-layout').classList.remove('theater');
   $('watch-unmute').classList.add('hidden');
   try { watchPlayer?.stopVideo?.(); } catch {}
-  watchStopSilentAudio();
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch {}
   }
