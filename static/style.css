@@ -1368,6 +1368,15 @@ body.wrap-strip .video-strip {
   flex-direction: column;
   gap: 8px;
 }
+.action-sheet-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--bg3);
+  display: block;
+  margin-bottom: 4px;
+}
 .action-sheet-title {
   font-size: 14px;
   color: var(--muted);

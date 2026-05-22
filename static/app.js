@@ -1070,6 +1070,11 @@ let sheetCtx = null;  // {videoId, title, channelName, thumbnailUrl, isRead, inQ
 
 function openActionSheet(ctx) {
   sheetCtx = ctx;
+  const thumb = $('action-sheet-thumb');
+  if (thumb) {
+    if (ctx.thumbnailUrl) { thumb.src = ctx.thumbnailUrl; thumb.style.display = ''; }
+    else { thumb.removeAttribute('src'); thumb.style.display = 'none'; }
+  }
   $('action-sheet-title').textContent = ctx.title;
   const btnQ = document.querySelector('[data-action="sheet-queue"]');
   btnQ.textContent = ctx.inQueue ? '✕ Remove from Queue' : '+ Add to Queue';
