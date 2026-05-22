@@ -7,3 +7,4 @@ resume
 signal-data
 adb-data
 .env
+tag.sh

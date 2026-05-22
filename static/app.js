@@ -1072,8 +1072,22 @@ function openActionSheet(ctx) {
   sheetCtx = ctx;
   const thumb = $('action-sheet-thumb');
   if (thumb) {
-    if (ctx.thumbnailUrl) { thumb.src = ctx.thumbnailUrl; thumb.style.display = ''; }
-    else { thumb.removeAttribute('src'); thumb.style.display = 'none'; }
+    if (ctx.videoId || ctx.thumbnailUrl) {
+      const chain = ctx.videoId
+        ? [`https://i.ytimg.com/vi/${ctx.videoId}/maxresdefault.jpg`,
+           `https://i.ytimg.com/vi/${ctx.videoId}/sddefault.jpg`,
+           `https://i.ytimg.com/vi/${ctx.videoId}/hqdefault.jpg`]
+        : [];
+      if (ctx.thumbnailUrl) chain.push(ctx.thumbnailUrl);
+      let i = 0;
+      thumb.onerror = () => { i++; if (i < chain.length) thumb.src = chain[i]; else thumb.onerror = null; };
+      thumb.src = chain[0];
+      thumb.style.display = '';
+    } else {
+      thumb.onerror = null;
+      thumb.removeAttribute('src');
+      thumb.style.display = 'none';
+    }
   }
   $('action-sheet-title').textContent = ctx.title;
   const btnQ = document.querySelector('[data-action="sheet-queue"]');
