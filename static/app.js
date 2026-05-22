@@ -1068,6 +1068,44 @@ async function watchOnYouTube(videoId) {
 
 let sheetCtx = null;  // {videoId, title, channelName, thumbnailUrl, isRead, inQueue}
 
+function buildSheetCtx(videoId) {
+  const meta = videoMeta.get(videoId) || {};
+  let isRead = false, inQueue = false;
+  for (const ch of allChannels()) {
+    const v = (ch.videos || []).find(x => x.video_id === videoId);
+    if (v) { isRead = !!v.is_read; inQueue = !!v.in_queue; break; }
+  }
+  return {
+    videoId,
+    title: meta.title || '',
+    channelName: meta.channel_name || '',
+    thumbnailUrl: meta.thumbnail_url || '',
+    isRead, inQueue,
+  };
+}
+
+function folderVideoSiblings(videoId) {
+  const meta = videoMeta.get(videoId);
+  if (!meta) return [videoId];
+  const chId = meta.channel_id;
+  const folder = state.feed.folders.find(f => (f.channels || []).some(c => c.channel_id === chId));
+  const channels = folder ? (folder.channels || []) : state.feed.channels.filter(c => c.channel_id === chId);
+  const all = channels.flatMap(ch => (ch.videos || []).map(v => ({ v, ch })));
+  all.sort((a, b) => (b.v.published_at || '').localeCompare(a.v.published_at || ''));
+  const ids = all.filter(({ v, ch }) => !isShort(v, ch)).map(({ v }) => v.video_id);
+  if (!ids.includes(videoId)) ids.unshift(videoId);
+  return ids;
+}
+
+function advanceSheet(dir) {
+  if (!sheetCtx) return;
+  const siblings = folderVideoSiblings(sheetCtx.videoId);
+  if (siblings.length <= 1) return;
+  const i = siblings.indexOf(sheetCtx.videoId);
+  const next = siblings[((i < 0 ? 0 : i) + dir + siblings.length) % siblings.length];
+  openActionSheet(buildSheetCtx(next));
+}
+
 function openActionSheet(ctx) {
   sheetCtx = ctx;
   const thumb = $('action-sheet-thumb');
@@ -1832,20 +1870,9 @@ document.addEventListener('click', e => {
       return;
     }
     if (isMobile() && !openEl.closest('.q-item')) {
-      const meta = videoMeta.get(openEl.dataset.videoId) || {};
-      // Resolve current state from feed
-      let isRead = false, inQueue = false;
-      for (const ch of allChannels()) {
-        const v = (ch.videos || []).find(x => x.video_id === openEl.dataset.videoId);
-        if (v) { isRead = !!v.is_read; inQueue = !!v.in_queue; break; }
-      }
-      openActionSheet({
-        videoId: openEl.dataset.videoId,
-        title: openEl.dataset.title || meta.title || '',
-        channelName: meta.channel_name || '',
-        thumbnailUrl: meta.thumbnail_url || '',
-        isRead, inQueue,
-      });
+      const ctx = buildSheetCtx(openEl.dataset.videoId);
+      if (!ctx.title) ctx.title = openEl.dataset.title || '';
+      openActionSheet(ctx);
       return;
     }
     openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
@@ -2845,6 +2872,54 @@ $('auto-refresh-slider').addEventListener('input', () => {
       el.style.opacity = '';
     }
     el = null; type = null; vid = null;
+  }, { passive: true });
+})();
+
+// ── Action sheet swipe (mobile) ───────────────────────────────────────────────
+
+(function setupSheetSwipe() {
+  const THRESHOLD = 50;
+  let startX = 0, startY = 0, dx = 0, axis = null, active = false;
+
+  document.addEventListener('touchstart', (e) => {
+    if (!e.target.closest('#action-sheet-thumb')) return;
+    active = true;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = 0; axis = null;
+    const thumb = $('action-sheet-thumb');
+    if (thumb) thumb.style.transition = '';
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!active) return;
+    dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (axis === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (axis === 'x') {
+      if (e.cancelable) e.preventDefault();
+      const thumb = $('action-sheet-thumb');
+      if (thumb) {
+        thumb.style.transform = `translateX(${dx}px)`;
+        thumb.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / 400));
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!active) return;
+    active = false;
+    const thumb = $('action-sheet-thumb');
+    if (thumb) {
+      thumb.style.transition = 'transform .15s, opacity .15s';
+      thumb.style.transform = '';
+      thumb.style.opacity = '';
+    }
+    if (axis === 'x' && Math.abs(dx) >= THRESHOLD) {
+      advanceSheet(dx < 0 ? 1 : -1);
+    }
   }, { passive: true });
 })();
 
