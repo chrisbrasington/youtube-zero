@@ -1092,9 +1092,11 @@ function folderVideoSiblings(videoId) {
   const channels = folder ? (folder.channels || []) : state.feed.channels.filter(c => c.channel_id === chId);
   const all = channels.flatMap(ch => (ch.videos || []).map(v => ({ v, ch })));
   all.sort((a, b) => (b.v.published_at || '').localeCompare(a.v.published_at || ''));
-  const ids = all.filter(({ v, ch }) => !isShort(v, ch)).map(({ v }) => v.video_id);
-  if (!ids.includes(videoId)) ids.unshift(videoId);
-  return ids;
+  const visible = all.filter(({ v, ch }) => !isShort(v, ch) && !v.is_read).map(({ v }) => v.video_id);
+  if (visible.includes(videoId)) return visible;
+  const allIds = all.filter(({ v, ch }) => !isShort(v, ch)).map(({ v }) => v.video_id);
+  if (!allIds.includes(videoId)) allIds.unshift(videoId);
+  return allIds;
 }
 
 function advanceSheet(dir) {
@@ -1118,11 +1120,20 @@ function openActionSheet(ctx) {
         : [];
       if (ctx.thumbnailUrl) chain.push(ctx.thumbnailUrl);
       let i = 0;
-      thumb.onerror = () => { i++; if (i < chain.length) thumb.src = chain[i]; else thumb.onerror = null; };
+      const tryNext = () => {
+        i++;
+        if (i < chain.length) thumb.src = chain[i];
+        else { thumb.onerror = null; thumb.onload = null; }
+      };
+      thumb.onerror = tryNext;
+      thumb.onload = () => {
+        if (i < chain.length - 1 && thumb.naturalWidth > 0 && thumb.naturalWidth < 320) tryNext();
+      };
       thumb.src = chain[0];
       thumb.style.display = '';
     } else {
       thumb.onerror = null;
+      thumb.onload = null;
       thumb.removeAttribute('src');
       thumb.style.display = 'none';
     }
