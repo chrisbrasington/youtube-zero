@@ -1,79 +1,7 @@
 'use strict';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const $ = id => document.getElementById(id);
-
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = String(s ?? '');
-  return d.innerHTML;
-}
-
-function escAttr(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function timeAgo(iso) {
-  if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 2)  return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7)  return `${d}d ago`;
-  const w = Math.floor(d / 7);
-  if (w < 5)  return `${w}w ago`;
-  return `${Math.floor(d / 30)}mo ago`;
-}
-
-function status(msg, type = '') {
-  const el = $('status-msg');
-  el.textContent = msg;
-  el.className = 'status-msg' + (type ? ' ' + type : '');
-}
-
-// ── API ───────────────────────────────────────────────────────────────────────
-
-const api = {
-  async get(path) {
-    const r = await fetch(path);
-    if (!r.ok) {
-      let msg = r.statusText;
-      try { msg = (await r.json()).detail || msg; } catch {}
-      throw new Error(msg);
-    }
-    return r.json();
-  },
-  async post(path, body = {}) {
-    const r = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      let msg = r.statusText;
-      try { msg = (await r.json()).detail || msg; } catch {}
-      throw new Error(msg);
-    }
-    return r.json();
-  },
-  async del(path) {
-    const r = await fetch(path, { method: 'DELETE' });
-    if (!r.ok) {
-      let msg = r.statusText;
-      try { msg = (await r.json()).detail || msg; } catch {}
-      throw new Error(msg);
-    }
-    return r.json();
-  },
-};
+// dom + api + const helpers live in /static/js/{dom,api,const}.js, loaded
+// before this file via <script> tags in index.html.
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -101,7 +29,7 @@ function isShort(video, channel) {
   const secs = parts.length === 3
     ? parts[0] * 3600 + parts[1] * 60 + parts[2]
     : parts[0] * 60 + (parts[1] || 0);
-  return secs > 0 && secs < 180;
+  return secs > 0 && secs < SHORTS_MAX_SECONDS;
 }
 
 let dragSrcId       = null;
@@ -1127,7 +1055,7 @@ function openActionSheet(ctx) {
       };
       thumb.onerror = tryNext;
       thumb.onload = () => {
-        if (i < chain.length - 1 && thumb.naturalWidth > 0 && thumb.naturalWidth < 320) tryNext();
+        if (i < chain.length - 1 && thumb.naturalWidth > 0 && thumb.naturalWidth < THUMBNAIL_MIN_WIDTH) tryNext();
       };
       thumb.src = chain[0];
       thumb.style.display = '';
@@ -1159,15 +1087,15 @@ function closeActionSheet() {
 
 function isMobile() {
   if (state.forceMobile) return true;
-  return window.innerWidth <= 600;
+  return window.innerWidth <= MOBILE_MAX_WIDTH;
 }
 
 function syncMobileUI() {
   const coarse = matchMedia('(pointer: coarse)').matches;
   const landscape = matchMedia('(orientation: landscape)').matches;
-  const isShort = state.forceMobile || matchMedia('(max-width: 900px)').matches;
+  const isShort = state.forceMobile || matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`).matches;
   const narrow = isShort && !(coarse && landscape && !state.forceMobile);
-  const mobile = state.forceMobile || matchMedia('(max-width: 600px)').matches;
+  const mobile = state.forceMobile || matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
   document.body.classList.toggle('narrow-ui', narrow);
   document.body.classList.toggle('mobile-ui', mobile);
 }
@@ -1482,10 +1410,10 @@ function showIconPicker(folderId, anchorEl) {
 
   // Position below anchor, clamp to viewport
   const rect   = anchorEl.getBoundingClientRect();
-  const pw     = 284;
+  const pw     = ICON_PICKER_WIDTH;
   const left   = Math.min(rect.left, window.innerWidth - pw - 8);
   let   top    = rect.bottom + 4;
-  if (top + 320 > window.innerHeight) top = rect.top - 324;
+  if (top + ICON_PICKER_HEIGHT > window.innerHeight) top = rect.top - ICON_PICKER_FLIP_GAP;
   picker.style.left = `${Math.max(4, left)}px`;
   picker.style.top  = `${Math.max(4, top)}px`;
 
@@ -2671,7 +2599,7 @@ $('wrap-strip-check').addEventListener('change', () => {
 
 $('force-mobile-check').checked = state.forceMobile;
 syncMobileUI();
-matchMedia('(max-width: 600px)').addEventListener('change', syncMobileUI);
+matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).addEventListener('change', syncMobileUI);
 matchMedia('(max-width: 900px)').addEventListener('change', syncMobileUI);
 matchMedia('(orientation: landscape)').addEventListener('change', syncMobileUI);
 $('force-mobile-check').addEventListener('change', () => {
