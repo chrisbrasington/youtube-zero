@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import os
 import random
@@ -42,6 +41,24 @@ from helpers import (
     parse_yt_video_id as _parse_yt_video_id,
     seconds_to_next_hour as _seconds_to_next_hour,
 )
+from queries import (
+    add_quota,
+    clear_queue,
+    clear_video_status_for_channel,
+    delete_setting,
+    get_all_settings,
+    get_queue,
+    get_quota_today_units,
+    get_setting,
+    list_channels,
+    list_folders,
+    max_last_refreshed,
+    next_queue_sort_order,
+    quota_today as _quota_today,
+    session_quota_units,
+    set_setting,
+    unwatched_queue_video_ids,
+)
 
 
 _event_listeners: set[asyncio.Queue] = set()
@@ -55,8 +72,7 @@ async def _broadcast(event_type: str, **extra):
 
 async def _refresh_channels(api_key: str) -> list[dict]:
     """Parallel refresh all channels (sem=5), save, broadcast. Returns per-channel results."""
-    with db() as c:
-        channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+    channels = list_channels()
     total = len(channels)
     sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
     lock = asyncio.Lock()
@@ -102,35 +118,19 @@ async def _background_refresh():
             pass
 
 
-async def _signal_send_plain(number: str, message: str):
-    payload = {"message": message, "number": number, "recipients": [number]}
-    async with httpx.AsyncClient() as client:
-        try:
-            await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=HTTP_TIMEOUT_LONG)
-        except Exception:
-            pass
+from signal_send import (
+    send_queue_to_signal as _send_queue_to_signal_impl,
+    signal_send_one as _signal_send_one,
+    signal_send_plain as _signal_send_plain,
+)
 
 
 async def _send_queue_to_signal(number: str) -> list[str]:
-    with db() as c:
-        items = [dict(r) for r in c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=0 "
-            "ORDER BY COALESCE(sort_order, id)"
-        ).fetchall()]
-    for item in items:
-        await _signal_send_one(number, item["video_id"], item["title"], item["channel_name"], item.get("thumbnail_url") or "")
-    return [i["video_id"] for i in items]
+    return await _send_queue_to_signal_impl(number, is_deep=False)
 
 
 async def _send_deep_to_signal(number: str) -> list[str]:
-    with db() as c:
-        items = [dict(r) for r in c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=1 "
-            "ORDER BY COALESCE(sort_order, id)"
-        ).fetchall()]
-    for item in items:
-        await _signal_send_one(number, item["video_id"], item["title"], item["channel_name"], item.get("thumbnail_url") or "")
-    return [i["video_id"] for i in items]
+    return await _send_queue_to_signal_impl(number, is_deep=True)
 
 
 async def _send_unread_to_signal(number: str, exclude_ids: set[str] | None = None) -> int:
@@ -180,12 +180,7 @@ def _visible_unread_list(exclude_ids: set[str] | None = None) -> list[dict]:
 
 
 def _queue_list(is_deep: bool) -> list[dict]:
-    with db() as c:
-        return [dict(r) for r in c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=? "
-            "ORDER BY COALESCE(sort_order, id)",
-            (1 if is_deep else 0,),
-        ).fetchall()]
+    return get_queue(is_deep=is_deep)
 
 
 _HELP_TEXT = (
@@ -526,12 +521,10 @@ async def _signal_listener():
     ws_base = SIGNAL_API_URL.replace("http://", "ws://").replace("https://", "wss://")
     while True:
         try:
-            with db() as c:
-                row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
-            if not row:
+            number = get_setting("signal_number")
+            if not number:
                 await asyncio.sleep(10)
                 continue
-            number = row["value"]
             url = f"{ws_base}/v1/receive/{number}"
             print(f"[signal listener] connecting to {url}")
             async with websockets.connect(url, ping_interval=30) as ws:
@@ -578,176 +571,18 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 
-_session_quota = 0  # resets on process restart
-
-
 from db import db, init_db
 
 init_db()
 
 
-def _quota_today() -> str:
-    """Date key aligned with Google's YouTube Data API quota reset (midnight Pacific)."""
-    try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
-    except Exception:
-        return datetime.now(timezone.utc).date().isoformat()
-
-
-def add_quota(units: int):
-    global _session_quota
-    _session_quota += units
-    today = _quota_today()
-    with db() as c:
-        c.execute(
-            """INSERT INTO quota_log (date, units) VALUES (?, ?)
-               ON CONFLICT(date) DO UPDATE SET units = units + excluded.units""",
-            (today, units),
-        )
-        c.commit()
-
-
 # ── YouTube helpers ───────────────────────────────────────────────────────────
 
 def get_api_key():
-    key = os.environ.get("YOUTUBE_API_KEY", "")
-    if not key:
-        with db() as c:
-            row = c.execute("SELECT value FROM settings WHERE key='api_key'").fetchone()
-            if row:
-                key = row["value"]
-    return key
+    return os.environ.get("YOUTUBE_API_KEY") or get_setting("api_key") or ""
 
 
-async def yt_get_channel(lookup_type: str, value: str, api_key: str):
-    params = {"part": "snippet,contentDetails", "key": api_key}
-    params["id" if lookup_type == "id" else "forHandle"] = value
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
-        r = await client.get(f"{YT_API}/channels", params=params)
-    if r.status_code != 200:
-        detail = r.json().get("error", {}).get("message", r.text)
-        raise HTTPException(502, f"YouTube API: {detail}")
-    add_quota(1)
-    items = r.json().get("items", [])
-    if not items:
-        raise HTTPException(404, f"Channel not found: {value}")
-    item = items[0]
-    thumbnails = item["snippet"].get("thumbnails", {})
-    thumb = (
-        thumbnails.get("medium") or thumbnails.get("default") or {}
-    ).get("url", "")
-    return {
-        "channel_id": item["id"],
-        "name": item["snippet"]["title"],
-        "thumbnail_url": thumb,
-        "handle": item["snippet"].get("customUrl", "").lstrip("@"),
-        "uploads_playlist_id": item["contentDetails"]["relatedPlaylists"]["uploads"],
-    }
-
-
-async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10):
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
-        r = await client.get(f"{YT_API}/playlistItems", params={
-            "part": "snippet",
-            "playlistId": playlist_id,
-            "maxResults": max_results,
-            "key": api_key,
-        })
-    if r.status_code != 200:
-        detail = r.json().get("error", {}).get("message", r.text)
-        raise HTTPException(502, f"YouTube API: {detail}")
-    add_quota(1)  # playlistItems.list
-
-    videos = []
-    video_ids = []
-    for item in r.json().get("items", []):
-        sn = item["snippet"]
-        vid = sn.get("resourceId", {}).get("videoId", "")
-        if not vid:
-            continue
-        video_ids.append(vid)
-        thumbnails = sn.get("thumbnails", {})
-        picked = thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}
-        videos.append({
-            "video_id": vid,
-            "channel_id": sn.get("channelId", ""),
-            "title": sn.get("title", ""),
-            "thumbnail_url": picked.get("url", ""),
-            "published_at": sn.get("publishedAt", ""),
-            "duration": "",
-            "is_live": "none",
-            "thumb_w": picked.get("width") or 0,
-            "thumb_h": picked.get("height") or 0,
-        })
-
-    if video_ids:
-        # Use cached metadata when already fully resolved (duration set + not live/upcoming).
-        # Re-fetch only new videos and those still live/upcoming.
-        meta_map: dict[str, dict] = {}
-        with db() as c:
-            placeholders = ",".join("?" * len(video_ids))
-            cached = c.execute(
-                f"SELECT video_id, duration, is_live FROM videos WHERE video_id IN ({placeholders})",
-                video_ids,
-            ).fetchall()
-            for row in cached:
-                if row["duration"] and (row["is_live"] or "none") == "none":
-                    meta_map[row["video_id"]] = {
-                        "duration": row["duration"],
-                        "is_live": "none",
-                    }
-        needed = [v for v in video_ids if v not in meta_map]
-        if needed:
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
-                r2 = await client.get(f"{YT_API}/videos", params={
-                    "part": "contentDetails,snippet",
-                    "id": ",".join(needed),
-                    "key": api_key,
-                })
-            add_quota(1)  # videos.list (durations + snippet)
-            for d in r2.json().get("items", []):
-                meta_map[d["id"]] = {
-                    "duration": parse_duration(d["contentDetails"]["duration"]),
-                    "is_live": d.get("snippet", {}).get("liveBroadcastContent", "none"),
-                }
-        for v in videos:
-            m = meta_map.get(v["video_id"], {})
-            v["duration"] = m.get("duration", "")
-            v["is_live"] = m.get("is_live", "none")
-
-    return videos
-
-
-def save_videos(channel_id: str, videos: list):
-    now = datetime.now(timezone.utc).isoformat()
-    with db() as c:
-        ch_row = c.execute(
-            "SELECT allow_shorts, muted FROM channels WHERE channel_id=?", (channel_id,)
-        ).fetchone()
-        allow_shorts = bool(ch_row["allow_shorts"]) if ch_row else False
-        muted        = bool(ch_row["muted"]) if ch_row else False
-        for v in videos:
-            v = dict(v)
-            v["channel_id"] = channel_id
-            c.execute(
-                """INSERT OR REPLACE INTO videos
-                   (video_id, channel_id, title, thumbnail_url, published_at, duration, is_live, thumb_w, thumb_h)
-                   VALUES (:video_id, :channel_id, :title, :thumbnail_url, :published_at, :duration, :is_live, :thumb_w, :thumb_h)""",
-                v,
-            )
-            if muted or (not allow_shorts and _is_short(v)):
-                c.execute(
-                    """INSERT INTO video_status (video_id, channel_id, status)
-                       VALUES (?, ?, 'read')
-                       ON CONFLICT(video_id) DO NOTHING""",
-                    (v["video_id"], channel_id),
-                )
-        c.execute(
-            "UPDATE channels SET last_refreshed=? WHERE channel_id=?",
-            (now, channel_id),
-        )
-        c.commit()
+from youtube import save_videos, yt_fetch_videos, yt_get_channel
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -844,28 +679,20 @@ async def events():
     )
 
 
-@app.get("/api/settings")
 @app.get("/api/quota")
 def quota_get():
-    today = _quota_today()
-    with db() as c:
-        row = c.execute(
-            "SELECT units FROM quota_log WHERE date=?", (today,)
-        ).fetchone()
-        last = c.execute("SELECT MAX(last_refreshed) AS t FROM channels").fetchone()
     return {
-        "today":   row["units"] if row else 0,
-        "session": _session_quota,
+        "today":   get_quota_today_units(),
+        "session": session_quota_units(),
         "limit":   DAILY_QUOTA_LIMIT,
-        "date":    today,
-        "last_refreshed": last["t"] if last else None,
+        "date":    _quota_today(),
+        "last_refreshed": max_last_refreshed(),
     }
 
 
 @app.get("/api/settings")
 def settings_get():
-    with db() as c:
-        rows = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM settings").fetchall()}
+    rows = get_all_settings()
     key = rows.get("api_key", "")
     masked = (key[:4] + "…" + key[-4:]) if len(key) > 8 else ("****" if key else "")
     return {
@@ -877,11 +704,7 @@ def settings_get():
 
 @app.post("/api/settings/api-key")
 def settings_set_key(req: ApiKeyReq):
-    with db() as c:
-        c.execute(
-            "INSERT OR REPLACE INTO settings VALUES ('api_key', ?)", (req.api_key,)
-        )
-        c.commit()
+    set_setting("api_key", req.api_key)
     return {"ok": True}
 
 
@@ -890,12 +713,7 @@ class HideShortsReq(BaseModel):
 
 @app.post("/api/settings/hide-shorts")
 def settings_hide_shorts(req: HideShortsReq):
-    with db() as c:
-        c.execute(
-            "INSERT OR REPLACE INTO settings VALUES ('hide_shorts', ?)",
-            ("1" if req.hide_shorts else "0",)
-        )
-        c.commit()
+    set_setting("hide_shorts", "1" if req.hide_shorts else "0")
     return {"ok": True}
 
 
@@ -912,21 +730,15 @@ class SignalSendReq(BaseModel):
 
 @app.get("/api/settings/signal")
 def signal_settings_get():
-    with db() as c:
-        row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
-    return {
-        "configured": bool(row),
-        "number": row["value"] if row else "",
-    }
+    number = get_setting("signal_number") or ""
+    return {"configured": bool(number), "number": number}
 
 @app.post("/api/settings/signal/link")
 def signal_link(req: SignalLinkReq):
     number = req.number.strip()
     if not number:
         raise HTTPException(400, "Phone number required")
-    with db() as c:
-        c.execute("INSERT OR REPLACE INTO settings VALUES ('signal_number', ?)", (number,))
-        c.commit()
+    set_setting("signal_number", number)
     return {"ok": True, "number": number}
 
 @app.get("/api/settings/signal/qr")
@@ -945,9 +757,7 @@ async def signal_qr():
 
 @app.delete("/api/settings/signal")
 def signal_delete():
-    with db() as c:
-        c.execute("DELETE FROM settings WHERE key='signal_number'")
-        c.commit()
+    delete_setting("signal_number")
     return {"ok": True}
 
 
@@ -1033,53 +843,12 @@ async def tv_play(req: TvPlayReq):
         _tv_persist_ip(s["ip"])
     return body
 
-async def _signal_preview(video_id: str, title: str, channel_name: str, thumbnail_url: str) -> dict | None:
-    """Fetch thumbnail and build a signal-cli link_preview object. Returns None on any failure."""
-    if not thumbnail_url:
-        print(f"[signal] no thumbnail_url for {video_id}")
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(thumbnail_url, timeout=10, follow_redirects=True)
-        print(f"[signal] thumbnail fetch {thumbnail_url} → {r.status_code} ({len(r.content)} bytes)")
-        if r.status_code == 200:
-            return {
-                "url": f"https://www.youtube.com/watch?v={video_id}",
-                "title": title,
-                "description": channel_name,
-                "base64_thumbnail": base64.b64encode(r.content).decode(),
-            }
-    except Exception as exc:
-        print(f"[signal] thumbnail fetch error: {exc}")
-    return None
-
-
-async def _signal_send_one(number: str, video_id: str, title: str, channel_name: str, thumbnail_url: str) -> str | None:
-    """Send one video to Signal. Returns error string or None on success."""
-    message = f"https://www.youtube.com/watch?v={video_id}"
-    preview = await _signal_preview(video_id, title, channel_name, thumbnail_url)
-    payload: dict = {"message": message, "number": number, "recipients": [number]}
-    if preview:
-        payload["link_preview"] = preview
-    print(f"[signal] sending {video_id} {'with' if preview else 'without'} preview")
-    async with httpx.AsyncClient() as client:
-        try:
-            r = await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=HTTP_TIMEOUT_LONG)
-        except Exception as exc:
-            return str(exc)
-    print(f"[signal] send response: {r.status_code} {r.text[:300]}")
-    if r.status_code not in (200, 201):
-        return r.text[:200]
-    return None
-
-
 @app.post("/api/signal/send")
 async def signal_send(req: SignalSendReq):
-    with db() as c:
-        row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
-    if not row:
+    number = get_setting("signal_number")
+    if not number:
         raise HTTPException(400, "Signal not configured")
-    err = await _signal_send_one(row["value"], req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
+    err = await _signal_send_one(number, req.video_id, req.title, req.channel_name, req.thumbnail_url or "")
     if err:
         raise HTTPException(500, f"Signal send failed: {err}")
     return {"ok": True}
@@ -1087,15 +856,10 @@ async def signal_send(req: SignalSendReq):
 
 @app.post("/api/signal/send-queue")
 async def signal_send_queue():
-    with db() as c:
-        row = c.execute("SELECT value FROM settings WHERE key='signal_number'").fetchone()
-        if not row:
-            raise HTTPException(400, "Signal not configured")
-        number = row["value"]
-        items = [dict(r) for r in c.execute(
-            "SELECT * FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=0 "
-            "ORDER BY COALESCE(sort_order, id)"
-        ).fetchall()]
+    number = get_setting("signal_number")
+    if not number:
+        raise HTTPException(400, "Signal not configured")
+    items = get_queue(is_deep=False)
     if not items:
         raise HTTPException(400, "Queue is empty")
     errors = []
@@ -1452,8 +1216,7 @@ async def refresh_all_stream():
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(400, "No API key")
-    with db() as c:
-        channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
+    channels = list_channels()
 
     async def generator():
         import asyncio as _asyncio
@@ -1564,12 +1327,7 @@ def queue_reorder(req: ReorderReq):
 
 @app.delete("/api/queue")
 def queue_clear(background_tasks: BackgroundTasks, deep: bool = False):
-    with db() as c:
-        if deep:
-            c.execute("DELETE FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=1")
-        else:
-            c.execute("DELETE FROM queue WHERE watched_at IS NULL AND COALESCE(is_deep,0)=0")
-        c.commit()
+    clear_queue(deep=deep)
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
 

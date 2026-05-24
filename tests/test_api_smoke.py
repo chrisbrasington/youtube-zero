@@ -18,14 +18,19 @@ async def client(app):
 
 
 async def test_settings_get_returns_dict(client, fresh_db):
-    # NOTE: /api/settings has a duplicate @app.get decorator at main.py:1021
-    # which shadows the real settings route — first registration wins, so this
-    # endpoint actually returns quota data. Captured as-is here so the smoke
-    # test reflects current behavior; flagged for Phase 2 cleanup.
     r = await client.get("/api/settings")
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, dict)
+    assert "has_api_key" in body
+
+
+async def test_settings_get_reads_back_api_key(client, fresh_db):
+    await client.post("/api/settings/api-key", json={"api_key": "smoke-key"})
+    r = await client.get("/api/settings")
+    body = r.json()
+    assert body["has_api_key"] is True
+    assert body["masked"]  # non-empty masked form
 
 
 async def test_channels_list_returns_list(client, fresh_db):
