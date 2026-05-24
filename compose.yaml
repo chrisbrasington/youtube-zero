@@ -1,5 +1,6 @@
 services:
   youtube-zero:
+    image: valhalla:5000/youtube-zero:latest
     build: .
     ports:
       - "8000:8000"
@@ -17,6 +18,7 @@ services:
     restart: unless-stopped
 
   adb-api:
+    image: valhalla:5000/adb-api:latest
     build: ./adb-api
     volumes:
       - ./adb-data:/root/.android:Z  # persists ADB keys + accepted-device list
