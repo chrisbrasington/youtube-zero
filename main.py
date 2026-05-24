@@ -5,7 +5,7 @@ import os
 import random
 import re
 import sqlite3
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -16,23 +16,33 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))
-QUIET_START = int(os.environ.get("QUIET_HOURS_START", "0"))
-QUIET_END = int(os.environ.get("QUIET_HOURS_END", "6"))
-TZ_NAME = os.environ.get("TZ", "UTC")
+from const import (
+    ADB_API_URL,
+    DAILY_QUOTA_LIMIT,
+    DB_PATH,
+    HTTP_TIMEOUT_LONG,
+    HTTP_TIMEOUT_SHORT,
+    QUIET_END,
+    QUIET_START,
+    REFRESH_BACKOFF_SECONDS,
+    REFRESH_CONCURRENCY,
+    REFRESH_INTERVAL,
+    SIGNAL_API_URL,
+    SIGNAL_RECONNECT_PAUSE,
+    TZ_NAME,
+    YT_API,
+    YT_CHUNK_SIZE,
+)
+from helpers import (
+    duration_seconds as _duration_seconds,
+    is_quiet_hour as _is_quiet_hour,
+    is_short as _is_short,
+    parse_channel_input,
+    parse_duration,
+    parse_yt_video_id as _parse_yt_video_id,
+    seconds_to_next_hour as _seconds_to_next_hour,
+)
 
-
-def _is_quiet_hour() -> bool:
-    if QUIET_START == QUIET_END:
-        return False
-    try:
-        from zoneinfo import ZoneInfo
-        h = datetime.now(ZoneInfo(TZ_NAME)).hour
-    except Exception:
-        h = datetime.now(timezone.utc).hour
-    if QUIET_START < QUIET_END:
-        return QUIET_START <= h < QUIET_END
-    return h >= QUIET_START or h < QUIET_END  # wraps midnight
 
 _event_listeners: set[asyncio.Queue] = set()
 
@@ -48,7 +58,7 @@ async def _refresh_channels(api_key: str) -> list[dict]:
     with db() as c:
         channels = [dict(r) for r in c.execute("SELECT * FROM channels").fetchall()]
     total = len(channels)
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
     lock = asyncio.Lock()
     started = 0
 
@@ -59,7 +69,7 @@ async def _refresh_channels(api_key: str) -> list[dict]:
                 started += 1
                 name = ch.get("handle") or ch.get("name") or ch["channel_id"]
                 await _broadcast("refresh_progress", i=started, total=total, name=name)
-                await asyncio.sleep(0.06)
+                await asyncio.sleep(REFRESH_BACKOFF_SECONDS)
             try:
                 videos = await yt_fetch_videos(ch["uploads_playlist_id"], api_key)
                 save_videos(ch["channel_id"], videos)
@@ -72,16 +82,6 @@ async def _refresh_channels(api_key: str) -> list[dict]:
     await _broadcast("refresh_done")
     await _broadcast("refreshed")
     return list(results)
-
-
-def _seconds_to_next_hour() -> float:
-    try:
-        from zoneinfo import ZoneInfo
-        now = datetime.now(ZoneInfo(TZ_NAME))
-    except Exception:
-        now = datetime.now(timezone.utc)
-    nxt = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    return (nxt - now).total_seconds()
 
 
 async def _background_refresh():
@@ -102,35 +102,11 @@ async def _background_refresh():
             pass
 
 
-def _is_short(v: dict) -> bool:
-    if (v.get("is_live") or "none") != "none":
-        return False  # live/upcoming never a short
-    dur = v.get("duration") or ""
-    if not dur:
-        return False  # unknown duration = don't treat as short
-    secs = _duration_seconds(dur)
-    return 0 < secs < 180
-
-
-def _duration_seconds(dur: str) -> int:
-    if not dur:
-        return 0
-    parts = dur.split(":")
-    try:
-        if len(parts) == 3:
-            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-        if len(parts) == 2:
-            return int(parts[0]) * 60 + int(parts[1])
-    except ValueError:
-        pass
-    return 0
-
-
 async def _signal_send_plain(number: str, message: str):
     payload = {"message": message, "number": number, "recipients": [number]}
     async with httpx.AsyncClient() as client:
         try:
-            await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=30)
+            await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=HTTP_TIMEOUT_LONG)
         except Exception:
             pass
 
@@ -259,31 +235,11 @@ async def _do_get(number: str, prefix: str = ""):
         await _signal_send_plain(number, f"{prefix}sent {', '.join(parts)}{checked}")
 
 
-def _parse_yt_video_id(url: str) -> str | None:
-    url = (url or "").strip()
-    if not url:
-        return None
-    patterns = [
-        r"youtu\.be/([A-Za-z0-9_-]{11})",
-        r"youtube\.com/watch\?[^#]*v=([A-Za-z0-9_-]{11})",
-        r"youtube\.com/shorts/([A-Za-z0-9_-]{11})",
-        r"youtube\.com/embed/([A-Za-z0-9_-]{11})",
-        r"youtube\.com/live/([A-Za-z0-9_-]{11})",
-    ]
-    for p in patterns:
-        m = re.search(p, url)
-        if m:
-            return m.group(1)
-    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url):
-        return url
-    return None
-
-
 async def _add_url_to_queue(url: str, api_key: str) -> tuple[bool, str]:
     vid = _parse_yt_video_id(url)
     if not vid:
         return False, "invalid YouTube URL"
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
         r = await client.get(f"{YT_API}/videos", params={
             "part": "snippet,contentDetails",
             "id": vid,
@@ -370,9 +326,9 @@ async def _backfill_queue_video_meta():
     ids = [r["video_id"] for r in rows]
     if not ids:
         return
-    async with httpx.AsyncClient(timeout=15) as client:
-        for i in range(0, len(ids), 50):
-            chunk = ids[i:i+50]
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
+        for i in range(0, len(ids), YT_CHUNK_SIZE):
+            chunk = ids[i:i+YT_CHUNK_SIZE]
             try:
                 r = await client.get(f"{YT_API}/videos", params={
                     "part": "snippet,contentDetails",
@@ -441,7 +397,7 @@ async def _handle_signal_command(cmd: str, number: str):
             await _signal_send_plain(number, "invalid YouTube URL")
             return
         s = _tv_settings_load()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_LONG) as client:
             try:
                 r = await client.post(f"{ADB_API_URL}/play", json={
                     "ip": s["ip"],
@@ -608,8 +564,8 @@ async def _signal_listener():
                         else:
                             await _handle_signal_command(msg, number)
         except Exception as exc:
-            print(f"[signal listener] ws error: {exc} — reconnecting in 5s")
-            await asyncio.sleep(5)
+            print(f"[signal listener] ws error: {exc} — reconnecting in {SIGNAL_RECONNECT_PAUSE}s")
+            await asyncio.sleep(SIGNAL_RECONNECT_PAUSE)
 
 
 @asynccontextmanager
@@ -624,110 +580,8 @@ app = FastAPI(lifespan=lifespan)
 
 _session_quota = 0  # resets on process restart
 
-DB_PATH = os.environ.get(
-    "DB_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "youtube_zero.db"),
-)
-YT_API = "https://www.googleapis.com/youtube/v3"
-SIGNAL_API_URL = os.environ.get("SIGNAL_API_URL", "http://signal-api:8080")
-ADB_API_URL = os.environ.get("ADB_API_URL", "http://adb-api:8080")
 
-
-# ── Database ──────────────────────────────────────────────────────────────────
-
-@contextmanager
-def db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def init_db():
-    with db() as c:
-        c.executescript("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
-            CREATE TABLE IF NOT EXISTS channels (
-                id INTEGER PRIMARY KEY,
-                channel_id TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                thumbnail_url TEXT,
-                handle TEXT,
-                uploads_playlist_id TEXT NOT NULL,
-                read_before TEXT,
-                last_refreshed TEXT,
-                sort_order INTEGER,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS videos (
-                id INTEGER PRIMARY KEY,
-                video_id TEXT UNIQUE NOT NULL,
-                channel_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                thumbnail_url TEXT,
-                published_at TEXT NOT NULL,
-                duration TEXT,
-                is_live TEXT,
-                thumb_w INTEGER,
-                thumb_h INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS queue (
-                id INTEGER PRIMARY KEY,
-                video_id TEXT UNIQUE NOT NULL,
-                channel_id TEXT NOT NULL,
-                channel_name TEXT NOT NULL,
-                title TEXT NOT NULL,
-                thumbnail_url TEXT,
-                published_at TEXT,
-                sort_order INTEGER,
-                added_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                watched_at TEXT,
-                is_deep INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS video_status (
-                video_id   TEXT PRIMARY KEY,
-                channel_id TEXT NOT NULL,
-                status     TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS quota_log (
-                date  TEXT PRIMARY KEY,
-                units INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS folders (
-                id         INTEGER PRIMARY KEY,
-                name       TEXT NOT NULL,
-                icon       TEXT NOT NULL DEFAULT '📁',
-                sort_order INTEGER,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        c.commit()
-        # Migrations for existing DBs
-        for migration in [
-            "ALTER TABLE channels ADD COLUMN sort_order INTEGER",
-            "ALTER TABLE channels ADD COLUMN folder_id INTEGER REFERENCES folders(id)",
-            "ALTER TABLE folders ADD COLUMN icon TEXT DEFAULT '📁'",
-            "ALTER TABLE queue ADD COLUMN sort_order INTEGER",
-            "ALTER TABLE queue ADD COLUMN is_deep INTEGER DEFAULT 0",
-            "ALTER TABLE videos ADD COLUMN is_live TEXT",
-            "ALTER TABLE videos ADD COLUMN thumb_w INTEGER",
-            "ALTER TABLE videos ADD COLUMN thumb_h INTEGER",
-            "ALTER TABLE channels ADD COLUMN allow_shorts INTEGER DEFAULT 0",
-            "ALTER TABLE channels ADD COLUMN muted INTEGER DEFAULT 0",
-        ]:
-            try:
-                c.execute(migration)
-            except sqlite3.OperationalError:
-                pass
-        c.execute("UPDATE channels SET sort_order = id WHERE sort_order IS NULL")
-        c.commit()
-
+from db import db, init_db
 
 init_db()
 
@@ -766,38 +620,10 @@ def get_api_key():
     return key
 
 
-def parse_duration(iso: str) -> str:
-    """PT4M33S → 4:33"""
-    if not iso:
-        return ""
-    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", iso)
-    if not m:
-        return ""
-    h = int(m.group(1) or 0)
-    mn = int(m.group(2) or 0)
-    s = int(m.group(3) or 0)
-    return f"{h}:{mn:02d}:{s:02d}" if h else f"{mn}:{s:02d}"
-
-
-def parse_channel_input(inp: str):
-    inp = inp.strip()
-    m = re.search(r"youtube\.com/channel/(UC[A-Za-z0-9_-]+)", inp)
-    if m:
-        return "id", m.group(1)
-    m = re.search(r"youtube\.com/@([A-Za-z0-9_.-]+)", inp)
-    if m:
-        return "handle", m.group(1)
-    if re.fullmatch(r"UC[A-Za-z0-9_-]{20,}", inp):
-        return "id", inp
-    if inp.startswith("@"):
-        return "handle", inp[1:]
-    return "handle", inp
-
-
 async def yt_get_channel(lookup_type: str, value: str, api_key: str):
     params = {"part": "snippet,contentDetails", "key": api_key}
     params["id" if lookup_type == "id" else "forHandle"] = value
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
         r = await client.get(f"{YT_API}/channels", params=params)
     if r.status_code != 200:
         detail = r.json().get("error", {}).get("message", r.text)
@@ -821,7 +647,7 @@ async def yt_get_channel(lookup_type: str, value: str, api_key: str):
 
 
 async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10):
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
         r = await client.get(f"{YT_API}/playlistItems", params={
             "part": "snippet",
             "playlistId": playlist_id,
@@ -873,7 +699,7 @@ async def yt_fetch_videos(playlist_id: str, api_key: str, max_results: int = 10)
                     }
         needed = [v for v in video_ids if v not in meta_map]
         if needed:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
                 r2 = await client.get(f"{YT_API}/videos", params={
                     "part": "contentDetails,snippet",
                     "id": ",".join(needed),
@@ -1030,7 +856,7 @@ def quota_get():
     return {
         "today":   row["units"] if row else 0,
         "session": _session_quota,
-        "limit":   10000,
+        "limit":   DAILY_QUOTA_LIMIT,
         "date":    today,
         "last_refreshed": last["t"] if last else None,
     }
@@ -1109,7 +935,7 @@ async def signal_qr():
         try:
             r = await client.get(
                 f"{SIGNAL_API_URL}/v1/qrcodelink?device_name=youtube-zero",
-                timeout=30,
+                timeout=HTTP_TIMEOUT_LONG,
             )
         except Exception as exc:
             raise HTTPException(503, f"Signal API unavailable: {exc}")
@@ -1191,7 +1017,7 @@ async def tv_connect():
 @app.post("/api/tv/play")
 async def tv_play(req: TvPlayReq):
     s = _tv_settings_load()
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_LONG) as client:
         try:
             r = await client.post(f"{ADB_API_URL}/play", json={
                 "ip": s["ip"],
@@ -1238,7 +1064,7 @@ async def _signal_send_one(number: str, video_id: str, title: str, channel_name:
     print(f"[signal] sending {video_id} {'with' if preview else 'without'} preview")
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=30)
+            r = await client.post(f"{SIGNAL_API_URL}/v2/send", json=payload, timeout=HTTP_TIMEOUT_LONG)
         except Exception as exc:
             return str(exc)
     print(f"[signal] send response: {r.status_code} {r.text[:300]}")
@@ -1633,7 +1459,7 @@ async def refresh_all_stream():
         import asyncio as _asyncio
         total = len(channels)
         results = []
-        sem = _asyncio.Semaphore(5)
+        sem = _asyncio.Semaphore(REFRESH_CONCURRENCY)
         queue = _asyncio.Queue()
 
         async def fetch_one(ch):
@@ -1657,7 +1483,7 @@ async def refresh_all_stream():
             if event["type"] == "start":
                 started += 1
                 yield f"data: {_json.dumps({'i': started, 'total': total, 'name': event['name']})}\n\n"
-                await _asyncio.sleep(0.06)  # visual stagger — fetches still run at full speed
+                await _asyncio.sleep(REFRESH_BACKOFF_SECONDS)  # visual stagger — fetches still run at full speed
             else:
                 completed += 1
                 results.append({k: v for k, v in event.items() if k != "type"})
