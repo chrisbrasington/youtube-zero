@@ -1,6 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* Surfaces & text */
   --bg:       #0f0f0f;
   --bg2:      #181818;
   --bg3:      #212121;
@@ -8,14 +9,40 @@
   --text:     #f1f1f1;
   --muted:    #909090;
   --dim:      #555;
+
+  /* Brand / state colors */
   --accent:   #ff4444;
   --accent-h: #ff6060;
   --green:    #4ade80;
   --blue:     #60a5fa;
+  --amber:    #f59e0b;
+  --signal:   #3b82f6;
+  --tv:       #a78bfa;
+
+  /* Borders */
   --border:   #272727;
   --border-l: #333;
+
+  /* Radii */
   --r:        8px;
   --r-sm:     4px;
+
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+
+  /* Z-index scale */
+  --z-base:    1;
+  --z-overlay: 300;
+  --z-modal:   500;
+  --z-toast:   700;
+
+  /* Motion */
+  --t-fast: .12s;
+  --t-base: .15s;
 }
 
 html { height: 100%; overflow: hidden; overflow-x: hidden; }
@@ -107,7 +134,7 @@ a.logo:active {
   font-size: 17px;
 }
 .quota-ok     { color: var(--dim); }
-.quota-warn   { color: #f59e0b; }
+.quota-warn   { color: var(--amber); }
 .quota-danger { color: var(--accent); font-weight: 700; }
 
 /* ── Auto-refresh control ────────────────────────────────────────────────── */
@@ -198,31 +225,35 @@ a.logo:active {
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
+/* Shared properties for all top-level button variants. */
+.btn-primary,
+.btn-ghost,
+.btn-danger,
+.btn-queue {
+  border-radius: var(--r-sm);
+  font-size: 19px;
+  cursor: pointer;
+  transition: all var(--t-base);
+}
+.btn-primary,
+.btn-ghost,
+.btn-danger { white-space: nowrap; }
+
 .btn-primary {
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: var(--r-sm);
   padding: 6px 16px;
-  font-size: 19px;
   font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background .15s;
 }
-.btn-primary:hover { background: var(--accent-h); }
+.btn-primary:hover    { background: var(--accent-h); }
 .btn-primary:disabled { opacity: .5; cursor: default; }
 
 .btn-ghost {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border-l);
-  border-radius: var(--r-sm);
   padding: 5px 12px;
-  font-size: 19px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all .15s;
 }
 .btn-ghost:hover { background: var(--bg3); color: var(--text); }
 
@@ -230,12 +261,7 @@ a.logo:active {
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: var(--r-sm);
   padding: 5px 12px;
-  font-size: 19px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all .15s;
 }
 .btn-danger:hover { background: var(--accent); color: #fff; }
 
@@ -246,14 +272,10 @@ a.logo:active {
   background: var(--bg3);
   color: var(--text);
   border: 1px solid var(--border-l);
-  border-radius: var(--r-sm);
   padding: 5px 12px;
-  font-size: 19px;
-  cursor: pointer;
-  transition: all .15s;
 }
-.btn-queue:hover { background: var(--bg4); }
-.btn-queue.active { border-color: var(--accent); color: var(--accent); }
+.btn-queue:hover         { background: var(--bg4); }
+.btn-queue.active        { border-color: var(--accent); color: var(--accent); }
 
 .queue-badge {
   background: var(--accent);
@@ -528,8 +550,8 @@ input::placeholder { color: var(--dim); }
 .ch-btn.refresh:hover   { color: var(--blue); }
 .ch-btn.delete:hover    { color: var(--accent); }
 .ch-btn.unread:hover    { color: var(--green); }
-.ch-btn.mute:hover      { color: #f59e0b; }
-.ch-btn.mute.on         { color: #f59e0b; }
+.ch-btn.mute:hover      { color: var(--amber); }
+.ch-btn.mute.on         { color: var(--amber); }
 
 .channel-card.muted .ch-thumb,
 .channel-card.muted .ch-name { opacity: .55; }
@@ -540,8 +562,8 @@ input::placeholder { color: var(--dim); }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .04em;
-  color: #f59e0b;
-  border: 1px solid #f59e0b;
+  color: var(--amber);
+  border: 1px solid var(--amber);
   border-radius: 3px;
   padding: 0 4px;
   margin-left: 6px;
@@ -926,9 +948,9 @@ input::placeholder { color: var(--dim); }
 /* Per-action accent on hover */
 .q-icon-btn.q-play:hover    { color: #fff; background: var(--accent); border-color: var(--accent); }
 .q-icon-btn.q-remove:hover  { color: var(--accent); border-color: var(--accent); background: transparent; }
-.q-icon-btn.q-signal:hover  { color: #3b82f6; border-color: #3b82f6; background: transparent; }
-.q-icon-btn.q-tv:hover      { color: #a78bfa; border-color: #a78bfa; background: transparent; }
-.q-icon-btn.q-deep-toggle:hover { color: #f59e0b; border-color: #f59e0b; background: transparent; }
+.q-icon-btn.q-signal:hover  { color: var(--signal); border-color: var(--signal); background: transparent; }
+.q-icon-btn.q-tv:hover      { color: var(--tv); border-color: var(--tv); background: transparent; }
+.q-icon-btn.q-deep-toggle:hover { color: var(--amber); border-color: var(--amber); background: transparent; }
 
 .q-item.dragging  { opacity: .4; touch-action: none; }
 .q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
@@ -1121,7 +1143,7 @@ body.wrap-strip .video-strip {
   transition: all .15s;
   z-index: 1;
 }
-.tile-signal-btn:hover { background: rgba(59,130,246,.85); border-color: #3b82f6; color: #fff; }
+.tile-signal-btn:hover { background: rgba(59,130,246,.85); border-color: var(--signal); color: #fff; }
 
 .tile-tv-btn {
   position: absolute;
@@ -1141,7 +1163,7 @@ body.wrap-strip .video-strip {
   transition: all .15s;
   z-index: 1;
 }
-.tile-tv-btn:hover { background: rgba(167,139,250,.85); border-color: #a78bfa; color: #fff; }
+.tile-tv-btn:hover { background: rgba(167,139,250,.85); border-color: var(--tv); color: #fff; }
 
 .v-tv-btn {
   flex-shrink: 0;
@@ -1159,7 +1181,7 @@ body.wrap-strip .video-strip {
   transition: all .15s;
   line-height: 1;
 }
-.v-tv-btn:hover { color: #a78bfa; border-color: #a78bfa; }
+.v-tv-btn:hover { color: var(--tv); border-color: var(--tv); }
 
 .v-signal-btn {
   flex-shrink: 0;
@@ -1177,7 +1199,7 @@ body.wrap-strip .video-strip {
   transition: all .15s;
   line-height: 1;
 }
-.v-signal-btn:hover { color: #3b82f6; border-color: #3b82f6; }
+.v-signal-btn:hover { color: var(--signal); border-color: var(--signal); }
 
 .tile-info {
   padding: 5px 6px 6px;
@@ -1411,7 +1433,7 @@ body.wrap-strip .video-strip {
   font-size: 17px;
 }
 .sheet-play   { color: var(--green); border-color: var(--green); }
-.sheet-tv     { color: #a78bfa; border-color: #a78bfa; }
+.sheet-tv     { color: var(--tv); border-color: var(--tv); }
 .sheet-signal { color: #3a76f0; border-color: #3a76f0; }
 .sheet-share  { color: #60a5fa; border-color: #60a5fa; }
 .sheet-cancel { background: transparent; color: var(--muted); }
@@ -1650,9 +1672,6 @@ input[type="password"] { font-size: 13px; }
   .queue-empty { font-size: 13px; }
   .q-title { font-size: 12px; }
   .q-channel { font-size: 11px; }
-  .btn-watch { font-size: 11px; }
-  .btn-remove { font-size: 11px; }
-  .btn-signal { font-size: 11px; }
   .tile-dur { font-size: 10px; }
   /* Queue badge — always visible in top-right of tile thumb */
 .tile-q-btn { font-size: 15px; }

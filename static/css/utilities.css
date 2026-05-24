@@ -1,0 +1,75 @@
+/*
+ * Atomic utility classes.
+ *
+ * Single-purpose helpers built on the tokens defined in style.css.
+ * Use these alongside component classes; load this file BEFORE style.css
+ * so component rules can override utilities when intentionally specific.
+ */
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+.flex          { display: flex; }
+.inline-flex   { display: inline-flex; }
+.flex-col      { display: flex; flex-direction: column; }
+.flex-center   { display: flex; align-items: center; justify-content: center; }
+.items-center  { align-items: center; }
+.items-start   { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.justify-end     { justify-content: flex-end; }
+.flex-wrap     { flex-wrap: wrap; }
+.flex-1        { flex: 1; min-width: 0; }
+.shrink-0      { flex-shrink: 0; }
+
+/* ── Spacing scale (gap / padding / margin) ───────────────────────────────── */
+.gap-xs { gap: var(--space-xs); }
+.gap-sm { gap: var(--space-sm); }
+.gap-md { gap: var(--space-md); }
+.gap-lg { gap: var(--space-lg); }
+
+.p-xs { padding: var(--space-xs); }
+.p-sm { padding: var(--space-sm); }
+.p-md { padding: var(--space-md); }
+.p-lg { padding: var(--space-lg); }
+
+.px-sm { padding-inline: var(--space-sm); }
+.px-md { padding-inline: var(--space-md); }
+.py-sm { padding-block: var(--space-sm); }
+.py-md { padding-block: var(--space-md); }
+
+.mt-xs { margin-top: var(--space-xs); }
+.mt-sm { margin-top: var(--space-sm); }
+.mt-md { margin-top: var(--space-md); }
+.mb-xs { margin-bottom: var(--space-xs); }
+.mb-sm { margin-bottom: var(--space-sm); }
+.mb-md { margin-bottom: var(--space-md); }
+
+/* ── Borders & radii ──────────────────────────────────────────────────────── */
+.rounded-sm { border-radius: var(--r-sm); }
+.rounded    { border-radius: var(--r); }
+.rounded-full { border-radius: 50%; }
+.border     { border: 1px solid var(--border-l); }
+.border-t   { border-top: 1px solid var(--border); }
+.border-b   { border-bottom: 1px solid var(--border); }
+
+/* ── Color shortcuts ──────────────────────────────────────────────────────── */
+.text-muted  { color: var(--muted); }
+.text-dim    { color: var(--dim); }
+.text-accent { color: var(--accent); }
+.bg-surface  { background: var(--bg2); }
+.bg-raised   { background: var(--bg3); }
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+.text-nowrap { white-space: nowrap; }
+.text-clip   { overflow: hidden; text-overflow: ellipsis; }
+.truncate-2  {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Misc ─────────────────────────────────────────────────────────────────── */
+.hidden       { display: none !important; }
+.cursor-pointer { cursor: pointer; }
+.relative     { position: relative; }
+.absolute     { position: absolute; }
+.pointer-none { pointer-events: none; }
