@@ -1,9 +1,21 @@
 'use strict';
 
-// const, dom, api, and state live in /static/js/{const,dom,api,state}.js,
-// loaded before this file via <script> tags in index.html.
+/*
+ * All rendering for youtube-zero — feed, folder, channel, video tile,
+ * video row, queue, player — plus the sort comparator that decides
+ * top-level ordering and the initial loadAll() that primes state from
+ * the API.
+ *
+ * Classic script. Render functions write to innerHTML and as a side
+ * effect populate videoMeta (declared in state.js) so the click
+ * dispatcher in events.js can look up full metadata from a video id.
+ *
+ * render() is the single re-render entry point — action handlers in
+ * actions.js call it after every state mutation.
+ */
 
-// ── Sort ──────────────────────────────────────────────────────────────────────
+
+// ── Sort ─────────────────────────────────────────────────────────────────────
 
 function mostRecentUnread(item) {
   // Works for both folders and standalone channels
@@ -35,7 +47,8 @@ function renderSortBtn() {
   btn.className    = 'btn-sort' + (state.sortMode === 'newest' ? ' active' : '');
 }
 
-// ── Render: feed ──────────────────────────────────────────────────────────────
+
+// ── Feed ─────────────────────────────────────────────────────────────────────
 
 function renderFeed() {
   const el = $('channels-list');
@@ -62,7 +75,8 @@ function renderFeed() {
   ).join('');
 }
 
-// ── Render: folder ────────────────────────────────────────────────────────────
+
+// ── Folder ───────────────────────────────────────────────────────────────────
 
 function folderMixedStrip(folder) {
   // All unread videos across channels, sorted newest first
@@ -123,7 +137,8 @@ function renderFolder(folder) {
     </div>`;
 }
 
-// ── Render: channel ───────────────────────────────────────────────────────────
+
+// ── Channel ──────────────────────────────────────────────────────────────────
 
 function renderChannel(ch, nested) {
   const mode    = channelViewMode(ch);
@@ -198,7 +213,8 @@ function renderChannel(ch, nested) {
     </div>`;
 }
 
-// ── Render: video tile ────────────────────────────────────────────────────────
+
+// ── Video tile (compact strip) ───────────────────────────────────────────────
 
 function renderVideoTile(video, channel, showChannel) {
   videoMeta.set(video.video_id, {
@@ -254,7 +270,8 @@ function renderVideoTile(video, channel, showChannel) {
     </div>`;
 }
 
-// ── Render: video row (expanded) ──────────────────────────────────────────────
+
+// ── Video row (expanded channel list) ────────────────────────────────────────
 
 function renderVideoRow(video, channel) {
   videoMeta.set(video.video_id, {
@@ -314,7 +331,8 @@ function renderVideoRow(video, channel) {
     </div>`;
 }
 
-// ── Render: queue ─────────────────────────────────────────────────────────────
+
+// ── Queue ────────────────────────────────────────────────────────────────────
 
 function shallowQueue() { return state.queue.filter(q => !q.is_deep); }
 function deepQueue()    { return state.queue.filter(q =>  q.is_deep); }
@@ -430,7 +448,8 @@ function renderQueue() {
   el.innerHTML = html;
 }
 
-// ── Render: player ────────────────────────────────────────────────────────────
+
+// ── Player overlay ───────────────────────────────────────────────────────────
 
 function renderPlayer() {
   const overlay = $('player-overlay');
@@ -464,7 +483,8 @@ function renderPlayer() {
   $('btn-player-watched').classList.toggle('hidden', !player.queueVideoId);
 }
 
-// ── Master render ─────────────────────────────────────────────────────────────
+
+// ── Master render entry point ────────────────────────────────────────────────
 
 function render() {
   renderFeed();
@@ -474,7 +494,8 @@ function render() {
   renderPlayer();
 }
 
-// ── Load ──────────────────────────────────────────────────────────────────────
+
+// ── Initial state load ───────────────────────────────────────────────────────
 
 let lastLoadAt = 0;
 
@@ -490,13 +511,3 @@ async function loadAll() {
     status('Failed to load: ' + e.message, 'err');
   }
 }
-
-
-
-// quota + signal + tv + settings live in /static/js/features.js.
-
-// click + change event delegation lives in /static/js/events.js.
-
-
-
-// Boot IIFE lives in /static/js/boot.js (loaded last).

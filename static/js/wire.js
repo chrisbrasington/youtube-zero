@@ -126,9 +126,9 @@ async function clearBrowserCache() {
   } catch {}
   try {
     await Promise.all([
-      fetch('/',                 { cache: 'reload' }),
-      fetch('/static/app.js',    { cache: 'reload' }),
-      fetch('/static/style.css', { cache: 'reload' }),
+      fetch('/',                  { cache: 'reload' }),
+      fetch('/static/js/boot.js', { cache: 'reload' }),
+      fetch('/static/style.css',  { cache: 'reload' }),
     ]);
   } catch {}
   const u = new URL(location.href);
