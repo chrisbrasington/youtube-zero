@@ -923,33 +923,4 @@ async function persistFeedOrder() {
 
 
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-
-
-// watch overlay (in-page + /watch URL) lives in /static/js/watch.js.
-
-
-(async () => {
-  loadAutoRefreshPrefs();
-  syncAutoRefresh();
-
-  const route = watchRouteFor(location.pathname);
-  if (route) {
-    await watchBootUrl(route);
-    return;
-  }
-
-  updateQuota();
-  if (state.queueOpen) $('queue-pane').classList.remove('hidden');
-  await loadAll();            // build UI with state from localStorage
-  await loadSettings();       // reconcile DB → re-render only if value changed
-  await loadSignalSettings(); // check Signal config, show/hide send buttons
-  await loadTvSettings();
-  render();                   // re-render so TV buttons appear once configured
-  connectEventSource();
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && Date.now() - lastLoadAt > 60_000) {
-      loadAll();
-    }
-  });
-})();
+// Boot IIFE lives in /static/js/boot.js (loaded last).
