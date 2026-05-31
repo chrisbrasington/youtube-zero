@@ -1854,6 +1854,20 @@ body.route-history #settings-panel { display: none; }
 
 .history-watched { font-size: 11px; opacity: .7; }
 
+.history-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.history-actions .btn-ghost {
+  padding: 8px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .history-pager {
   display: flex;
   align-items: center;

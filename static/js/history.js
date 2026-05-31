@@ -75,6 +75,11 @@ function historyRender() {
         <div class="q-channel">${esc(it.channel_name)}</div>
         <div class="q-channel history-watched">${esc(timeAgo(it.watched_at))}</div>
       </div>
+      <div class="history-actions">
+        <button class="btn-ghost" data-hist-act="play-here"   title="Play here">▶ Play here</button>
+        <button class="btn-ghost" data-hist-act="play-window" title="Open on YouTube in a new tab">↗ New window</button>
+        <button class="btn-ghost" data-hist-act="copy"        title="Copy YouTube link">📋 Copy</button>
+      </div>
     </div>`).join('');
 }
 
@@ -121,6 +126,17 @@ function historyBindDom() {
     if (!row) return;
     const it = historyItems.find(x => x.video_id === row.dataset.videoId);
     if (!it) return;
+
+    // Per-row quick actions take priority over the card → action-sheet click.
+    const act = e.target.closest('[data-hist-act]');
+    if (act) {
+      const url = `https://www.youtube.com/watch?v=${it.video_id}`;
+      if (act.dataset.histAct === 'play-here')   openPlayer(it.video_id, it.title || '');
+      if (act.dataset.histAct === 'play-window') window.open(url, '_blank', 'noopener,noreferrer');
+      if (act.dataset.histAct === 'copy')        historyCopy(url);
+      return;
+    }
+
     openActionSheet({
       videoId: it.video_id,
       title: it.title || '',
@@ -130,4 +146,21 @@ function historyBindDom() {
       inQueue: false,
     });
   });
+}
+
+
+function historyCopy(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return;
+  }
+  // Fallback (non-secure context / older Android)
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch {}
+  document.body.removeChild(ta);
 }
