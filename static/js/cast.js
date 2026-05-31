@@ -504,29 +504,36 @@ function castUpdateUI() {
 }
 
 
-// A connected screen that's actively playing something (its status carries a
-// current video). null when every screen is idle.
-function castWatchingScreen() {
-  return castScreens.find(s => s.status && s.status.video_id) || null;
+// Connected screens that are actively playing something (status carries a
+// current video). Empty when every screen is idle.
+function castWatchingScreens() {
+  return castScreens.filter(s => s.status && s.status.video_id);
 }
 
 
-// Top-of-page prompt on the main remote (/) when a screen is mid-playback: one
-// tap opens the full remote panel (thumbnail, seek, controls, queue) and takes
-// over its control. Hidden on the receiver/other routes and while the remote
-// panel is already open. Re-evaluated on every screen discovery/status event.
+// Top-of-page prompt on the main remote (/) when screen(s) are mid-playback:
+// one row per playing screen; tapping opens the full remote panel (thumbnail,
+// seek, controls, queue) and takes over that screen. Hidden on the
+// receiver/other routes and while the remote panel is already open.
+// Re-evaluated on every screen discovery/status event.
 function castRenderResumeBar() {
   const bar = $('cast-resume');
   if (!bar) return;
   const onMainPage = !['route-tv', 'route-cast', 'route-watch', 'route-history']
     .some(c => document.body.classList.contains(c));
   const remoteOpen = !$('cast-remote').classList.contains('hidden');
-  const screen = (onMainPage && !remoteOpen) ? castWatchingScreen() : null;
-  if (!screen) { bar.classList.add('hidden'); return; }
-  bar.dataset.screenId = screen.id;
-  $('cast-resume-name').textContent = screen.name || 'Screen';
-  $('cast-resume-title').textContent = screen.status.title || '';
-  $('cast-resume-thumb').src = `https://i.ytimg.com/vi/${screen.status.video_id}/mqdefault.jpg`;
+  const screens = (onMainPage && !remoteOpen) ? castWatchingScreens() : [];
+  if (!screens.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.innerHTML = screens.map(s => `
+    <button class="cast-resume-item" data-action="cast-resume" data-screen-id="${escAttr(s.id)}"
+            title="Resume control of ${escAttr(s.name || 'screen')}">
+      <img class="cast-resume-thumb" src="https://i.ytimg.com/vi/${escAttr(s.status.video_id)}/mqdefault.jpg" alt="">
+      <span class="cast-resume-text">
+        <span class="cast-resume-now">📺 ${esc(s.name || 'Screen')} is watching</span>
+        <span class="cast-resume-title">${esc(s.status.title || '')}</span>
+      </span>
+      <span class="cast-resume-cta">▶ Resume control</span>
+    </button>`).join('');
   bar.classList.remove('hidden');
 }
 

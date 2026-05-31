@@ -51,16 +51,8 @@
     </div>
   </header>
 
-  <!-- Shown on / when a screen is mid-playback: tap to take over its remote. -->
-  <button id="cast-resume" class="cast-resume hidden" data-action="cast-resume"
-          title="Resume control of the playing screen">
-    <img id="cast-resume-thumb" class="cast-resume-thumb" alt="">
-    <span class="cast-resume-text">
-      <span class="cast-resume-now">📺 <span id="cast-resume-name"></span> is watching</span>
-      <span id="cast-resume-title" class="cast-resume-title text-clip"></span>
-    </span>
-    <span class="cast-resume-cta">▶ Resume control</span>
-  </button>
+  <!-- Shown on / when screen(s) are mid-playback: one row each, tap to take over. -->
+  <div id="cast-resume" class="cast-resume hidden"></div>
 
   <div id="refresh-progress" class="refresh-progress hidden">
     <div id="refresh-progress-bar" class="refresh-progress-bar"></div>

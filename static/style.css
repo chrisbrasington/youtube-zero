@@ -2018,8 +2018,9 @@ body.route-tv [data-action="queue-deep"],
 body.route-tv [data-action="queue-undeep"] { display: none !important; }
 
 
-/* ── "Resume control" bar: a playing screen detected on the main remote (/) ─── */
-.cast-resume {
+/* ── "Resume control" bar: playing screen(s) detected on the main remote (/) ── */
+.cast-resume { display: flex; flex-direction: column; }   /* one row per screen */
+.cast-resume-item {
   display: flex;
   align-items: center;
   gap: var(--space-md);
@@ -2033,7 +2034,7 @@ body.route-tv [data-action="queue-undeep"] { display: none !important; }
   text-align: left;
   cursor: pointer;
 }
-.cast-resume:hover { background: var(--bg3); }
+.cast-resume-item:hover { background: var(--bg3); }
 .cast-resume-thumb {
   width: 72px;
   aspect-ratio: 16 / 9;
@@ -2044,7 +2045,7 @@ body.route-tv [data-action="queue-undeep"] { display: none !important; }
 }
 .cast-resume-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .cast-resume-now { font-size: 13px; color: var(--muted); }
-.cast-resume-title { font-size: 15px; font-weight: 600; }
+.cast-resume-title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cast-resume-cta {
   flex-shrink: 0;
   font-weight: 600;
