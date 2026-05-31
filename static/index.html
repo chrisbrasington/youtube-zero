@@ -228,6 +228,14 @@
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowfullscreen></iframe>
         <div id="watch-unmute" class="watch-unmute hidden">🔇 Muted — click or press any key to unmute</div>
+        <!-- TV-remote scrub preview: left/right move the target, OK commits, BACK cancels. -->
+        <div id="cast-scrub" class="cast-scrub hidden">
+          <div class="cast-scrub-bar"><div id="cast-scrub-fill" class="cast-scrub-fill"></div></div>
+          <div class="cast-scrub-times">
+            <span id="cast-scrub-cur">0:00</span>
+            <span id="cast-scrub-dur">0:00</span>
+          </div>
+        </div>
       </div>
     </div>
     <div class="watch-queue-pane">

@@ -309,11 +309,56 @@ function castSeek(delta) {
 }
 
 
+// ── Receiver: scrub-to-seek (TV remote) ──────────────────────────────────────
+//
+// In fullscreen playback, left/right move a *preview* target along the timeline
+// while the video keeps playing; OK (center) commits the jump and BACK cancels —
+// the way the YouTube TV player seeks. The bar lives inside #watch-frame-wrap so
+// it shows in both CSS-cover and real fullscreen.
+
+let castScrub = { active: false, target: 0 };
+
+function castScrubStep(delta) {
+  if (!watchPlayer) return;
+  let dur = 0, cur = 0;
+  try { dur = watchPlayer.getDuration?.() || 0; cur = watchPlayer.getCurrentTime?.() || 0; } catch {}
+  if (!castScrub.active) { castScrub.active = true; castScrub.target = cur; }
+  let t = castScrub.target + delta;
+  castScrub.target = dur > 0 ? Math.max(0, Math.min(t, dur)) : Math.max(0, t);
+  castScrubRender(dur);
+}
+
+function castScrubRender(dur) {
+  const el = $('cast-scrub');
+  if (!el) return;
+  if (!dur) { try { dur = watchPlayer?.getDuration?.() || 0; } catch {} }
+  const t = castScrub.target;
+  $('cast-scrub-fill').style.width = dur > 0 ? (100 * t / dur) + '%' : '0%';
+  $('cast-scrub-cur').textContent = castFmtTime(t);
+  $('cast-scrub-dur').textContent = castFmtTime(dur);
+  el.classList.remove('hidden');
+}
+
+function castScrubCommit() {
+  const t = castScrub.target;
+  castScrubEnd();
+  try { watchPlayer?.seekTo?.(t, true); } catch {}
+}
+
+function castScrubCancel() { castScrubEnd(); }
+
+function castScrubEnd() {
+  castScrub.active = false;
+  $('cast-scrub')?.classList.add('hidden');
+}
+
+
 // Invoked by the APK on the remote's BACK button. If a player overlay is open,
 // close it — returning to the browse page on /tv, or the idle screen on /watch
 // (same as the close/exit control) — and report handled. Otherwise return false
 // so the app handles Back itself (exits).
 function castBack() {
+  if (castScrub.active) { castScrubCancel(); return true; }   // cancel a pending seek
   if (state.watch?.active) { watchExit(); return true; }
   return false;
 }
@@ -324,11 +369,11 @@ function castKey(name) {
   // A player overlay is open → drive playback (cast receiver, or /tv playback).
   if (state.watch?.active && castNavEligible()) {
     if (document.body.classList.contains('cast-cover')) {
-      // Watching mode.
-      if (name === 'left')  return castSeek(-CAST_SEEK_STEP);
-      if (name === 'right') return castSeek(CAST_SEEK_STEP);
-      if (name === 'up' || name === 'down') return castNavEnter(name);
-      if (name === 'ok')    return castTogglePlay();
+      // Watching mode: left/right scrub a preview, OK commits, BACK cancels.
+      if (name === 'left')  return castScrubStep(-CAST_SEEK_STEP);
+      if (name === 'right') return castScrubStep(CAST_SEEK_STEP);
+      if (name === 'up' || name === 'down') { castScrubCancel(); return castNavEnter(name); }
+      if (name === 'ok')    return castScrub.active ? castScrubCommit() : castTogglePlay();
       return;
     }
     // Nav mode (in-overlay focus ring).
@@ -416,6 +461,7 @@ function castNavReRender() {
 // key) is pressed. In nav mode it activates the focused element; otherwise it
 // toggles the receiver's player with a single tap.
 function castTogglePlay() {
+  if (castScrub.active) { castScrubCommit(); return; }             // commit a pending seek
   if (castNav.active) { castNavSelect(); return; }                 // player overlay focus ring
   if (castIsTv() && !state.watch?.active) { tvBrowseKey('ok'); return; }  // browse grid
   if (!state.watch?.active || !watchPlayer) return;
