@@ -38,6 +38,7 @@
         <span id="refresh-label">↻<span class="btn-label"> Refresh All</span></span>
       </button>
       <button class="btn-ghost" id="btn-random" title="Random play (r)">🎲</button>
+      <button class="btn-ghost hidden" id="btn-cast" title="Control a watching screen">📺<span class="btn-label"> Screen</span></button>
       <button class="btn-queue" id="btn-queue">
         <span class="btn-label">Queue </span><span class="queue-badge" id="queue-badge">0</span>
       </button>
@@ -156,6 +157,7 @@
       <div id="action-sheet-title" class="action-sheet-title"></div>
       <div class="action-sheet-primary">
         <button class="sheet-btn sheet-play" data-action="sheet-play-here">▶ Play Here</button>
+        <button class="sheet-btn sheet-screen" data-action="sheet-play-screen">📺 Play on Screen</button>
         <button class="sheet-btn sheet-tv" data-action="sheet-play-tv">📺 Play on TV</button>
       </div>
       <div class="action-sheet-secondary">
@@ -207,6 +209,21 @@
     </div>
   </div>
 
+  <!-- Cast: idle receiver screen (/watch when nothing is playing) -->
+  <div id="cast-idle" class="cast-idle hidden"></div>
+
+  <!-- Cast: phone remote control panel (filled by cast.js) -->
+  <div id="cast-remote" class="cast-remote hidden" data-action="cast-remote-backdrop"></div>
+
+  <!-- Cast: destination / screen chooser -->
+  <div id="cast-pick" class="cast-pick hidden" data-action="cast-pick-backdrop">
+    <div class="cast-pick-box" onclick="event.stopPropagation()">
+      <div class="cast-pick-title"></div>
+      <div class="cast-pick-options"></div>
+      <button class="sheet-btn sheet-cancel" data-cast-pick="">Cancel</button>
+    </div>
+  </div>
+
   <!-- Player overlay -->
   <div id="player-overlay" class="player-overlay hidden" data-action="close-player-backdrop">
     <div id="player-box" class="player-box" onclick="event.stopPropagation()">
@@ -232,6 +249,7 @@
   <script src="/static/js/sheet.js"></script>
   <script src="/static/js/player.js"></script>
   <script src="/static/js/watch.js"></script>
+  <script src="/static/js/cast.js"></script>
   <script src="/static/js/render.js"></script>
   <script src="/static/js/actions.js"></script>
   <script src="/static/js/wire.js"></script>

@@ -16,6 +16,7 @@
 
   const route = watchRouteFor(location.pathname);
   if (route) {
+    if (route.mode === 'cast-receiver') { castReceiverEnter(); return; }
     await watchBootUrl(route);
     return;
   }
@@ -27,6 +28,7 @@
   await loadSignalSettings(); // check Signal config, show/hide send buttons
   await loadTvSettings();
   render();                   // re-render so TV buttons appear once configured
+  castRefreshScreens();       // discover any watching screens, reveal cast controls
   connectEventSource();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && Date.now() - lastLoadAt > 60_000) {

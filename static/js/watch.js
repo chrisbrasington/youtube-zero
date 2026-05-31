@@ -20,7 +20,8 @@ let watchDomBound = false;
 
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
-  if (p === '/watch')        return { mode: 'queue' };
+  if (p === '/watch')        return { mode: 'cast-receiver' };  // idle screen, waits for casts
+  if (p === '/watch/queue')  return { mode: 'queue' };          // local binge of the queue
   if (p === '/watch/test')   return { mode: 'queue-test' };
   if (p === '/watch/folder') return { mode: 'folder' };
   return null;
@@ -110,7 +111,7 @@ function watchSetupYT() {
       onReady: (e) => {
         try {
           if (state.watch?.mutedStart) e.target.mute();
-          e.target.playVideo();
+          if (state.watch?.active) e.target.playVideo();  // skip if exited / idle
         } catch {}
         watchBindMediaSession();
         watchUpdateMediaSession();
@@ -338,6 +339,7 @@ function watchEnter(config) {
     singleShot: !!config.singleShot,
     list: config.list || [],
     mark: config.mark || null,
+    onExit: config.onExit || null,
     currentVideoId: null,
   };
   document.body.classList.add('route-watch');
@@ -364,6 +366,7 @@ function watchEnter(config) {
 function watchExit() {
   if (!state.watch) return;
   const inPage = state.watch.inPage;
+  const onExit = state.watch.onExit;
   state.watch = null;
   if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
   document.body.classList.remove('route-watch');
@@ -374,7 +377,9 @@ function watchExit() {
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch {}
   }
-  if (inPage) {
+  if (onExit) {
+    onExit();          // cast receiver: return to the idle screen, no redirect
+  } else if (inPage) {
     render();
   } else {
     location.href = '/';

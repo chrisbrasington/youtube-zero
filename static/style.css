@@ -1836,3 +1836,144 @@ body.narrow-ui {
     max-height: unset;
   }
 }
+
+
+/* ── Cast: idle receiver screen (/watch) ─────────────────────────────────── */
+
+.cast-idle {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 450;
+  cursor: pointer;
+}
+.cast-idle.hidden { display: none; }
+body.route-cast > .header,
+body.route-cast > #refresh-progress,
+body.route-cast > #settings-panel,
+body.route-cast > .main-layout { display: none; }
+
+.cast-idle-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 24px;
+}
+.cast-idle-icon { font-size: 72px; line-height: 1; opacity: .85; }
+.cast-name-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border-l);
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 8px;
+  max-width: 80vw;
+}
+.cast-name-input:focus { outline: none; border-bottom-color: var(--green); }
+.cast-idle-status { font-size: 18px; color: var(--green); }
+.cast-idle-hint { font-size: 14px; color: var(--muted); }
+.cast-idle-hint.hidden { display: none; }
+
+
+/* ── Cast: phone remote control panel ────────────────────────────────────── */
+
+.cast-remote {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 700;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.cast-remote.hidden { display: none; }
+.cast-remote-box {
+  background: var(--bg2);
+  border-top: 1px solid var(--border-l);
+  border-radius: 14px 14px 0 0;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 600px;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.cast-remote-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cast-remote-name { flex: 1; font-size: 16px; font-weight: 600; color: var(--text); }
+.cast-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cast-now-thumb {
+  width: 120px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg3);
+  flex-shrink: 0;
+}
+.cast-now-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cast-now-idle { color: var(--muted); font-size: 15px; padding: 8px 0; }
+.cast-remote-controls {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+.cast-remote-controls .player-btn { font-size: 22px; padding: 10px 14px; }
+.cast-remote-controls .cast-ctl-big { font-size: 28px; color: var(--green); }
+.cast-remote-list { max-height: 40dvh; overflow-y: auto; }
+.sheet-screen { color: var(--tv); border-color: var(--tv); }
+
+
+/* ── Cast: destination / screen chooser ──────────────────────────────────── */
+
+.cast-pick {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 720;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.cast-pick.hidden { display: none; }
+.cast-pick-box {
+  background: var(--bg2);
+  border-top: 1px solid var(--border-l);
+  border-radius: 14px 14px 0 0;
+  padding: 16px 12px calc(12px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cast-pick-title { font-size: 15px; color: var(--muted); padding: 0 4px 4px; }
+.cast-pick-options { display: flex; flex-direction: column; gap: 8px; }
+.cast-pick-options .sheet-btn,
+.cast-pick .sheet-cancel { width: 100%; }

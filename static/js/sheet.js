@@ -93,6 +93,8 @@ function openActionSheet(ctx) {
   btnS.style.display = state.signalConfigured ? '' : 'none';
   const btnT = document.querySelector('[data-action="sheet-play-tv"]');
   btnT.style.display = state.tvConfigured ? '' : 'none';
+  const btnScr = document.querySelector('[data-action="sheet-play-screen"]');
+  if (btnScr) btnScr.style.display = (typeof castAvailable === 'function' && castAvailable()) ? '' : 'none';
   const btnC = document.querySelector('[data-action="sheet-copy"]');
   if (btnC) btnC.style.display = ctx.videoId ? '' : 'none';
   $('action-sheet').classList.remove('hidden');

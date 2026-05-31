@@ -41,9 +41,9 @@ document.addEventListener('click', e => {
   const rfBtn = e.target.closest('[data-action="refresh-folder"]');
   if (rfBtn) { e.stopPropagation(); refreshFolder(parseInt(rfBtn.dataset.folderId, 10)); return; }
 
-  // Folder: watch all visible videos
+  // Folder: watch all visible videos (here, or cast to a screen if one is online)
   const wfBtn = e.target.closest('[data-action="watch-folder"]');
-  if (wfBtn) { e.stopPropagation(); watchStartFolder(parseInt(wfBtn.dataset.folderId, 10)); return; }
+  if (wfBtn) { e.stopPropagation(); castOrWatchFolder(parseInt(wfBtn.dataset.folderId, 10)); return; }
 
   // Folder: rename
   const renameBtn = e.target.closest('[data-action="rename-folder"]');
@@ -134,6 +134,14 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-action="sheet-play-here"]') && sheetCtx) {
     const c = sheetCtx; closeActionSheet();
     openPlayer(c.videoId, c.title);
+    return;
+  }
+  if (e.target.closest('[data-action="sheet-play-screen"]') && sheetCtx) {
+    const c = sheetCtx; closeActionSheet();
+    castSingleVideo({
+      video_id: c.videoId, title: c.title,
+      channel_name: c.channelName, thumbnail_url: c.thumbnailUrl,
+    });
     return;
   }
   if (e.target.closest('[data-action="sheet-play-tv"]') && sheetCtx) {

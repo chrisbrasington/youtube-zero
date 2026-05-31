@@ -70,7 +70,8 @@ $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
 $('btn-clear-queue').addEventListener('click', () => clearQueue(false));
-$('btn-watch-queue').addEventListener('click', () => watchStartQueue());
+$('btn-watch-queue').addEventListener('click', () => castOrWatchQueue());
+$('btn-cast').addEventListener('click', () => castOpenRemote());
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);
 $('btn-tv-connect').addEventListener('click', tvConnect);
@@ -169,6 +170,9 @@ function connectEventSource() {
       else if (msg.type === 'signal_cmd') {
         if (msg.phase === 'received') signalToast(`signal: ${msg.cmd} received`);
         else if (msg.phase === 'done') signalToast(`signal: ${msg.cmd} response sent ✓`);
+      }
+      else if (msg.type === 'screen_online' || msg.type === 'screen_offline' || msg.type === 'screen_status') {
+        castOnScreenEvent(msg);
       }
     } catch (_) {}
   };

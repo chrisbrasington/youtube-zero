@@ -667,7 +667,11 @@ async def events():
         try:
             yield "data: connected\n\n"
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"   # heartbeat — keep proxies/throttled tabs alive
+                    continue
                 yield f"data: {_json.dumps(event)}\n\n"
         finally:
             _event_listeners.discard(queue)
@@ -677,6 +681,108 @@ async def events():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Cast — screens & remote control ───────────────────────────────────────────
+#
+# A "screen" is a device on /watch waiting for content. Transport reuses the SSE
+# pattern above: a per-screen stream pushes commands down to the screen, the
+# global /api/events stream carries screen_online/offline/status up to remotes,
+# and phones send plays/commands as plain POSTs. See cast.py for the registry.
+
+import cast as _cast
+
+
+@app.get("/api/cast/screens")
+def cast_screens():
+    return _cast.list_screens()
+
+
+@app.get("/api/cast/stream/{screen_id}")
+async def cast_stream(screen_id: str, name: str = ""):
+    safe_name = _cast.sanitize_name(name)
+    queue, token, is_new = _cast.register_screen(screen_id, safe_name)
+    if is_new:
+        await _broadcast("screen_online", screen_id=screen_id, name=safe_name)
+
+    async def generator():
+        try:
+            yield "data: connected\n\n"
+            while True:
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                yield f"data: {json.dumps(payload)}\n\n"
+        finally:
+            async def _offline():
+                await _broadcast("screen_offline", screen_id=screen_id)
+            _cast.schedule_drop(screen_id, token, _offline)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/cast/{screen_id}/play")
+async def cast_play(screen_id: str, req: _cast.CastPlayReq):
+    if not _cast.has_screen(screen_id):
+        raise HTTPException(404, "screen not connected")
+    videos = [v.model_dump() for v in req.videos]
+    if not videos:
+        raise HTTPException(400, "no videos")
+    _cast.send_command(screen_id, {
+        "type": "play",
+        "videos": videos,
+        "start_id": req.start_id,
+        "mark_mode": req.mark_mode,
+    })
+    start_id = req.start_id or videos[0]["video_id"]
+    cur = next((v for v in videos if v["video_id"] == start_id), videos[0])
+    status = _cast.set_status(screen_id, {
+        "video_id": cur["video_id"],
+        "title": cur.get("title", ""),
+        "player_state": None,
+        "index": next((i for i, v in enumerate(videos) if v["video_id"] == start_id), 0),
+        "count": len(videos),
+        "name": _cast.get_name(screen_id),
+        "videos": videos,   # full jump list — kept for late-joining remotes
+    })
+    await _broadcast("screen_status", screen_id=screen_id, status=status)
+    return {"ok": True}
+
+
+@app.post("/api/cast/{screen_id}/command")
+async def cast_command(screen_id: str, req: _cast.CastCommandReq):
+    if not _cast.has_screen(screen_id):
+        raise HTTPException(404, "screen not connected")
+    if req.action not in _cast.CAST_ACTIONS:
+        raise HTTPException(400, f"unknown action: {req.action}")
+    _cast.send_command(screen_id, {
+        "type": "command",
+        "action": req.action,
+        "video_id": req.video_id,
+    })
+    return {"ok": True}
+
+
+@app.post("/api/cast/{screen_id}/status")
+async def cast_status(screen_id: str, req: _cast.CastStatusReq):
+    if not _cast.has_screen(screen_id):
+        raise HTTPException(404, "screen not connected")
+    status = _cast.set_status(screen_id, {
+        "video_id": req.video_id,
+        "title": req.title,
+        "player_state": req.player_state,
+        "index": req.index,
+        "count": req.count,
+        "name": _cast.get_name(screen_id),
+    })
+    await _broadcast("screen_status", screen_id=screen_id, status=status)
+    return {"ok": True}
 
 
 @app.get("/api/quota")
