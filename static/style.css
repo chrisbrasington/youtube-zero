@@ -2057,19 +2057,17 @@ body.route-tv [data-action="queue-undeep"] { display: none !important; }
 .cast-resume { display: flex; flex-direction: column; }   /* one row per screen */
 .cast-resume-item {
   display: flex;
-  align-items: center;
-  gap: var(--space-md);
+  flex-direction: column;
+  gap: var(--space-sm);
   width: 100%;
   padding: var(--space-sm) var(--space-md);
   background: var(--bg2);
-  border: none;
   border-bottom: 1px solid var(--border-l);
   color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
-.cast-resume-item:hover { background: var(--bg3); }
+.cast-resume-head { display: flex; align-items: center; gap: var(--space-md); }
+.cast-resume-actions { display: flex; gap: var(--space-sm); }
+.cast-resume-actions .cast-resume-btn { flex: 1; text-align: center; }
 .cast-resume-thumb {
   width: 72px;
   aspect-ratio: 16 / 9;
@@ -2081,14 +2079,22 @@ body.route-tv [data-action="queue-undeep"] { display: none !important; }
 .cast-resume-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .cast-resume-now { font-size: 13px; color: var(--muted); }
 .cast-resume-title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cast-resume-cta {
+.cast-resume-btn {
   flex-shrink: 0;
+  font: inherit;
   font-weight: 600;
   color: var(--accent);
+  background: transparent;
   padding: 6px 12px;
   border: 1px solid var(--accent);
   border-radius: var(--r-sm);
+  cursor: pointer;
 }
+.cast-resume-btn:hover { background: rgba(96,165,250,.15); }
+.cast-resume-transfer,
+.cast-resume-here { color: var(--text); border-color: var(--border-l); }
+.cast-resume-transfer:hover,
+.cast-resume-here:hover { background: var(--bg3); }
 
 .cast-idle-inner {
   display: flex;

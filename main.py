@@ -748,6 +748,7 @@ async def cast_play(screen_id: str, req: _cast.CastPlayReq):
         "type": "play",
         "videos": videos,
         "start_id": req.start_id,
+        "start_seconds": req.start_seconds,
         "mark_mode": req.mark_mode,
     })
     start_id = req.start_id or videos[0]["video_id"]
@@ -759,7 +760,8 @@ async def cast_play(screen_id: str, req: _cast.CastPlayReq):
         "index": next((i for i, v in enumerate(videos) if v["video_id"] == start_id), 0),
         "count": len(videos),
         "name": _cast.get_name(screen_id),
-        "videos": videos,   # full jump list — kept for late-joining remotes
+        "videos": videos,             # full jump list — late-joining remotes + transfer
+        "mark_mode": req.mark_mode,    # remembered so a transfer preserves marking
     })
     await _broadcast("screen_status", screen_id=screen_id, status=status)
     return {"ok": True}
@@ -784,7 +786,7 @@ async def cast_command(screen_id: str, req: _cast.CastCommandReq):
 async def cast_status(screen_id: str, req: _cast.CastStatusReq):
     if not _cast.has_screen(screen_id):
         raise HTTPException(404, "screen not connected")
-    status = _cast.set_status(screen_id, {
+    data = {
         "video_id": req.video_id,
         "title": req.title,
         "player_state": req.player_state,
@@ -793,7 +795,12 @@ async def cast_status(screen_id: str, req: _cast.CastStatusReq):
         "current_time": req.current_time,
         "duration": req.duration,
         "name": _cast.get_name(screen_id),
-    })
+    }
+    # Only overwrite the stored jump list when the poll actually carried one
+    # (sent on change) — otherwise preserve whatever /play or an earlier poll set.
+    if req.videos is not None:
+        data["videos"] = [v.model_dump() for v in req.videos]
+    status = _cast.set_status(screen_id, data)
     await _broadcast("screen_status", screen_id=screen_id, status=status)
     return {"ok": True}
 

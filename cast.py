@@ -17,7 +17,7 @@ import asyncio
 import re
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # Live remote-control actions a phone may push to a connected screen. Starting a
@@ -37,10 +37,19 @@ class CastVideo(BaseModel):
     thumbnail_url: str = ""
     duration: str = ""
 
+    # Feed/queue items often carry null (or numeric) fields; never reject on them
+    # — a missing optional field just becomes "". Without this, one null in the
+    # jump list 422s the whole /play or /status request.
+    @field_validator("title", "channel_name", "thumbnail_url", "duration", mode="before")
+    @classmethod
+    def _coerce_str(cls, v):
+        return "" if v is None else str(v)
+
 
 class CastPlayReq(BaseModel):
     videos: list[CastVideo]
     start_id: Optional[str] = None
+    start_seconds: Optional[float] = None   # resume offset for the start video (transfer)
     mark_mode: str = "queue"   # "queue" → mark watched; "read" → mark read; "none"
 
 
@@ -58,6 +67,7 @@ class CastStatusReq(BaseModel):
     count: int = 0
     current_time: float = 0
     duration: float = 0
+    videos: Optional[list[CastVideo]] = None   # sent only when the jump list changes
 
 
 class _Screen:

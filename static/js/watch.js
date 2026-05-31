@@ -194,7 +194,7 @@ function watchArmUnmute() {
 }
 
 
-function watchPlay(videoId) {
+function watchPlay(videoId, startSeconds = 0) {
   state.watch.currentVideoId = videoId;
   const item = (state.watch.list || []).find(v => v.video_id === videoId);
   // Record "started watching" so the video lands in history even if never finished.
@@ -206,12 +206,13 @@ function watchPlay(videoId) {
   $('watch-title').textContent = item ? item.title : '';
   $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
   if (watchPlayer && watchPlayer.loadVideoById) {
-    watchPlayer.loadVideoById(videoId);
+    watchPlayer.loadVideoById(startSeconds > 0 ? { videoId, startSeconds } : videoId);
   } else {
     const origin = encodeURIComponent(location.origin);
     const mute   = state.watch.mutedStart ? '&mute=1' : '';
+    const start  = startSeconds > 0 ? `&start=${Math.floor(startSeconds)}` : '';
     const frame  = $('watch-frame');
-    frame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}`;
+    frame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}${start}`;
     frame.addEventListener('load', () => {
       watchSetupYT();
       if (state.watch?.mutedStart) watchArmUnmute();
@@ -369,13 +370,14 @@ function watchEnter(config) {
   }
 
   watchBindDom();
+  if (typeof castSyncHereTransfer === 'function') castSyncHereTransfer();  // "📺 Transfer" visibility
 
   if (!state.watch.list.length) { watchExit(); return; }
   watchRenderQueue();
   const startId = config.startId && state.watch.list.find(v => v.video_id === config.startId)
     ? config.startId
     : state.watch.list[0].video_id;
-  watchPlay(startId);
+  watchPlay(startId, config.startSeconds || 0);   // startSeconds: resume offset on transfer
 }
 
 

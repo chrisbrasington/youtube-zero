@@ -29,6 +29,7 @@ let castUserActivated = false;   // has a gesture happened on this screen tab?
 let castReceiverES = null;
 let castStatusTimer = null;
 let castLastStatusKey = '';
+let castLastListSig = '';         // last jump-list signature sent in a status poll
 let castCcOn = false;            // captions toggle (YT API has no getter — we track it)
 
 // Kiosk mode (set via ?kiosk=1, e.g. the Android WebView wrapper): the host has
@@ -165,6 +166,7 @@ function castOnPlayCommand(payload) {
     mutedStart: !(castUserActivated || castKiosk),   // kiosk/gesture → unmuted; else muted (+ banner)
     list,
     startId: payload.start_id || null,
+    startSeconds: payload.start_seconds || 0,   // resume offset (transfer)
     mark: castMakeMark(payload.mark_mode),
     onExit: castReturnToIdle,
   });
@@ -475,10 +477,10 @@ function castTogglePlay() {
 
 function castPollStatus() {
   if (!castScreenId) return;
-  let vid = null, ps = null, idx = 0, count = 0, title = '', cur = 0, dur = 0;
+  let vid = null, ps = null, idx = 0, count = 0, title = '', cur = 0, dur = 0, list = [];
   if (state.watch?.active) {
     vid = state.watch.currentVideoId;
-    const list = state.watch.list || [];
+    list = state.watch.list || [];
     count = list.length;
     idx = Math.max(0, list.findIndex(v => v.video_id === vid));
     const item = list.find(v => v.video_id === vid);
@@ -491,13 +493,25 @@ function castPollStatus() {
   }
   // current_time advances every tick while playing — that's intended so the
   // remote's seek bar tracks live (≈1 POST/sec). Paused → time frozen → no POST.
-  const key = `${vid}|${ps}|${idx}|${count}|${Math.floor(cur)}|${Math.floor(dur)}`;
+  const listSig = list.map(v => v.video_id).join(',');
+  const key = `${vid}|${ps}|${idx}|${count}|${Math.floor(cur)}|${Math.floor(dur)}|${listSig}`;
   if (key === castLastStatusKey) return;
   castLastStatusKey = key;
-  api.post(`/api/cast/${castScreenId}/status`, {
+  const payload = {
     video_id: vid, title, player_state: ps, index: idx, count,
     current_time: cur, duration: dur,
-  }).catch(() => {});
+  };
+  // Send the jump list only when it changes — so a self-started screen (which
+  // never went through /play) still exposes its queue for resume/transfer/pull,
+  // without shipping the whole list every second.
+  if (listSig !== castLastListSig) {
+    castLastListSig = listSig;
+    payload.videos = list.map(v => ({
+      video_id: v.video_id, title: v.title, channel_name: v.channel_name,
+      thumbnail_url: v.thumbnail_url, duration: v.duration,
+    }));
+  }
+  api.post(`/api/cast/${castScreenId}/status`, payload).catch(() => {});
 }
 
 
@@ -547,6 +561,56 @@ function castUpdateUI() {
   const btn = $('btn-cast');
   if (btn) btn.classList.toggle('hidden', !castAvailable());
   castRenderResumeBar();
+  castSyncHereTransfer();
+}
+
+
+// Show the watch-overlay "📺 Transfer" button only for a local "play here" on /
+// (not a cast receiver, not /tv) while at least one screen is connected — the
+// screens can be idle. Kept in sync as screens come and go mid-playback.
+function castSyncHereTransfer() {
+  const btn = $('btn-watch-transfer');
+  if (!btn) return;
+  const local = !!(state.watch?.active && state.watch.mode !== 'cast' && !castIsTv());
+  btn.classList.toggle('hidden', !(local && castAvailable()));
+}
+
+
+// Hand the current local "play here" playback off to a screen: its remaining
+// list, current video, and timestamp — then close the local player (back to the
+// browse page) and open the screen's remote panel.
+async function castTransferLocal() {
+  if (!state.watch?.active) return;
+  if (!castAvailable()) { status('No screen available', 'err'); setTimeout(() => status(''), 2500); return; }
+
+  const list = state.watch.list || [];
+  const curId = state.watch.currentVideoId;
+  const from = Math.max(0, list.findIndex(v => v.video_id === curId));
+  const videos = list.slice(from).map(v => ({
+    video_id: v.video_id, title: v.title, channel_name: v.channel_name,
+    thumbnail_url: v.thumbnail_url, duration: v.duration,
+  }));
+  if (!videos.length) return;
+
+  let seconds = 0;
+  try { seconds = watchPlayer?.getCurrentTime?.() || 0; } catch {}
+  // Local modes map onto the cast mark vocabulary: the queue marks watched;
+  // single/folder mark read.
+  const markMode = state.watch.mode === 'queue' ? 'queue' : 'read';
+
+  const sid = await castPickScreen();
+  if (!sid) return;
+  try {
+    await api.post(`/api/cast/${sid}/play`, {
+      videos, start_id: curId, start_seconds: seconds, mark_mode: markMode,
+    });
+    watchExit();              // close the local player → back to the browse page
+    castActiveScreen = sid;
+    castOpenRemote();         // hand over to the screen's remote panel
+    status('Playing on screen ✓', 'ok'); setTimeout(() => status(''), 2500);
+  } catch (e) {
+    status('Transfer failed: ' + e.message, 'err'); setTimeout(() => status(''), 3000);
+  }
 }
 
 
@@ -570,17 +634,112 @@ function castRenderResumeBar() {
   const remoteOpen = !$('cast-remote').classList.contains('hidden');
   const screens = (onMainPage && !remoteOpen) ? castWatchingScreens() : [];
   if (!screens.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  const canTransfer = castScreens.length > 1;   // a second screen exists to send to
   bar.innerHTML = screens.map(s => `
-    <button class="cast-resume-item" data-action="cast-resume" data-screen-id="${escAttr(s.id)}"
-            title="Resume control of ${escAttr(s.name || 'screen')}">
-      <img class="cast-resume-thumb" src="https://i.ytimg.com/vi/${escAttr(s.status.video_id)}/mqdefault.jpg" alt="">
-      <span class="cast-resume-text">
-        <span class="cast-resume-now">📺 ${esc(s.name || 'Screen')} is watching</span>
-        <span class="cast-resume-title">${esc(s.status.title || '')}</span>
-      </span>
-      <span class="cast-resume-cta">▶ Resume control</span>
-    </button>`).join('');
+    <div class="cast-resume-item" data-screen-id="${escAttr(s.id)}">
+      <div class="cast-resume-head">
+        <img class="cast-resume-thumb" src="https://i.ytimg.com/vi/${escAttr(s.status.video_id)}/mqdefault.jpg" alt="">
+        <span class="cast-resume-text">
+          <span class="cast-resume-now">📺 ${esc(s.name || 'Screen')} is watching</span>
+          <span class="cast-resume-title">${esc(s.status.title || '')}</span>
+        </span>
+      </div>
+      <div class="cast-resume-actions">
+        <button class="cast-resume-btn" data-action="cast-resume" data-screen-id="${escAttr(s.id)}">▶ Resume</button>
+        <button class="cast-resume-btn cast-resume-here" data-action="cast-here" data-screen-id="${escAttr(s.id)}">⤓ Here</button>
+        ${canTransfer ? `<button class="cast-resume-btn cast-resume-transfer" data-action="cast-transfer" data-screen-id="${escAttr(s.id)}">⇄ Transfer</button>` : ''}
+      </div>
+    </div>`).join('');
   bar.classList.remove('hidden');
+}
+
+
+// The current video + everything after it from a screen's stored jump list.
+function castTransferList(st) {
+  const all = st.videos || [];
+  const from = Math.max(0, all.findIndex(v => v.video_id === st.video_id));
+  return all.slice(from).map(v => ({
+    video_id: v.video_id, title: v.title, channel_name: v.channel_name,
+    thumbnail_url: v.thumbnail_url, duration: v.duration,
+  }));
+}
+
+// Local play-here mark behavior matching a cast mark_mode (mirrors the in-page
+// queue/folder entry points so the feed/queue update too, not just the server).
+function castLocalMark(mode) {
+  if (mode === 'none') return null;
+  if (mode === 'queue') {
+    return async (id) => {
+      await api.post(`/api/queue/${id}/watched`);
+      state.queue = state.queue.filter(q => q.video_id !== id);
+      if (typeof setInQueue === 'function') setInQueue(id, false);
+    };
+  }
+  return async (id) => {   // 'read'
+    try { await api.post(`/api/videos/${id}/read`); } catch {}
+    for (const ch of allChannels()) {
+      const v = (ch.videos || []).find(x => x.video_id === id);
+      if (v) v.is_read = true;
+    }
+  };
+}
+
+// Pull a screen's playback down to THIS browser (play-here) at the same spot,
+// then stop the screen.
+async function castPullHere(sourceId) {
+  const source = castScreens.find(s => s.id === sourceId);
+  const st = source && source.status;
+  if (!st || !st.video_id) return;
+  const videos = castTransferList(st);
+  if (!videos.length) return;
+  const mode = st.mark_mode || 'queue';
+
+  try { await api.post(`/api/cast/${sourceId}/command`, { action: 'stop' }); } catch {}
+  watchEnter({
+    mode: mode === 'queue' ? 'queue' : 'folder',
+    inPage: true,
+    mutedStart: false,                 // pulled via a click → audio autoplay is allowed
+    list: videos,
+    startId: st.video_id,
+    startSeconds: st.current_time || 0,
+    mark: castLocalMark(mode),
+  });
+}
+
+
+// Move a playing screen's playback (its queue, current video, and progress) to
+// another screen, then stop the source so it returns to its idle/browse view.
+// The current video resumes at the same timestamp on the target.
+async function castTransfer(sourceId) {
+  const source = castScreens.find(s => s.id === sourceId);
+  const st = source && source.status;
+  if (!st || !st.video_id) return;
+
+  const targets = castScreens.filter(s => s.id !== sourceId);
+  if (!targets.length) {
+    status('No other screen to transfer to', 'err'); setTimeout(() => status(''), 2500); return;
+  }
+  const targetId = targets.length === 1
+    ? targets[0].id
+    : await castShowPick('Transfer to', targets.map(s => ({ label: '📺 ' + (s.name || 'Screen'), value: s.id })));
+  if (!targetId) return;
+
+  const videos = castTransferList(st);   // current video + everything after it
+  if (!videos.length) { status('Nothing to transfer', 'err'); setTimeout(() => status(''), 2500); return; }
+
+  try {
+    await api.post(`/api/cast/${targetId}/play`, {
+      videos,
+      start_id: st.video_id,
+      start_seconds: st.current_time || 0,   // resume at the same progress
+      mark_mode: st.mark_mode || 'queue',
+    });
+    await api.post(`/api/cast/${sourceId}/command`, { action: 'stop' });   // source → back to idle/browse
+    const tname = targets.find(s => s.id === targetId)?.name || 'screen';
+    status(`Transferred to ${tname} ✓`, 'ok'); setTimeout(() => status(''), 2500);
+  } catch (e) {
+    status('Transfer failed: ' + e.message, 'err'); setTimeout(() => status(''), 3000);
+  }
 }
 
 
@@ -864,6 +1023,12 @@ function castFmtTime(s) {
 
 // Delegated clicks for the remote panel + the destination/screen chooser.
 document.addEventListener('click', e => {
+  const transfer = e.target.closest('[data-action="cast-transfer"]');
+  if (transfer) { castTransfer(transfer.dataset.screenId); return; }
+
+  const here = e.target.closest('[data-action="cast-here"]');
+  if (here) { castPullHere(here.dataset.screenId); return; }
+
   const resume = e.target.closest('[data-action="cast-resume"]');
   if (resume) { castResumeControl(resume.dataset.screenId); return; }
 
