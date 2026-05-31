@@ -1706,6 +1706,23 @@ input[type="password"] { font-size: 13px; }
   .deep-count { font-size: 11px; padding: 1px 6px; }
   .deep-preview-thumb { width: 44px; height: 25px; }
   .deep-preview { gap: 3px; }
+
+  /* ── Watch history: stack the per-row actions onto their own full-width line
+        so they don't overlap the title or run off-screen on phones. ─────────── */
+  .history-search-row { flex-wrap: wrap; }
+  .history-list .q-item { flex-wrap: wrap; }
+  .history-actions {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .history-actions .btn-ghost {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 8px;
+    font-size: 13px;
+    text-align: center;
+  }
 }
 
 /* ── Watch page (/watch, /watch/test) ─────────────────────────────────────── */
