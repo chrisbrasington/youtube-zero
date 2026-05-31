@@ -1813,6 +1813,11 @@ body.route-watch .watch-layout { display: flex; }
 
 .watch-layout.theater .watch-queue-pane { display: none; }
 
+/* Cast "cover" mode — remote-triggered, gesture-free fill-the-viewport view.
+   Hides the on-screen header bar and up-next pane so the video fills the page. */
+body.cast-cover .watch-header,
+body.cast-cover .watch-queue-pane { display: none; }
+
 body.narrow-ui {
   .watch-layout { flex-direction: column; }
   .watch-video-pane { flex: 0 0 auto; }

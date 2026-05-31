@@ -99,6 +99,7 @@ function castRename(name) {
 
 
 function castReturnToIdle() {
+  document.body.classList.remove('cast-cover');
   $('watch-layout').classList.add('hidden');
   $('cast-idle').classList.remove('hidden');
   castLastStatusKey = '';   // force an idle status on the next poll
@@ -139,6 +140,7 @@ function castOnPlayCommand(payload) {
   }));
   if (!list.length) return;
   $('cast-idle').classList.add('hidden');
+  document.body.classList.add('cast-cover');   // start filling the screen
   watchEnter({
     mode: 'cast',
     inPage: true,
@@ -148,6 +150,7 @@ function castOnPlayCommand(payload) {
     mark: castMakeMark(payload.mark_mode),
     onExit: castReturnToIdle,
   });
+  watchRequestFullscreen();   // best-effort real fullscreen (TV/kiosk); harmless if blocked
 }
 
 
@@ -172,10 +175,22 @@ function castOnCommand(msg) {
         try { watchPlayer?.seekTo?.(msg.value, true); } catch {}
       }
       break;
-    case 'fullscreen':
-      if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
-      else watchRequestFullscreen();
-      break;
+    case 'fullscreen': castToggleCover(); break;
+  }
+}
+
+
+// Remote fullscreen. The OS Fullscreen API can't be *entered* without a gesture
+// on the screen itself, so a network command can't reliably use it. Instead we
+// toggle a CSS "cover" mode that fills the viewport with the video (always
+// works), and *also* attempt real fullscreen as a bonus for TV/kiosk browsers
+// that allow it.
+function castToggleCover() {
+  const on = document.body.classList.toggle('cast-cover');
+  if (on) {
+    watchRequestFullscreen();
+  } else if (document.fullscreenElement) {
+    try { document.exitFullscreen?.(); } catch {}
   }
 }
 
