@@ -36,7 +36,8 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 
 ### Playback (local & external)
 
-* <b>Play on TV via Android developer bridge container</b>
+* <b>Send to TV via Android developer bridge container</b>
+* <b>Play on Screen — cast to a `/watch` display and drive it from your phone</b>
 * Embedded video player with normal, theater, and fullscreen modes
 * Keyboard shortcuts for navigation and playback control
 * Auto-refresh of feeds at configurable intervals (5 minutes to 24 hours)
@@ -121,6 +122,33 @@ The `compose.yaml` includes an `adb-api` sidecar that wraps `adb` for Android TV
 5. **Use SmartTube** (default on) routes via [SmartTube](https://github.com/yuliskov/SmartTube) (`com.liskovsoft.smarttubetv.beta`); off lets the TV's default YouTube app handle it
 
 ADB keys persist via `./adb-data:/root/.android` so the trust prompt only shows once.
+
+### Play on Screen (cast to a /watch display)
+
+Open `http://<host>:8000/watch` on any display — a spare monitor, an HTPC, a TV browser, or the
+bundled Android app (`android-screen/`). It registers as a **screen** and waits. From your phone
+at `/`, **📺 Play on Screen** sends a single video, a folder, or the whole queue to that screen,
+and the phone becomes a remote: play/pause, seek, next/previous, mark-watched-&-next, captions,
+fullscreen, and tap-to-jump through the playlist. Commands relay through the server over SSE —
+nothing is streamed from the phone, the screen plays the YouTube embed itself.
+
+If more than one screen is connected you pick which one; a single screen is auto-selected. The
+screen reports what it's playing back to the remote, so the two stay in sync.
+
+For a dedicated TV/monitor, build the WebView wrapper in `android-screen/` (see its README) — it
+autoplays with sound, stays awake, and maps the remote's center button to play/pause.
+
+#### Send to TV vs Play on Screen
+
+Both put a video on another display, but they work differently:
+
+| | 📺 Send to TV | 📺 Play on Screen |
+|---|---|---|
+| **How it reaches the display** | ADB tells the TV's YouTube/SmartTube app to open the video | A `/watch` page (browser or the Android app) plays the YouTube embed |
+| **Setup** | ADB-paired Android TV + `adb-api` sidecar | Just open `/watch` on the display — no pairing |
+| **After it starts** | Fire-and-forget; you control it with the TV's own remote | Your phone *is* the remote — play/pause, seek, queue, captions, fullscreen |
+| **What you can send** | One video | A single video, a folder, or the whole queue |
+| **Best for** | An Android TV you already drive with its remote | Any screen you want to control from your phone |
 
 ## YouTube API key
 
