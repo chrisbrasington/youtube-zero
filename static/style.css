@@ -2017,16 +2017,15 @@ body.route-cast > .main-layout { display: none; }
 .cast-remote-name { flex: 1; font-size: 16px; font-weight: 600; color: var(--text); }
 .cast-now {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
 }
 .cast-now-thumb {
-  width: 120px;
+  width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg3);
-  flex-shrink: 0;
 }
 .cast-now-title {
   font-size: 15px;
@@ -2113,6 +2112,15 @@ body.route-cast > .main-layout { display: none; }
   flex-direction: column;
   gap: 10px;
 }
+.cast-pick-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--bg3);
+  display: block;
+}
+.cast-pick-thumb.hidden { display: none; }
 .cast-pick-title { font-size: 15px; color: var(--muted); padding: 0 4px 4px; }
 .cast-pick-options { display: flex; flex-direction: column; gap: 8px; }
 .cast-pick-options .sheet-btn,

@@ -189,12 +189,47 @@ function castOnCommand(msg) {
     case 'fullscreen': castToggleCover(); break;
     case 'cc':
       castCcOn = !castCcOn;
-      try {
-        if (castCcOn) { watchPlayer?.loadModule?.('captions'); watchPlayer?.loadModule?.('cc'); }
-        else { watchPlayer?.unloadModule?.('captions'); watchPlayer?.unloadModule?.('cc'); }
-      } catch {}
+      castSetCaptions(castCcOn);
       break;
   }
+}
+
+
+// Toggle captions on the receiver's player. The IFrame API's caption controls
+// are undocumented and version-dependent: the module is named 'captions' on the
+// legacy player and 'cc' on the HTML5 one, and turning captions ON requires
+// actually selecting a *track* — loading the module alone shows nothing. The
+// tracklist isn't populated the instant the module loads (and not at all until
+// the video has begun), so when no track is ready yet we retry briefly.
+function castSetCaptions(on, attempt = 0) {
+  const p = watchPlayer;
+  if (!p || !p.loadModule) return;
+  const MODULES = ['captions', 'cc'];
+  try {
+    if (!on) {
+      MODULES.forEach(m => { try { p.setOption(m, 'track', {}); } catch {} });
+      MODULES.forEach(m => { try { p.unloadModule(m); } catch {} });
+      return;
+    }
+    MODULES.forEach(m => { try { p.loadModule(m); } catch {} });
+    // Pick a track to display — prefer English, else the first available.
+    let track = null, mod = null;
+    for (const m of MODULES) {
+      let list = null;
+      try { list = p.getOption(m, 'tracklist'); } catch {}
+      if (list && list.length) {
+        track = list.find(t => /^en/i.test(t.languageCode || '')) || list[0];
+        mod = m;
+        break;
+      }
+    }
+    if (track && mod) {
+      try { p.setOption(mod, 'track', track); } catch {}
+    } else if (attempt < 10 && castCcOn) {
+      // Tracklist not ready yet — retry while the toggle is still on.
+      setTimeout(() => castSetCaptions(true, attempt + 1), 300);
+    }
+  } catch {}
 }
 
 
@@ -305,10 +340,15 @@ function castUpdateUI() {
 
 let castPickResolve = null;
 
-function castShowPick(title, options) {
+function castShowPick(title, options, thumb = null) {
   return new Promise(resolve => {
     castPickResolve = resolve;
     const el = $('cast-pick');
+    const img = el.querySelector('.cast-pick-thumb');
+    if (img) {
+      if (thumb) { img.src = thumb; img.classList.remove('hidden'); }
+      else { img.removeAttribute('src'); img.classList.add('hidden'); }
+    }
     el.querySelector('.cast-pick-title').textContent = title;
     el.querySelector('.cast-pick-options').innerHTML = options.map(o =>
       `<button class="sheet-btn" data-cast-pick="${escAttr(String(o.value))}">${esc(o.label)}</button>`
@@ -326,11 +366,12 @@ function castResolvePick(value) {
 
 
 // Returns a screen id (auto when there's exactly one), or null if cancelled.
-async function castPickScreen() {
+// `thumb` (optional) shows a large preview of what's being cast in the picker.
+async function castPickScreen(thumb = null) {
   if (castScreens.length === 0) return null;
   if (castScreens.length === 1) return castScreens[0].id;
   const choice = await castShowPick('Which screen?',
-    castScreens.map(s => ({ label: '📺 ' + (s.name || 'Screen'), value: s.id })));
+    castScreens.map(s => ({ label: '📺 ' + (s.name || 'Screen'), value: s.id })), thumb);
   return choice || null;
 }
 
@@ -338,7 +379,10 @@ async function castPickScreen() {
 // ── Remote: entry points (single video / queue / folder) ─────────────────────
 
 async function castSingleVideo(video) {
-  const sid = await castPickScreen();
+  const thumb = video.video_id
+    ? `https://i.ytimg.com/vi/${video.video_id}/hqdefault.jpg`
+    : (video.thumbnail_url || null);
+  const sid = await castPickScreen(thumb);
   if (!sid) return;
   castSendPlay(sid, [video], 'read');
 }
@@ -465,10 +509,13 @@ function castRemoteHTML(screen, st, vids, curId) {
   const cur = vids.find(v => v.video_id === curId)
             || (curId ? { video_id: curId, title: st.title || '' } : null);
 
+  const bigThumb = cur && cur.video_id
+    ? `https://i.ytimg.com/vi/${cur.video_id}/hqdefault.jpg`
+    : (cur ? castRemoteThumb(cur) : '');
   const nowPlaying = cur ? `
     <div class="cast-now">
-      <img class="cast-now-thumb" src="${escAttr(castRemoteThumb(cur))}" alt=""
-           onerror="this.style.visibility='hidden'">
+      <img class="cast-now-thumb" src="${escAttr(bigThumb)}" alt=""
+           onerror="this.onerror=null;this.src='${escAttr(castRemoteThumb(cur))}'">
       <div class="cast-now-title">${esc(cur.title || '')}</div>
     </div>` : `
     <div class="cast-now cast-now-idle">Idle — nothing playing</div>`;
