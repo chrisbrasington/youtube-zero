@@ -1945,12 +1945,26 @@ body.route-cast > .main-layout { display: none; }
 .cast-now-idle { color: var(--muted); font-size: 15px; padding: 8px 0; }
 .cast-remote-controls {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: center;
-  align-items: center;
+  align-items: stretch;
 }
-.cast-remote-controls .player-btn { font-size: 22px; padding: 10px 12px; }
-.cast-remote-controls .cast-ctl-big { font-size: 28px; color: var(--green); }
+.cast-remote-controls .player-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 60px;
+  font-size: 30px;
+  padding: 12px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cast-remote-controls .cast-ctl-big {
+  font-size: 40px;
+  color: var(--green);
+  flex: 1.4;
+}
+.cast-remote-controls .player-btn:active { background: var(--bg4); }
 .cast-seekbar {
   display: flex;
   align-items: center;
