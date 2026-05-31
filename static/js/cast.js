@@ -415,7 +415,7 @@ function castRenderRemote() {
     </div>` : '';
 
   el.innerHTML = `
-    <div class="cast-remote-box" onclick="event.stopPropagation()">
+    <div class="cast-remote-box">
       <div class="cast-remote-header">
         <span class="cast-remote-name">📺 ${esc(screen?.name || 'Screen')}</span>
         <button class="btn-icon player-btn" data-cast-close title="Close remote">✕</button>
