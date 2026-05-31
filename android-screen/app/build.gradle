@@ -14,6 +14,23 @@ android {
         versionName '1.0'
     }
 
+    // Stable, checked-in signing key so every rebuild (on any machine) signs
+    // identically — otherwise `adb install -r` fails with a signature mismatch.
+    // This is a throwaway app-signing key for an internal sideloaded app, not a secret.
+    signingConfigs {
+        screen {
+            storeFile file('screen.keystore')
+            storePassword 'screenpass'
+            keyAlias 'screen'
+            keyPassword 'screenpass'
+        }
+    }
+
+    buildTypes {
+        debug   { signingConfig signingConfigs.screen }
+        release { signingConfig signingConfigs.screen }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

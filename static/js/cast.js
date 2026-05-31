@@ -213,6 +213,18 @@ function castToggleCover() {
 }
 
 
+// Called by the Android wrapper when the remote's center/OK (or a media-play-pause
+// key) is pressed — toggle the receiver's player with a single tap.
+function castTogglePlay() {
+  if (!state.watch?.active || !watchPlayer) return;
+  try {
+    const st = watchPlayer.getPlayerState?.();
+    if (st === 1) watchPlayer.pauseVideo();   // 1 = PLAYING
+    else watchPlayer.playVideo();
+  } catch {}
+}
+
+
 function castPollStatus() {
   if (!castScreenId) return;
   let vid = null, ps = null, idx = 0, count = 0, title = '', cur = 0, dur = 0;

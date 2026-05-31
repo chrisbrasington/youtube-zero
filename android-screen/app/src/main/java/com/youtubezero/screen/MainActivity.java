@@ -49,6 +49,10 @@ public class MainActivity extends Activity {
         ws.setMediaPlaybackRequiresUserGesture(false);  // autoplay WITH sound
         ws.setUseWideViewPort(true);
         ws.setLoadWithOverviewMode(true);
+        // Force YouTube's desktop player (the default WebView UA gets the mobile
+        // player, which ignores the caption-toggle API and single-click play/pause).
+        ws.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -114,6 +118,31 @@ public class MainActivity extends Activity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemUi();
+    }
+
+    // Intercept the remote's center/OK at dispatch — BEFORE the focused WebView can
+    // consume it (that's why the earlier onKeyDown version did nothing). This remote
+    // sends Linux KEY_SELECT → Android DPAD_CENTER; we also cover the other common
+    // "OK"/select/play-pause codes. Center = one-tap play/pause and nothing else.
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        int kc = event.getKeyCode();
+        android.util.Log.i("ScreenKey", "keyCode=" + kc + " action=" + event.getAction());
+        switch (kc) {
+            case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
+            case android.view.KeyEvent.KEYCODE_ENTER:
+            case android.view.KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case android.view.KeyEvent.KEYCODE_BUTTON_SELECT:
+            case android.view.KeyEvent.KEYCODE_BUTTON_A:
+            case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0 && web != null) {
+                    web.evaluateJavascript(
+                        "if (typeof castTogglePlay==='function') castTogglePlay();", null);
+                }
+                return true;   // consume down+up so the player doesn't also act on it
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override

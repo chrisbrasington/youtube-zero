@@ -42,7 +42,21 @@ adb install -r dist/yt-zero-screen.apk
 ```
 
 Or copy the APK to the device and open it (enable "install unknown apps" for your file manager).
-It's debug-signed, which is fine for sideloading an internal app.
+
+The APK is signed with a **stable, checked-in key** (`app/screen.keystore`, password `screenpass`)
+so every rebuild signs identically and `adb install -r` keeps working across updates. It's a
+throwaway app-signing key for an internal sideloaded app, not a secret.
+
+**One-time:** if you already installed an earlier build (signed with a different key), uninstall
+it first or the update is rejected with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`:
+
+```bash
+adb uninstall com.youtubezero.screen
+adb install android-screen/dist/yt-zero-screen.apk
+```
+
+(Uninstalling resets the screen's stored id; it gets a new one, but the name still comes from
+`config.xml`.) After this, future `adb install -r` updates work without uninstalling.
 
 ## Notes
 
