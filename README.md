@@ -50,9 +50,9 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 
 ![](./.img/app.png)
 
-<img src="./.img/play%20location.png" width="50%">
+<img src="./.img/play%20location.png" width="80%">
 
-<img src="./.img/which%20screen.png" width="50%">
+<img src="./.img/which%20screen.png" width="80%">
 
 ## Quick start
 
