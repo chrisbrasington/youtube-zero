@@ -194,6 +194,12 @@ function watchArmUnmute() {
 function watchPlay(videoId) {
   state.watch.currentVideoId = videoId;
   const item = (state.watch.list || []).find(v => v.video_id === videoId);
+  // Record "started watching" so the video lands in history even if never finished.
+  if (videoId) {
+    api.post(`/api/videos/${videoId}/played`, item
+      ? { title: item.title, channel_name: item.channel_name, thumbnail_url: item.thumbnail_url }
+      : {}).catch(() => {});
+  }
   $('watch-title').textContent = item ? item.title : '';
   $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
   if (watchPlayer && watchPlayer.loadVideoById) {

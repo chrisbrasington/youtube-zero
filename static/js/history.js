@@ -17,6 +17,7 @@ const HISTORY_PAGE_SIZE = 50;
 
 let historyOffset = 0;
 let historyQuery = '';
+let historyFolderId = '';
 let historyTotal = 0;
 let historyItems = [];
 let historyDomBound = false;
@@ -30,8 +31,22 @@ async function historyBoot() {
   await loadSignalSettings();   // reveals Signal button in the sheet when configured
   await loadTvSettings();       // reveals TV button in the sheet when configured
   castRefreshScreens();         // reveals "Play on Screen" if a screen is watching
+  await historyLoadFolders();
   historyBindDom();
   historyLoad();
+}
+
+
+async function historyLoadFolders() {
+  let folders = [];
+  try { folders = await api.get('/api/folders'); } catch { return; }
+  const sel = $('history-folder');
+  for (const f of folders) {
+    const opt = document.createElement('option');
+    opt.value = String(f.id);
+    opt.textContent = `${f.icon || '📁'} ${f.name}`;
+    sel.appendChild(opt);
+  }
 }
 
 
@@ -41,6 +56,7 @@ async function historyLoad() {
     limit: String(HISTORY_PAGE_SIZE),
     offset: String(historyOffset),
   });
+  if (historyFolderId) params.set('folder_id', historyFolderId);
   try {
     const data = await api.get(`/api/history?${params}`);
     historyItems = data.items || [];
@@ -107,6 +123,12 @@ function historyBindDom() {
       historyOffset = 0;
       historyLoad();
     }, 250);
+  });
+
+  $('history-folder').addEventListener('change', e => {
+    historyFolderId = e.target.value;
+    historyOffset = 0;
+    historyLoad();
   });
 
   $('btn-history-prev').addEventListener('click', () => {

@@ -81,6 +81,15 @@ _SCHEMA = """
         sort_order INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS watch_history (
+        video_id      TEXT PRIMARY KEY,
+        channel_id    TEXT,
+        channel_name  TEXT,
+        title         TEXT,
+        thumbnail_url TEXT,
+        published_at  TEXT,
+        watched_at    TEXT NOT NULL
+    );
 """
 
 # Idempotent column additions for databases created before each column existed.
@@ -109,4 +118,12 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
         c.execute("UPDATE channels SET sort_order = id WHERE sort_order IS NULL")
+        # One-time backfill of watch history from previously finished queue items.
+        # INSERT OR IGNORE keeps reruns idempotent and never clobbers a newer play.
+        c.execute(
+            "INSERT OR IGNORE INTO watch_history "
+            "(video_id, channel_id, channel_name, title, thumbnail_url, published_at, watched_at) "
+            "SELECT video_id, channel_id, channel_name, title, thumbnail_url, published_at, watched_at "
+            "FROM queue WHERE watched_at IS NOT NULL"
+        )
         c.commit()

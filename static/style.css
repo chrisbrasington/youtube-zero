@@ -1843,11 +1843,18 @@ body.route-history #settings-panel { display: none; }
 .history-search-row {
   padding: 10px 10px 0;
   flex-shrink: 0;
+  display: flex;
+  gap: 8px;
 }
 
 .history-search-row input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
+}
+
+.history-search-row select {
+  flex-shrink: 0;
 }
 
 .history-list { flex: 1; }

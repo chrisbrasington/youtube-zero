@@ -127,32 +127,93 @@ def get_queue(is_deep: bool = False) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_history(search: str = "", limit: int = 50, offset: int = 0) -> list[dict]:
-    """Watched queue items, newest first. Optional case-insensitive search
-    over title + channel name spans the whole table, not just one page."""
-    sql = (
-        "SELECT q.*, v.duration AS duration, v.is_live AS is_live "
-        "FROM queue q LEFT JOIN videos v ON v.video_id = q.video_id "
-        "WHERE q.watched_at IS NOT NULL"
-    )
-    params: list = []
-    if search:
-        sql += " AND (q.title LIKE ? OR q.channel_name LIKE ?)"
-        params += [f"%{search}%", f"%{search}%"]
-    sql += " ORDER BY q.watched_at DESC LIMIT ? OFFSET ?"
-    params += [limit, offset]
+def record_watched(video_id: str, now: str, meta: dict | None = None) -> None:
+    """Record (or refresh) a video in watch_history — fired when playback starts,
+    so a video counts as history even if never finished. Metadata is enriched
+    from the catalog (videos + channels) when available, with client-supplied
+    `meta` as a fallback so videos not in the catalog still get recorded.
+    Upserts one durable row per video; replays just bump watched_at."""
+    meta = meta or {}
     with db() as c:
-        rows = c.execute(sql, params).fetchall()
+        v = c.execute(
+            "SELECT channel_id, title, thumbnail_url, published_at "
+            "FROM videos WHERE video_id=?",
+            (video_id,),
+        ).fetchone()
+        channel_id    = (v["channel_id"] if v else None) or meta.get("channel_id") or None
+        title         = (v["title"] if v else None) or meta.get("title") or ""
+        thumbnail_url = (v["thumbnail_url"] if v else None) or meta.get("thumbnail_url") or ""
+        published_at  = (v["published_at"] if v else None) or meta.get("published_at") or None
+        channel_name  = ""
+        if channel_id:
+            ch = c.execute(
+                "SELECT name FROM channels WHERE channel_id=?", (channel_id,)
+            ).fetchone()
+            if ch:
+                channel_name = ch["name"]
+        if not channel_name:
+            channel_name = meta.get("channel_name") or ""
+        # Refresh denormalized metadata only when the new value is non-empty, so a
+        # bare timestamp-only call never wipes a previously captured title/channel.
+        c.execute(
+            """INSERT INTO watch_history
+                 (video_id, channel_id, channel_name, title, thumbnail_url, published_at, watched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(video_id) DO UPDATE SET
+                 watched_at   = excluded.watched_at,
+                 channel_id   = COALESCE(excluded.channel_id, watch_history.channel_id),
+                 published_at = COALESCE(excluded.published_at, watch_history.published_at),
+                 channel_name = CASE WHEN excluded.channel_name  <> '' THEN excluded.channel_name  ELSE watch_history.channel_name  END,
+                 title        = CASE WHEN excluded.title         <> '' THEN excluded.title         ELSE watch_history.title         END,
+                 thumbnail_url= CASE WHEN excluded.thumbnail_url <> '' THEN excluded.thumbnail_url ELSE watch_history.thumbnail_url END""",
+            (video_id, channel_id, channel_name, title, thumbnail_url, published_at, now),
+        )
+        c.commit()
+
+
+def _history_filter(search: str, folder_id) -> tuple[str, list]:
+    """Shared WHERE clause + params for the history queries. When folder_id is
+    given, restricts to channels assigned to that folder; search (when present)
+    is applied on top, so it only matches within the folder."""
+    clause = ""
+    params: list = []
+    if folder_id is not None:
+        clause += " AND ch.folder_id = ?"
+        params.append(folder_id)
+    if search:
+        clause += " AND (h.title LIKE ? OR h.channel_name LIKE ?)"
+        params += [f"%{search}%", f"%{search}%"]
+    return clause, params
+
+
+def get_history(search: str = "", limit: int = 50, offset: int = 0, folder_id=None) -> list[dict]:
+    """Watched videos, newest first (one row per video). Optional case-insensitive
+    search over title + channel name and optional folder filter; search spans the
+    whole table (or whole folder), not just one page."""
+    clause, params = _history_filter(search, folder_id)
+    sql = (
+        "SELECT h.*, v.duration AS duration, v.is_live AS is_live "
+        "FROM watch_history h "
+        "LEFT JOIN videos v ON v.video_id = h.video_id "
+        "LEFT JOIN channels ch ON ch.channel_id = h.channel_id "
+        "WHERE 1=1"
+        + clause
+        + " ORDER BY h.watched_at DESC LIMIT ? OFFSET ?"
+    )
+    with db() as c:
+        rows = c.execute(sql, params + [limit, offset]).fetchall()
     return [dict(r) for r in rows]
 
 
-def count_history(search: str = "") -> int:
-    """Total watched-queue rows matching the optional search filter."""
-    sql = "SELECT COUNT(*) AS n FROM queue WHERE watched_at IS NOT NULL"
-    params: list = []
-    if search:
-        sql += " AND (title LIKE ? OR channel_name LIKE ?)"
-        params += [f"%{search}%", f"%{search}%"]
+def count_history(search: str = "", folder_id=None) -> int:
+    """Total watch_history rows matching the optional search + folder filter."""
+    clause, params = _history_filter(search, folder_id)
+    sql = (
+        "SELECT COUNT(*) AS n FROM watch_history h "
+        "LEFT JOIN channels ch ON ch.channel_id = h.channel_id "
+        "WHERE 1=1"
+        + clause
+    )
     with db() as c:
         row = c.execute(sql, params).fetchone()
     return int(row["n"])

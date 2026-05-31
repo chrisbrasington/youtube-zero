@@ -56,6 +56,7 @@ from queries import (
     list_folders,
     max_last_refreshed,
     next_queue_sort_order,
+    record_watched,
     quota_today as _quota_today,
     session_quota_units,
     set_setting,
@@ -631,6 +632,13 @@ class QueueAddReq(BaseModel):
     thumbnail_url: str
     published_at: str
 
+class PlayedReq(BaseModel):
+    channel_id: Optional[str] = None
+    channel_name: str = ""
+    title: str = ""
+    thumbnail_url: str = ""
+    published_at: Optional[str] = None
+
 class ApiKeyReq(BaseModel):
     api_key: str
 
@@ -952,6 +960,7 @@ async def tv_play(req: TvPlayReq):
     body = r.json()
     if body.get("ok"):
         _tv_persist_ip(s["ip"])
+        record_watched(req.video_id, datetime.now(timezone.utc).isoformat())
     return body
 
 @app.post("/api/signal/send")
@@ -1027,6 +1036,11 @@ def get_feed():
 
 
 # ── Folder CRUD ───────────────────────────────────────────────────────────────
+
+@app.get("/api/folders")
+def folders_list():
+    return list_folders()
+
 
 @app.post("/api/folders")
 def folders_create(req: FolderReq, background_tasks: BackgroundTasks):
@@ -1304,6 +1318,14 @@ def video_mark_read(video_id: str, background_tasks: BackgroundTasks):
     return {"ok": True}
 
 
+@app.post("/api/videos/{video_id}/played")
+def video_mark_played(video_id: str, req: PlayedReq):
+    """Record that playback of a video started (queue/folder/inline/cast). Powers
+    the Watch History page — a video lands here even if never finished/marked read."""
+    record_watched(video_id, datetime.now(timezone.utc).isoformat(), req.model_dump())
+    return {"ok": True}
+
+
 @app.post("/api/videos/{video_id}/unread")
 def video_mark_unread(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
@@ -1483,11 +1505,16 @@ def queue_watched(video_id: str, background_tasks: BackgroundTasks):
 
 
 @app.get("/api/history")
-def history_list(search: str = "", limit: int = 50, offset: int = 0):
+def history_list(search: str = "", limit: int = 50, offset: int = 0, folder_id: Optional[int] = None):
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    items = get_history(search, limit, offset)
-    return {"items": items, "total": count_history(search), "offset": offset, "limit": limit}
+    items = get_history(search, limit, offset, folder_id)
+    return {
+        "items": items,
+        "total": count_history(search, folder_id),
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 # ── Static / SPA ──────────────────────────────────────────────────────────────
