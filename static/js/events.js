@@ -117,7 +117,10 @@ document.addEventListener('click', e => {
   const openEl = e.target.closest('[data-action="open-player"]');
   if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
     if (e.ctrlKey || e.metaKey) {
-      window.open(`https://www.youtube.com/watch?v=${openEl.dataset.videoId}`, '_blank', 'noopener,noreferrer');
+      // Desktop shortcut to the "where to play" sheet (Play Here / TV / Screen / Clipboard…).
+      const ctx = buildSheetCtx(openEl.dataset.videoId);
+      if (!ctx.title) ctx.title = openEl.dataset.title || '';
+      openActionSheet(ctx);
       return;
     }
     if (e.altKey && state.tvConfigured) {
@@ -235,7 +238,9 @@ document.addEventListener('click', e => {
   const playBtn = e.target.closest('[data-action="play-from-queue"]');
   if (playBtn) {
     if (e.ctrlKey || e.metaKey) {
-      window.open(`https://www.youtube.com/watch?v=${playBtn.dataset.videoId}`, '_blank', 'noopener,noreferrer');
+      const ctx = buildSheetCtx(playBtn.dataset.videoId);
+      if (!ctx.title) ctx.title = playBtn.dataset.title || '';
+      openActionSheet(ctx);
       return;
     }
     if (e.altKey && state.tvConfigured) {
