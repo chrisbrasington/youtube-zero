@@ -562,6 +562,7 @@ function castUpdateUI() {
   if (btn) btn.classList.toggle('hidden', !castAvailable());
   castRenderResumeBar();
   castSyncHereTransfer();
+  if (typeof tvRefocus === 'function') tvRefocus();   // resume bar changed → refresh /tv focus ring
 }
 
 
@@ -653,7 +654,7 @@ function castRenderResumeBar() {
         </span>
       </div>
       <div class="cast-resume-actions">
-        <button class="cast-resume-btn" data-action="cast-resume" data-screen-id="${escAttr(s.id)}">▶ Resume</button>
+        <button class="cast-resume-btn" data-action="cast-resume" data-screen-id="${escAttr(s.id)}">🎮 Remote Control</button>
         <button class="cast-resume-btn cast-resume-here" data-action="cast-here" data-screen-id="${escAttr(s.id)}">⤓ Here</button>
         ${canTransfer ? `<button class="cast-resume-btn cast-resume-transfer" data-action="cast-transfer" data-screen-id="${escAttr(s.id)}">⇄ Transfer</button>` : ''}
       </div>

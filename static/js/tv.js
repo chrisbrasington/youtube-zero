@@ -70,6 +70,12 @@ const tvNav = {
     if (state.queueOpen && shallowQueue().length) controls.push($('btn-watch-queue'));
     rows.push(controls.filter(Boolean));
 
+    // Resume/Here/Transfer for other playing screens (the bar under the header).
+    document.querySelectorAll('#cast-resume .cast-resume-item').forEach(item => {
+      const btns = [...item.querySelectorAll('.cast-resume-btn')];
+      if (btns.length) rows.push(btns);
+    });
+
     document.querySelectorAll('#channels-list .folder-card, #channels-list .channel-card')
       .forEach(card => {
         // A folder gets its own row (the whole header highlights; OK plays it
