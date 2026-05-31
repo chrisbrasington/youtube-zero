@@ -59,7 +59,9 @@ const tvNav = {
   row: 0,
   col: 0,
 
-  // Ordered rows of focusable elements, derived from the current DOM.
+  // Ordered rows of focusable elements, derived from the current DOM. The
+  // vertical flow reads like the page: a folder's "play everything" header,
+  // then that folder's video rows, then the next folder, etc.
   rows() {
     const rows = [];
 
@@ -67,13 +69,15 @@ const tvNav = {
     if (state.queueOpen && shallowQueue().length) controls.push($('btn-watch-queue'));
     rows.push(controls.filter(Boolean));
 
-    document.querySelectorAll('#channels-list .video-strip').forEach(strip => {
-      const card  = strip.closest('.folder-card, .channel-card');
-      const play  = card && card.querySelector('[data-action="watch-folder"]');
-      const tiles = [...strip.querySelectorAll('[data-action="open-player"]')];
-      const row   = play ? [play, ...tiles] : tiles;
-      if (row.length) rows.push(row);
-    });
+    document.querySelectorAll('#channels-list .folder-card, #channels-list .channel-card')
+      .forEach(card => {
+        // A folder gets its own row (the whole header highlights; OK plays it
+        // all). Channels have no play-all, so they're only their video rows.
+        const header = card.querySelector('.folder-header');
+        if (header && card.querySelector('[data-action="watch-folder"]')) rows.push([header]);
+        const strip = card.querySelector('.video-strip');
+        if (strip) this.tileRows(strip).forEach(r => rows.push(r));
+      });
 
     if (state.queueOpen) {
       document.querySelectorAll('[data-action="play-from-queue"]')
@@ -81,6 +85,20 @@ const tvNav = {
     }
 
     return rows.filter(r => r.length);
+  },
+
+  // Split a strip's tiles into the visual rows they wrap into, so Up/Down steps
+  // line by line. A horizontally-scrolling strip yields a single row.
+  tileRows(strip) {
+    const tiles = [...strip.querySelectorAll('[data-action="open-player"]')];
+    const rows = [];
+    let top = null, cur = null;
+    for (const t of tiles) {
+      const y = Math.round(t.getBoundingClientRect().top);
+      if (cur === null || Math.abs(y - top) > 4) { cur = []; rows.push(cur); top = y; }
+      cur.push(t);
+    }
+    return rows;
   },
 
   init() {
@@ -106,7 +124,12 @@ const tvNav = {
   // already wired, and on /tv those handlers play here.
   select() {
     const el = this.current();
-    if (el) el.click();
+    if (!el) return;
+    if (el.classList.contains('folder-header')) {            // folder row → play it all
+      el.closest('.folder-card')?.querySelector('[data-action="watch-folder"]')?.click();
+      return;
+    }
+    el.click();
   },
 
   current(rows) {

@@ -171,7 +171,20 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (customView != null) { web.getWebChromeClient().onHideCustomView(); return; }
-        if (web.canGoBack()) { web.goBack(); return; }
+        if (web != null) {
+            // Let the page handle Back first: if a player overlay is open it
+            // closes it (back to the browse page on /tv, or idle on /watch) and
+            // returns true. Only when the page doesn't handle it do we exit.
+            web.evaluateJavascript(
+                "(typeof castBack==='function') ? castBack() : false",
+                value -> {
+                    if (!"true".equals(value)) {
+                        if (web.canGoBack()) web.goBack();
+                        else finish();
+                    }
+                });
+            return;
+        }
         super.onBackPressed();
     }
 

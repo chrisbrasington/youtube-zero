@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tv flavor → /tv (browse + play + cast receiver). Output: dist/yt-zero-screen.apk -->
+<resources>
+    <string name="server_url" translatable="false">http://valhalla:8000/tv</string>
+</resources>

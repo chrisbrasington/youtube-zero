@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Edit these two values, then rebuild with ./build.sh -->
+<!-- Shared config. The page to open (server_url) is per-flavor; see
+     src/tv/res/values/config.xml and src/watch/res/values/config.xml.
+     Edit these, then rebuild with ./build.sh (produces both APKs). -->
 <resources>
-    <string name="server_url" translatable="false">http://valhalla:8000/tv</string>
     <string name="screen_name" translatable="false">Living Room TV</string>
 </resources>

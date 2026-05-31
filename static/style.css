@@ -1922,7 +1922,8 @@ body.cast-cover .watch-queue-pane { display: none; }
   box-shadow: 0 0 0 6px rgba(96,165,250,.35);
 }
 #watch-frame-wrap.dpad-focus { border-radius: 4px; }
-.q-item.dpad-focus {
+.q-item.dpad-focus,
+.folder-header.dpad-focus {
   outline-offset: -3px;   /* keep the ring inside the row so it isn't clipped */
   background: rgba(96,165,250,.16);
 }

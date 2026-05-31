@@ -309,6 +309,16 @@ function castSeek(delta) {
 }
 
 
+// Invoked by the APK on the remote's BACK button. If a player overlay is open,
+// close it — returning to the browse page on /tv, or the idle screen on /watch
+// (same as the close/exit control) — and report handled. Otherwise return false
+// so the app handles Back itself (exits).
+function castBack() {
+  if (state.watch?.active) { watchExit(); return true; }
+  return false;
+}
+
+
 // Entry point invoked by the APK for each D-pad direction ('up'|'down'|'left'|'right').
 function castKey(name) {
   // A player overlay is open → drive playback (cast receiver, or /tv playback).

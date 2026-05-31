@@ -13,11 +13,20 @@ player, fullscreen, status). The native shell adds three things a browser tab ca
 
 ## Configure
 
-Edit `app/src/main/res/values/config.xml`:
+Two build flavors, differing only in the page the WebView opens:
+
+| Flavor  | Page     | APK                                  | What it is |
+|---------|----------|--------------------------------------|------------|
+| `tv`    | `/tv`    | `dist/yt-zero-screen.apk`            | Browse + play + cast receiver (D-pad navigable) |
+| `watch` | `/watch` | `dist/yt-zero-screen-watch-only.apk` | Idle cast receiver only (driven from a phone) |
+
+The page URL lives per-flavor in `app/src/<flavor>/res/values/config.xml`; the shared
+`screen_name` lives in `app/src/main/res/values/config.xml`:
 
 ```xml
-<string name="server_url">http://valhalla:8000/watch</string>
-<string name="screen_name">Living Room TV</string>
+<!-- src/tv/res/values/config.xml -->    <string name="server_url">http://valhalla:8000/tv</string>
+<!-- src/watch/res/values/config.xml --> <string name="server_url">http://valhalla:8000/watch</string>
+<!-- src/main/res/values/config.xml -->  <string name="screen_name">Living Room TV</string>
 ```
 
 The app loads `<server_url>?name=<screen_name>&kiosk=1`. The screen name is what shows up in
@@ -32,13 +41,21 @@ Needs only **podman** on the host (the Android SDK lives in the build container)
 ./build.sh
 ```
 
-Output: `dist/yt-zero-screen.apk` (debug-signed; committed to the repo). First run pulls the
-gradle image and downloads the SDK (a few minutes); later runs are fast.
+Outputs both (debug-signed; committed to the repo):
+- `dist/yt-zero-screen.apk` — the `/tv` flavor
+- `dist/yt-zero-screen-watch-only.apk` — the `/watch` flavor
+
+First run pulls the gradle image and downloads the SDK (a few minutes); later runs are fast.
 
 ## Install
 
+Both flavors share `applicationId com.youtubezero.screen`, so **install only one** — pick the
+page you want on this device:
+
 ```bash
-adb install -r dist/yt-zero-screen.apk
+adb install -r dist/yt-zero-screen.apk             # /tv
+# or
+adb install -r dist/yt-zero-screen-watch-only.apk  # /watch
 ```
 
 Or copy the APK to the device and open it (enable "install unknown apps" for your file manager).
