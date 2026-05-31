@@ -565,21 +565,27 @@ function castUpdateUI() {
 }
 
 
-// Show the watch-overlay "📺 Transfer" button only for a local "play here" on /
-// (not a cast receiver, not /tv) while at least one screen is connected — the
-// screens can be idle. Kept in sync as screens come and go mid-playback.
+// The watch-overlay "Transfer to:" row — one big button per connected screen —
+// shown only for a local "play here" on / (not a cast receiver, not /tv) while
+// a screen is connected (they can be idle). Kept in sync as screens come and go.
 function castSyncHereTransfer() {
-  const btn = $('btn-watch-transfer');
-  if (!btn) return;
+  const bar = $('watch-transfer-bar');
+  if (!bar) return;
   const local = !!(state.watch?.active && state.watch.mode !== 'cast' && !castIsTv());
-  btn.classList.toggle('hidden', !(local && castAvailable()));
+  if (!(local && castAvailable())) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span class="watch-transfer-label">Transfer to</span>` +
+    castScreens.map(s => `
+      <button class="watch-transfer-btn" data-action="watch-transfer" data-screen-id="${escAttr(s.id)}">
+        📺 ${esc(s.name || 'Screen')}
+      </button>`).join('');
+  bar.classList.remove('hidden');
 }
 
 
 // Hand the current local "play here" playback off to a screen: its remaining
 // list, current video, and timestamp — then close the local player (back to the
 // browse page) and open the screen's remote panel.
-async function castTransferLocal() {
+async function castTransferLocal(targetId) {
   if (!state.watch?.active) return;
   if (!castAvailable()) { status('No screen available', 'err'); setTimeout(() => status(''), 2500); return; }
 
@@ -598,7 +604,7 @@ async function castTransferLocal() {
   // single/folder mark read.
   const markMode = state.watch.mode === 'queue' ? 'queue' : 'read';
 
-  const sid = await castPickScreen();
+  const sid = targetId || await castPickScreen();   // bar passes the screen directly
   if (!sid) return;
   try {
     await api.post(`/api/cast/${sid}/play`, {
@@ -1023,6 +1029,9 @@ function castFmtTime(s) {
 
 // Delegated clicks for the remote panel + the destination/screen chooser.
 document.addEventListener('click', e => {
+  const hereTransfer = e.target.closest('[data-action="watch-transfer"]');
+  if (hereTransfer) { castTransferLocal(hereTransfer.dataset.screenId); return; }
+
   const transfer = e.target.closest('[data-action="cast-transfer"]');
   if (transfer) { castTransfer(transfer.dataset.screenId); return; }
 

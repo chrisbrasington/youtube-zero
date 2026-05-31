@@ -220,10 +220,11 @@
         <button class="btn-icon player-btn" id="btn-watch-skip" title="Skip to next (n)">⏭</button>
         <button class="btn-icon player-btn" id="btn-watch-skip-mark" title="Mark watched and skip (Shift+N)">✓⏭</button>
         <a id="watch-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
-        <button class="btn-icon player-btn hidden" id="btn-watch-transfer" title="Transfer to a screen">📺</button>
         <button class="btn-icon player-btn" id="btn-watch-fullscreen" title="Fullscreen (f)">⛶</button>
         <button class="btn-icon player-btn" id="btn-watch-exit" title="Exit watch mode">✕</button>
       </div>
+      <!-- Transfer-to-screen row: local play-here only, shown when screens exist. -->
+      <div id="watch-transfer-bar" class="watch-transfer-bar hidden"></div>
       <div id="watch-frame-wrap" class="watch-frame-wrap">
         <iframe id="watch-frame" class="watch-frame"
                 allow="autoplay; fullscreen; picture-in-picture"
