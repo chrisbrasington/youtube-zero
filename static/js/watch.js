@@ -387,6 +387,7 @@ function watchExit() {
   if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
   document.body.classList.remove('route-watch');
   document.body.classList.remove('cast-cover');   // clean up /tv + cast fullscreen
+  if (typeof castNavReset === 'function') castNavReset();  // drop any overlay D-pad focus
   $('watch-layout').classList.add('hidden');
   $('watch-layout').classList.remove('theater');
   $('watch-unmute').classList.add('hidden');
