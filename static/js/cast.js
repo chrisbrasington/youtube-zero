@@ -111,6 +111,7 @@ function castRename(name) {
 
 function castReturnToIdle() {
   document.body.classList.remove('cast-cover');
+  castNavReset();
   $('watch-layout').classList.add('hidden');
   $('cast-idle').classList.remove('hidden');
   castLastStatusKey = '';   // force an idle status on the next poll
@@ -152,6 +153,7 @@ function castOnPlayCommand(payload) {
   if (!list.length) return;
   $('cast-idle').classList.add('hidden');
   document.body.classList.add('cast-cover');   // start filling the screen
+  castNavReset();                              // fresh play → no leftover focus cursor
   watchEnter({
     mode: 'cast',
     inPage: true,
@@ -238,19 +240,152 @@ function castSetCaptions(on, attempt = 0) {
 // toggle a CSS "cover" mode that fills the viewport with the video (always
 // works), and *also* attempt real fullscreen as a bonus for TV/kiosk browsers
 // that allow it.
-function castToggleCover() {
-  const on = document.body.classList.toggle('cast-cover');
+function castSetCover(on) {
+  const wasOn = document.body.classList.contains('cast-cover');
+  document.body.classList.toggle('cast-cover', on);
   if (on) {
+    castNavReset();             // cover ON = watching; no on-screen focus cursor
     watchRequestFullscreen();
-  } else if (document.fullscreenElement) {
+  } else if (wasOn && document.fullscreenElement) {
     try { document.exitFullscreen?.(); } catch {}
   }
 }
 
+function castToggleCover() {
+  castSetCover(!document.body.classList.contains('cast-cover'));
+}
+
+
+// ── Receiver: TV-remote D-pad navigation ─────────────────────────────────────
+//
+// On a TV (the android-screen APK) the remote's D-pad is forwarded here as
+// castKey() — the APK consumes the keys so the focused YouTube iframe can't.
+// Two modes, keyed off body.cast-cover:
+//   • cover ON  = watching:   ←/→ seek, OK play/pause, ↑/↓ reveal the queue UI.
+//   • cover OFF = navigating:  a focus cursor walks a vertical ring
+//        index 0      → header buttons (←/→ pick which)
+//        index 1      → the video panel
+//        index 2..n+1 → up-next queue items
+//     ↑/↓ move the cursor; OK activates; ↑ at the top returns to fullscreen.
+
+const CAST_HEADER_BTNS = ['btn-watch-skip', 'btn-watch-skip-mark',
+                          'btn-watch-fullscreen', 'btn-watch-exit'];
+const CAST_SEEK_STEP = 5;   // seconds per ←/→ nudge (matches the old arrow seek)
+
+let castNav = { active: false, index: 0, col: 0 };
+
+
+function castIsReceiver() {
+  return !!(state.watch && state.watch.active && state.watch.mode === 'cast');
+}
+
+function castNavReset() {
+  castNav.active = false;
+  document.querySelectorAll('.dpad-focus').forEach(el => el.classList.remove('dpad-focus'));
+}
+
+function castSeek(delta) {
+  if (!watchPlayer) return;
+  try {
+    const t = (watchPlayer.getCurrentTime?.() || 0) + delta;
+    watchPlayer.seekTo(Math.max(0, t), true);
+  } catch {}
+}
+
+
+// Entry point invoked by the APK for each D-pad direction ('up'|'down'|'left'|'right').
+function castKey(name) {
+  if (!castIsReceiver()) return;
+  if (document.body.classList.contains('cast-cover')) {
+    // Watching mode.
+    if (name === 'left')  return castSeek(-CAST_SEEK_STEP);
+    if (name === 'right') return castSeek(CAST_SEEK_STEP);
+    if (name === 'up' || name === 'down') return castNavEnter(name);
+    if (name === 'ok')    return castTogglePlay();
+    return;
+  }
+  // Nav mode.
+  if (name === 'up' || name === 'down') return castNavMove(name);
+  if (name === 'left' || name === 'right') {
+    if (castNav.active && castNav.index === 0) return castNavCol(name);
+    return castSeek(name === 'left' ? -CAST_SEEK_STEP : CAST_SEEK_STEP);
+  }
+  if (name === 'ok') return castNavSelect();
+}
+
+
+// Highest valid ring index: 0 header, 1 video, 2..(1+len) queue items.
+function castNavMax() {
+  return 1 + (state.watch?.list || []).length;
+}
+
+function castNavEnter(dir) {
+  castSetCover(false);
+  castNav.active = true;
+  castNav.col = 0;
+  castNav.index = dir === 'up' ? 0 : 1;   // up → header, down → video panel
+  castNavRender();
+}
+
+function castNavMove(dir) {
+  if (!castNav.active) return castNavEnter(dir);
+  if (dir === 'up') {
+    if (castNav.index === 0) return castSetCover(true);   // up past the top → fullscreen
+    castNav.index -= 1;
+  } else {
+    castNav.index = Math.min(castNav.index + 1, castNavMax());
+  }
+  castNavRender();
+}
+
+function castNavCol(dir) {
+  const n = CAST_HEADER_BTNS.length;
+  castNav.col = dir === 'left' ? Math.max(0, castNav.col - 1)
+                               : Math.min(n - 1, castNav.col + 1);
+  castNavRender();
+}
+
+function castNavTarget() {
+  if (castNav.index === 0) return $(CAST_HEADER_BTNS[castNav.col]);
+  if (castNav.index === 1) return $('watch-frame-wrap');
+  const items = $('watch-queue-list').querySelectorAll('[data-watch-play]');
+  return items[castNav.index - 2] || null;
+}
+
+function castNavRender() {
+  document.querySelectorAll('.dpad-focus').forEach(el => el.classList.remove('dpad-focus'));
+  if (!castNav.active) return;
+  const el = castNavTarget();
+  if (!el) return;
+  el.classList.add('dpad-focus');
+  if (castNav.index >= 2) el.scrollIntoView({ block: 'nearest' });
+}
+
+function castNavSelect() {
+  if (!castNav.active) return;
+  if (castNav.index === 0) { castNavTarget()?.click(); return; }   // header button
+  if (castNav.index === 1) { castSetCover(true); return; }         // video → fullscreen
+  const id = castNavTarget()?.dataset?.videoId;                    // queue item → jump
+  if (id) {
+    if (id !== state.watch?.currentVideoId) watchPlay(id);
+    castSetCover(true);   // jump + go fullscreen
+  }
+}
+
+// Called from watchRenderQueue() after the up-next list rebuilds (the new HTML
+// dropped the focus ring). Clamp into range in case the list shrank, then redraw.
+function castNavReRender() {
+  if (!castNav.active) return;
+  castNav.index = Math.min(castNav.index, castNavMax());
+  castNavRender();
+}
+
 
 // Called by the Android wrapper when the remote's center/OK (or a media-play-pause
-// key) is pressed — toggle the receiver's player with a single tap.
+// key) is pressed. In nav mode it activates the focused element; otherwise it
+// toggles the receiver's player with a single tap.
 function castTogglePlay() {
+  if (castNav.active) { castNavSelect(); return; }
   if (!state.watch?.active || !watchPlayer) return;
   try {
     const st = watchPlayer.getPlayerState?.();

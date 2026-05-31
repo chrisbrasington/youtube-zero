@@ -1913,6 +1913,20 @@ body.route-history #settings-panel { display: none; }
 body.cast-cover .watch-header,
 body.cast-cover .watch-queue-pane { display: none; }
 
+/* D-pad focus cursor for TV-remote navigation on /watch (driven by cast.js
+   castKey/castNav). Class-based, not native :focus — items are re-rendered and
+   the YouTube iframe steals native focus. A bright ring reads from across a room. */
+.dpad-focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(96,165,250,.35);
+}
+#watch-frame-wrap.dpad-focus { border-radius: 4px; }
+.q-item.dpad-focus {
+  outline-offset: -3px;   /* keep the ring inside the row so it isn't clipped */
+  background: rgba(96,165,250,.16);
+}
+
 body.narrow-ui {
   .watch-layout { flex-direction: column; }
   .watch-video-pane { flex: 0 0 auto; }

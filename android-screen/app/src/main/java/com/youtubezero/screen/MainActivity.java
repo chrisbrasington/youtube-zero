@@ -141,6 +141,29 @@ public class MainActivity extends Activity {
                         "if (typeof castTogglePlay==='function') castTogglePlay();", null);
                 }
                 return true;   // consume down+up so the player doesn't also act on it
+
+            // D-pad directions. Forwarded to the page so /watch can drive the whole
+            // UI (seek while watching; move a focus cursor over the queue/buttons
+            // when the queue is shown). Without this they'd reach the focused
+            // YouTube iframe and just seek/change volume. Left/right allow key-repeat
+            // (hold to scrub); up/down are discrete (repeatCount == 0 only).
+            case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
+            case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
+            case android.view.KeyEvent.KEYCODE_DPAD_UP:
+            case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && web != null) {
+                    boolean vertical = (kc == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                     || kc == android.view.KeyEvent.KEYCODE_DPAD_DOWN);
+                    if (!vertical || event.getRepeatCount() == 0) {
+                        String dir = kc == android.view.KeyEvent.KEYCODE_DPAD_LEFT  ? "left"
+                                   : kc == android.view.KeyEvent.KEYCODE_DPAD_RIGHT ? "right"
+                                   : kc == android.view.KeyEvent.KEYCODE_DPAD_UP    ? "up"
+                                   :                                                  "down";
+                        web.evaluateJavascript(
+                            "if (typeof castKey==='function') castKey('" + dir + "');", null);
+                    }
+                }
+                return true;   // consume so the iframe doesn't also act on it
         }
         return super.dispatchKeyEvent(event);
     }

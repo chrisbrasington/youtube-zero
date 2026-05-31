@@ -100,6 +100,8 @@ function watchRenderQueue() {
         <div class="q-channel">${esc(it.channel_name)}</div>
       </div>
     </div>`).join('');
+  // Re-render dropped any D-pad focus ring — let the cast receiver restore it.
+  if (typeof castNavReRender === 'function') castNavReRender();
 }
 
 
