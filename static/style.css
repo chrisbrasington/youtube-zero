@@ -1811,6 +1811,63 @@ body.route-watch .header { display: none; }
 
 body.route-watch .watch-layout { display: flex; }
 
+/* ── Watch history page (/history) ─────────────────────────────────────────── */
+body.route-history .main-layout,
+body.route-history .header,
+body.route-history #refresh-progress,
+body.route-history #settings-panel { display: none; }
+
+.history-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.history-header {
+  background: var(--bg2);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-title {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.history-search-row {
+  padding: 10px 10px 0;
+  flex-shrink: 0;
+}
+
+.history-search-row input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.history-list { flex: 1; }
+
+.history-watched { font-size: 11px; opacity: .7; }
+
+.history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+
+.history-pager button[disabled] { opacity: .4; cursor: default; }
+
+.q-item[data-history-play] { cursor: pointer; }
+
 .watch-layout.theater .watch-queue-pane { display: none; }
 
 /* Cast "cover" mode — remote-triggered, gesture-free fill-the-viewport view.

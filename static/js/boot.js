@@ -14,6 +14,11 @@
   loadAutoRefreshPrefs();
   syncAutoRefresh();
 
+  if (location.pathname.replace(/\/+$/, '') === '/history') {
+    await historyBoot();
+    return;
+  }
+
   const route = watchRouteFor(location.pathname);
   if (route) {
     if (route.mode === 'cast-receiver') { castReceiverEnter(); return; }

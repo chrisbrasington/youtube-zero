@@ -81,6 +81,9 @@
         <button class="btn-ghost" id="btn-clear-cache" title="Clear browser cache and reload — keeps settings">🧹 Clear browser cache</button>
         <span id="clear-cache-status" class="settings-hint"></span>
       </div>
+      <div class="settings-row">
+        <button class="btn-ghost" id="btn-history" title="Browse watched videos">📜 Watch History</button>
+      </div>
       <hr class="settings-divider">
       <strong>Signal — Notes to Self</strong>
       <div class="settings-hint">
@@ -148,6 +151,23 @@
       <div id="queue-list" class="queue-list"></div>
     </div>
 
+  </div>
+
+  <!-- Watch history page (/history) -->
+  <div id="history-layout" class="history-layout hidden">
+    <div class="history-header">
+      <button class="btn-icon" id="btn-history-back" title="Back">←</button>
+      <span class="history-title">Watch History</span>
+    </div>
+    <div class="history-search-row">
+      <input type="text" id="history-search" placeholder="Search title or channel…" autocomplete="off">
+    </div>
+    <div id="history-list" class="queue-list history-list"></div>
+    <div class="history-pager">
+      <button class="btn-ghost" id="btn-history-prev">← Prev</button>
+      <span id="history-range" class="settings-hint"></span>
+      <button class="btn-ghost" id="btn-history-next">Next →</button>
+    </div>
   </div>
 
   <!-- Mobile action sheet -->
@@ -259,6 +279,7 @@
   <script src="/static/js/drag.js"></script>
   <script src="/static/js/keys.js"></script>
   <script src="/static/js/events.js"></script>
+  <script src="/static/js/history.js"></script>
   <script src="/static/js/boot.js"></script>
 </body>
 </html>

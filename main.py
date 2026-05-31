@@ -45,8 +45,10 @@ from queries import (
     add_quota,
     clear_queue,
     clear_video_status_for_channel,
+    count_history,
     delete_setting,
     get_all_settings,
+    get_history,
     get_queue,
     get_quota_today_units,
     get_setting,
@@ -1478,6 +1480,14 @@ def queue_watched(video_id: str, background_tasks: BackgroundTasks):
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
     return {"ok": True}
+
+
+@app.get("/api/history")
+def history_list(search: str = "", limit: int = 50, offset: int = 0):
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    items = get_history(search, limit, offset)
+    return {"items": items, "total": count_history(search), "offset": offset, "limit": limit}
 
 
 # ── Static / SPA ──────────────────────────────────────────────────────────────

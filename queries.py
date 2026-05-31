@@ -127,6 +127,37 @@ def get_queue(is_deep: bool = False) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_history(search: str = "", limit: int = 50, offset: int = 0) -> list[dict]:
+    """Watched queue items, newest first. Optional case-insensitive search
+    over title + channel name spans the whole table, not just one page."""
+    sql = (
+        "SELECT q.*, v.duration AS duration, v.is_live AS is_live "
+        "FROM queue q LEFT JOIN videos v ON v.video_id = q.video_id "
+        "WHERE q.watched_at IS NOT NULL"
+    )
+    params: list = []
+    if search:
+        sql += " AND (q.title LIKE ? OR q.channel_name LIKE ?)"
+        params += [f"%{search}%", f"%{search}%"]
+    sql += " ORDER BY q.watched_at DESC LIMIT ? OFFSET ?"
+    params += [limit, offset]
+    with db() as c:
+        rows = c.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_history(search: str = "") -> int:
+    """Total watched-queue rows matching the optional search filter."""
+    sql = "SELECT COUNT(*) AS n FROM queue WHERE watched_at IS NOT NULL"
+    params: list = []
+    if search:
+        sql += " AND (title LIKE ? OR channel_name LIKE ?)"
+        params += [f"%{search}%", f"%{search}%"]
+    with db() as c:
+        row = c.execute(sql, params).fetchone()
+    return int(row["n"])
+
+
 def unwatched_queue_video_ids() -> set[str]:
     with db() as c:
         rows = c.execute(

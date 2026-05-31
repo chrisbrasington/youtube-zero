@@ -60,6 +60,7 @@ $('btn-close-queue').addEventListener('click', () => {
 $('btn-settings').addEventListener('click', () => {
   $('settings-panel').classList.toggle('hidden');
 });
+$('btn-history').addEventListener('click', () => { location.href = '/history'; });
 
 
 // ── Settings panel ───────────────────────────────────────────────────────────
