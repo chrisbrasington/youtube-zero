@@ -500,6 +500,42 @@ function castOnScreenEvent(msg) {
 function castUpdateUI() {
   const btn = $('btn-cast');
   if (btn) btn.classList.toggle('hidden', !castAvailable());
+  castRenderResumeBar();
+}
+
+
+// A connected screen that's actively playing something (its status carries a
+// current video). null when every screen is idle.
+function castWatchingScreen() {
+  return castScreens.find(s => s.status && s.status.video_id) || null;
+}
+
+
+// Top-of-page prompt on the main remote (/) when a screen is mid-playback: one
+// tap opens the full remote panel (thumbnail, seek, controls, queue) and takes
+// over its control. Hidden on the receiver/other routes and while the remote
+// panel is already open. Re-evaluated on every screen discovery/status event.
+function castRenderResumeBar() {
+  const bar = $('cast-resume');
+  if (!bar) return;
+  const onMainPage = !['route-tv', 'route-cast', 'route-watch', 'route-history']
+    .some(c => document.body.classList.contains(c));
+  const remoteOpen = !$('cast-remote').classList.contains('hidden');
+  const screen = (onMainPage && !remoteOpen) ? castWatchingScreen() : null;
+  if (!screen) { bar.classList.add('hidden'); return; }
+  bar.dataset.screenId = screen.id;
+  $('cast-resume-name').textContent = screen.name || 'Screen';
+  $('cast-resume-title').textContent = screen.status.title || '';
+  $('cast-resume-thumb').src = `https://i.ytimg.com/vi/${screen.status.video_id}/mqdefault.jpg`;
+  bar.classList.remove('hidden');
+}
+
+
+// Take over a playing screen from this browser — opens the populated remote.
+function castResumeControl(screenId) {
+  if (!screenId) return;
+  castActiveScreen = screenId;
+  castOpenRemote();
 }
 
 
@@ -639,10 +675,12 @@ function castOpenRemote() {
   if (!castActiveScreen) return;
   $('cast-remote').classList.remove('hidden');
   castRenderRemote(true);
+  castRenderResumeBar();   // panel now open → hide the resume prompt
 }
 
 function castCloseRemote() {
   $('cast-remote').classList.add('hidden');
+  castRenderResumeBar();   // re-offer the prompt if the screen is still playing
 }
 
 
@@ -773,6 +811,9 @@ function castFmtTime(s) {
 
 // Delegated clicks for the remote panel + the destination/screen chooser.
 document.addEventListener('click', e => {
+  const resume = e.target.closest('[data-action="cast-resume"]');
+  if (resume) { castResumeControl(resume.dataset.screenId); return; }
+
   const pick = e.target.closest('[data-cast-pick]');
   if (pick) { castResolvePick(pick.dataset.castPick || null); return; }
   if (e.target.closest('[data-action="cast-pick-backdrop"]') === e.target) { castResolvePick(null); return; }

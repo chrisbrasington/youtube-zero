@@ -2017,6 +2017,43 @@ body.route-tv [data-action="remove-queue"],
 body.route-tv [data-action="queue-deep"],
 body.route-tv [data-action="queue-undeep"] { display: none !important; }
 
+
+/* ── "Resume control" bar: a playing screen detected on the main remote (/) ─── */
+.cast-resume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg2);
+  border: none;
+  border-bottom: 1px solid var(--border-l);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cast-resume:hover { background: var(--bg3); }
+.cast-resume-thumb {
+  width: 72px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--bg3);
+  flex-shrink: 0;
+}
+.cast-resume-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cast-resume-now { font-size: 13px; color: var(--muted); }
+.cast-resume-title { font-size: 15px; font-weight: 600; }
+.cast-resume-cta {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+}
+
 .cast-idle-inner {
   display: flex;
   flex-direction: column;
