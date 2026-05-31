@@ -612,7 +612,13 @@ document.addEventListener('click', e => {
 
   if (e.target.closest('[data-cast-close]')) { castCloseRemote(); return; }
   const ctl = e.target.closest('[data-cast-ctl]');
-  if (ctl) { castSendCommand(ctl.dataset.castCtl); return; }
+  if (ctl) {
+    const action = ctl.dataset.castCtl;
+    castSendCommand(action);
+    // Stop exits the screen entirely — nothing left to drive, so close the panel.
+    if (action === 'stop') castCloseRemote();
+    return;
+  }
   const jump = e.target.closest('[data-cast-jump]');
   if (jump && jump.dataset.videoId) { castSendCommand('jump', jump.dataset.videoId); return; }
   if (e.target.closest('[data-action="cast-remote-backdrop"]') === e.target) { castCloseRemote(); return; }
