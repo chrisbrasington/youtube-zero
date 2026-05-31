@@ -24,6 +24,7 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 <img src="./.img/play%20location.png" width="80%">
 
 ### Screen "casting" to /watch page
+![](./.img/watch.png)
 <img src="./.img/which%20screen.png" width="80%">
 
 ---
