@@ -10,6 +10,24 @@ Just a clear list of new videos from channels you chose.
 
 Watch what matters, queue what you want, dismiss what doesn't. <u>When you're done, you're done.</u> The screen goes empty and stays that way.
 
+---
+
+## Screenshots
+
+### Main Folder Interface
+![](./.img/app.png)
+
+### Playing Queue
+![](./.img/app3.png)
+
+### Single Video, Playback actions
+<img src="./.img/play%20location.png" width="80%">
+
+### Screen "casting" to /watch page
+<img src="./.img/which%20screen.png" width="80%">
+
+---
+
 ## Features
 
 <img src="./.img/app2.png" align="right" width="200" style="margin-right: 16px;" />
@@ -47,16 +65,6 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 <div style="clear: both;"></div>
 
 ---
-
-![](./.img/app.png)
-
-![](./.img/app3.png)
-
-<img src="./.img/play%20location.png" width="80%">
-
-<img src="./.img/which%20screen.png" width="80%">
-
-
 
 ## Quick start
 
