@@ -620,10 +620,10 @@ async function castTransferLocal(targetId) {
 }
 
 
-// Connected screens that are actively playing something (status carries a
-// current video). Empty when every screen is idle.
+// Other connected screens that are actively playing something (status carries a
+// current video). Excludes this device's own screen (so /tv never lists itself).
 function castWatchingScreens() {
-  return castScreens.filter(s => s.status && s.status.video_id);
+  return castScreens.filter(s => s.id !== castScreenId && s.status && s.status.video_id);
 }
 
 
@@ -635,10 +635,12 @@ function castWatchingScreens() {
 function castRenderResumeBar() {
   const bar = $('cast-resume');
   if (!bar) return;
-  const onMainPage = !['route-tv', 'route-cast', 'route-watch', 'route-history']
+  // Show on the browse pages (/ and /tv); not on the bare /watch receiver, while
+  // an overlay player is up (route-watch), or on history.
+  const browsePage = !['route-cast', 'route-watch', 'route-history']
     .some(c => document.body.classList.contains(c));
   const remoteOpen = !$('cast-remote').classList.contains('hidden');
-  const screens = (onMainPage && !remoteOpen) ? castWatchingScreens() : [];
+  const screens = (browsePage && !remoteOpen) ? castWatchingScreens() : [];
   if (!screens.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
   const canTransfer = castScreens.length > 1;   // a second screen exists to send to
   bar.innerHTML = screens.map(s => `

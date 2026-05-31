@@ -41,6 +41,7 @@ async function tvEnter() {
   await loadSettings();
   render();
   connectEventSource();
+  castRefreshScreens();   // discover already-playing screens → resume/pull/transfer bar
 
   const nameEl = $('tv-ready-name');
   if (nameEl) nameEl.textContent = castGetScreenName();
