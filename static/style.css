@@ -1945,13 +1945,14 @@ body.route-cast > .main-layout { display: none; }
 .cast-now-idle { color: var(--muted); font-size: 15px; padding: 8px 0; }
 .cast-remote-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
   align-items: stretch;
 }
 .cast-remote-controls .player-btn {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 56px;
+  min-width: 56px;
   min-height: 60px;
   font-size: 30px;
   padding: 12px 6px;
@@ -1959,6 +1960,7 @@ body.route-cast > .main-layout { display: none; }
   align-items: center;
   justify-content: center;
 }
+.cast-remote-controls .cast-ctl-cc { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
 .cast-remote-controls .cast-ctl-big {
   font-size: 40px;
   color: var(--green);

@@ -24,7 +24,7 @@ from pydantic import BaseModel
 # new playlist goes through the dedicated /play route, not this set. `seek`
 # carries a `value` (seconds); `fullscreen` toggles fullscreen on the screen.
 CAST_ACTIONS = {"pause", "resume", "next", "prev", "mark_next", "jump",
-                "stop", "seek", "fullscreen"}
+                "stop", "seek", "fullscreen", "cc"}
 
 OFFLINE_GRACE_SECONDS = 8
 _NAME_MAX = 40

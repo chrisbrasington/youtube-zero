@@ -29,6 +29,7 @@ let castUserActivated = false;   // has a gesture happened on this screen tab?
 let castReceiverES = null;
 let castStatusTimer = null;
 let castLastStatusKey = '';
+let castCcOn = false;            // captions toggle (YT API has no getter — we track it)
 
 // Kiosk mode (set via ?kiosk=1, e.g. the Android WebView wrapper): the host has
 // already allowed autoplay-with-sound, so start unmuted and skip the tap hint.
@@ -186,6 +187,13 @@ function castOnCommand(msg) {
       }
       break;
     case 'fullscreen': castToggleCover(); break;
+    case 'cc':
+      castCcOn = !castCcOn;
+      try {
+        if (castCcOn) { watchPlayer?.loadModule?.('captions'); watchPlayer?.loadModule?.('cc'); }
+        else { watchPlayer?.unloadModule?.('captions'); watchPlayer?.unloadModule?.('cc'); }
+      } catch {}
+      break;
   }
 }
 
@@ -491,6 +499,7 @@ function castRemoteHTML(screen, st, vids, curId) {
                 data-cast-ctl="resume" title="Play">▶</button>
         <button class="btn-icon player-btn" data-cast-ctl="next" title="Skip">⏭</button>
         <button class="btn-icon player-btn" data-cast-ctl="mark_next" title="Mark watched &amp; skip">✓⏭</button>
+        <button class="btn-icon player-btn cast-ctl-cc" data-cast-ctl="cc" title="Toggle captions">CC</button>
         <button class="btn-icon player-btn" data-cast-ctl="fullscreen" title="Toggle fullscreen on screen">⛶</button>
         <button class="btn-icon player-btn" data-cast-ctl="stop" title="Stop">⏹</button>
       </div>
