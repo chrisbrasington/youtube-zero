@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Edit these two values, then rebuild with ./build.sh -->
+<resources>
+    <string name="server_url" translatable="false">http://valhalla:8000/watch</string>
+    <string name="screen_name" translatable="false">Living Room TV</string>
+</resources>

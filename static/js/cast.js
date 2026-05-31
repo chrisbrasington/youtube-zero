@@ -30,6 +30,12 @@ let castReceiverES = null;
 let castStatusTimer = null;
 let castLastStatusKey = '';
 
+// Kiosk mode (set via ?kiosk=1, e.g. the Android WebView wrapper): the host has
+// already allowed autoplay-with-sound, so start unmuted and skip the tap hint.
+const castKiosk = (() => {
+  try { return new URLSearchParams(location.search).has('kiosk'); } catch { return false; }
+})();
+
 
 function castGetScreenId() {
   let id = localStorage.getItem('castScreenId');
@@ -43,6 +49,10 @@ function castGetScreenId() {
 }
 
 function castGetScreenName() {
+  try {
+    const fromUrl = new URLSearchParams(location.search).get('name');
+    if (fromUrl) { localStorage.setItem('castScreenName', fromUrl); return fromUrl; }
+  } catch {}
   return localStorage.getItem('castScreenName') || ('Screen ' + castGetScreenId().slice(0, 4));
 }
 
@@ -68,7 +78,7 @@ function castRenderIdle() {
       <input id="cast-name-input" class="cast-name-input" value="${escAttr(castGetScreenName())}"
              autocomplete="off" spellcheck="false" aria-label="Screen name">
       <div class="cast-idle-status">Ready to receive</div>
-      <div id="cast-idle-hint" class="cast-idle-hint">Tap anywhere to enable sound</div>
+      <div id="cast-idle-hint" class="cast-idle-hint${castKiosk ? ' hidden' : ''}">Tap anywhere to enable sound</div>
     </div>`;
 
   if (castIdleBound) return;
@@ -144,7 +154,7 @@ function castOnPlayCommand(payload) {
   watchEnter({
     mode: 'cast',
     inPage: true,
-    mutedStart: !castUserActivated,   // no gesture yet → start muted (+ unmute banner)
+    mutedStart: !(castUserActivated || castKiosk),   // kiosk/gesture → unmuted; else muted (+ banner)
     list,
     startId: payload.start_id || null,
     mark: castMakeMark(payload.mark_mode),
