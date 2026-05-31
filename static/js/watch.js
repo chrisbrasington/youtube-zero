@@ -20,6 +20,7 @@ let watchDomBound = false;
 
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
+  if (p === '/tv')           return { mode: 'tv' };             // browse feed + cast receiver
   if (p === '/watch')        return { mode: 'cast-receiver' };  // idle screen, waits for casts
   if (p === '/watch/queue')  return { mode: 'queue' };          // local binge of the queue
   if (p === '/watch/test')   return { mode: 'queue-test' };
@@ -353,6 +354,13 @@ function watchEnter(config) {
   document.body.classList.add('route-watch');
   $('watch-layout').classList.remove('hidden');
 
+  // On /tv every play starts fullscreen ("cover"), so the TV-remote overlay nav
+  // (seek / reveal queue) applies just like a cast — see castKey() in cast.js.
+  if (castIsTv()) {
+    document.body.classList.add('cast-cover');
+    watchRequestFullscreen();
+  }
+
   if (config.badgeLabel) {
     $('watch-mode-badge').textContent = config.badgeLabel;
     $('watch-mode-badge').classList.remove('hidden');
@@ -378,6 +386,7 @@ function watchExit() {
   state.watch = null;
   if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
   document.body.classList.remove('route-watch');
+  document.body.classList.remove('cast-cover');   // clean up /tv + cast fullscreen
   $('watch-layout').classList.add('hidden');
   $('watch-layout').classList.remove('theater');
   $('watch-unmute').classList.add('hidden');

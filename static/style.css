@@ -1972,6 +1972,50 @@ body.route-cast > #refresh-progress,
 body.route-cast > #settings-panel,
 body.route-cast > .main-layout { display: none; }
 
+
+/* ── TV mode (/tv): locked-down, remote-navigable browse + receiver ─────────── */
+
+/* "Living Room TV · ready to watch" header badge (shown only on /tv). */
+.tv-ready { display: none; align-items: center; gap: var(--space-xs); font-size: 15px; font-weight: 600; }
+body.route-tv #tv-ready { display: inline-flex; }
+
+/* Header: keep only Random + Queue (and the ready badge); drop the rest. */
+body.route-tv #btn-refresh-all,
+body.route-tv #btn-cast,
+body.route-tv #btn-clear-all,
+body.route-tv #btn-settings,
+body.route-tv .auto-refresh,
+body.route-tv .quota-pill,
+body.route-tv #last-checked,
+body.route-tv .add-bar,
+body.route-tv #settings-panel,
+body.route-tv #refresh-progress,
+body.route-tv .ch-caret { display: none !important; }
+
+/* Browse-and-play only: hide every CRUD / mutation affordance. Folder/channel
+   expansion can't be triggered here (no pointer; the grid never focuses
+   headers), so the feed stays compact and unwatched-only. */
+body.route-tv [data-action="delete-channel"],
+body.route-tv [data-action="delete-folder"],
+body.route-tv [data-action="rename-folder"],
+body.route-tv [data-action="refresh-channel"],
+body.route-tv [data-action="refresh-folder"],
+body.route-tv [data-action="toggle-mute"],
+body.route-tv [data-action="set-folder"],
+body.route-tv [data-action="mark-read"],
+body.route-tv [data-action="mark-unread"],
+body.route-tv [data-action="mark-folder-read"],
+body.route-tv [data-action="toggle-allow-shorts"],
+body.route-tv [data-action="video-read"],
+body.route-tv [data-action="video-unread"],
+body.route-tv [data-action="toggle-queue"],
+body.route-tv [data-action="signal-send"],
+body.route-tv [data-action="tv-send"],
+body.route-tv #btn-clear-queue,
+body.route-tv [data-action="remove-queue"],
+body.route-tv [data-action="queue-deep"],
+body.route-tv [data-action="queue-undeep"] { display: none !important; }
+
 .cast-idle-inner {
   display: flex;
   flex-direction: column;

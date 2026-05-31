@@ -71,7 +71,7 @@ $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
 $('btn-signal-queue').addEventListener('click', signalSendQueue);
 $('btn-clear-queue').addEventListener('click', () => clearQueue(false));
-$('btn-watch-queue').addEventListener('click', () => castOrWatchQueue());
+$('btn-watch-queue').addEventListener('click', () => castIsTv() ? watchStartQueue() : castOrWatchQueue());
 $('btn-cast').addEventListener('click', () => castOpenRemote());
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);

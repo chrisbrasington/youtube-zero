@@ -113,7 +113,11 @@ function castReturnToIdle() {
   document.body.classList.remove('cast-cover');
   castNavReset();
   $('watch-layout').classList.add('hidden');
-  $('cast-idle').classList.remove('hidden');
+  if (castIsTv()) {
+    render();           // /tv: back to the browse feed, not a blank idle screen
+  } else {
+    $('cast-idle').classList.remove('hidden');
+  }
   castLastStatusKey = '';   // force an idle status on the next poll
 }
 
@@ -136,7 +140,8 @@ function castConnectReceiver() {
     es.close();
     if (castReceiverES === es) castReceiverES = null;
     setTimeout(() => {
-      if (document.body.classList.contains('route-cast') && !castReceiverES) {
+      const stillReceiving = document.body.classList.contains('route-cast') || castIsTv();
+      if (stillReceiving && !castReceiverES) {
         castConnectReceiver();
       }
     }, 3000);
@@ -279,6 +284,17 @@ function castIsReceiver() {
   return !!(state.watch && state.watch.active && state.watch.mode === 'cast');
 }
 
+// /tv is the cast receiver fused with the browse feed (see tv.js).
+function castIsTv() {
+  return document.body.classList.contains('route-tv');
+}
+
+// Whether the player overlay D-pad nav should drive playback. True for a pure
+// cast receiver and for any playback launched from /tv (single/queue/folder).
+function castNavEligible() {
+  return castIsReceiver() || castIsTv();
+}
+
 function castNavReset() {
   castNav.active = false;
   document.querySelectorAll('.dpad-focus').forEach(el => el.classList.remove('dpad-focus'));
@@ -295,22 +311,27 @@ function castSeek(delta) {
 
 // Entry point invoked by the APK for each D-pad direction ('up'|'down'|'left'|'right').
 function castKey(name) {
-  if (!castIsReceiver()) return;
-  if (document.body.classList.contains('cast-cover')) {
-    // Watching mode.
-    if (name === 'left')  return castSeek(-CAST_SEEK_STEP);
-    if (name === 'right') return castSeek(CAST_SEEK_STEP);
-    if (name === 'up' || name === 'down') return castNavEnter(name);
-    if (name === 'ok')    return castTogglePlay();
+  // A player overlay is open → drive playback (cast receiver, or /tv playback).
+  if (state.watch?.active && castNavEligible()) {
+    if (document.body.classList.contains('cast-cover')) {
+      // Watching mode.
+      if (name === 'left')  return castSeek(-CAST_SEEK_STEP);
+      if (name === 'right') return castSeek(CAST_SEEK_STEP);
+      if (name === 'up' || name === 'down') return castNavEnter(name);
+      if (name === 'ok')    return castTogglePlay();
+      return;
+    }
+    // Nav mode (in-overlay focus ring).
+    if (name === 'up' || name === 'down') return castNavMove(name);
+    if (name === 'left' || name === 'right') {
+      if (castNav.active && castNav.index === 0) return castNavCol(name);
+      return castSeek(name === 'left' ? -CAST_SEEK_STEP : CAST_SEEK_STEP);
+    }
+    if (name === 'ok') return castNavSelect();
     return;
   }
-  // Nav mode.
-  if (name === 'up' || name === 'down') return castNavMove(name);
-  if (name === 'left' || name === 'right') {
-    if (castNav.active && castNav.index === 0) return castNavCol(name);
-    return castSeek(name === 'left' ? -CAST_SEEK_STEP : CAST_SEEK_STEP);
-  }
-  if (name === 'ok') return castNavSelect();
+  // No overlay, on /tv → drive the browse-feed focus grid (see tv.js).
+  if (castIsTv()) tvBrowseKey(name);
 }
 
 
@@ -385,7 +406,8 @@ function castNavReRender() {
 // key) is pressed. In nav mode it activates the focused element; otherwise it
 // toggles the receiver's player with a single tap.
 function castTogglePlay() {
-  if (castNav.active) { castNavSelect(); return; }
+  if (castNav.active) { castNavSelect(); return; }                 // player overlay focus ring
+  if (castIsTv() && !state.watch?.active) { tvBrowseKey('ok'); return; }  // browse grid
   if (!state.watch?.active || !watchPlayer) return;
   try {
     const st = watchPlayer.getPlayerState?.();

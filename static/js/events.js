@@ -43,7 +43,12 @@ document.addEventListener('click', e => {
 
   // Folder: watch all visible videos (here, or cast to a screen if one is online)
   const wfBtn = e.target.closest('[data-action="watch-folder"]');
-  if (wfBtn) { e.stopPropagation(); castOrWatchFolder(parseInt(wfBtn.dataset.folderId, 10)); return; }
+  if (wfBtn) {
+    e.stopPropagation();
+    const fid = parseInt(wfBtn.dataset.folderId, 10);
+    castIsTv() ? watchStartFolder(fid) : castOrWatchFolder(fid);   // /tv always plays here
+    return;
+  }
 
   // Folder: rename
   const renameBtn = e.target.closest('[data-action="rename-folder"]');

@@ -21,6 +21,7 @@
 
   const route = watchRouteFor(location.pathname);
   if (route) {
+    if (route.mode === 'tv') { await tvEnter(); return; }
     if (route.mode === 'cast-receiver') { castReceiverEnter(); return; }
     await watchBootUrl(route);
     return;

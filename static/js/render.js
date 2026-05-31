@@ -52,7 +52,13 @@ function renderSortBtn() {
 
 function renderFeed() {
   const el = $('channels-list');
-  const items = topLevelItems();
+  let items = topLevelItems();
+
+  // /tv is unwatched-only: a folder/channel drops out once nothing's left to watch.
+  if (castIsTv()) {
+    items = items.filter(({ type, item }) =>
+      (type === 'folder' ? folderUnreadCount(item) : countUnread(item)) > 0);
+  }
 
   if (items.length === 0) {
     $('all-clear-badge').classList.add('hidden');
@@ -73,6 +79,9 @@ function renderFeed() {
   el.innerHTML = items.map(({ type, item }) =>
     type === 'folder' ? renderFolder(item) : renderChannel(item, false)
   ).join('');
+
+  // Feed rebuilt → restore the TV-remote focus ring if we're on /tv (see tv.js).
+  if (typeof tvRefocus === 'function') tvRefocus();
 }
 
 
