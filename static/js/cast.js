@@ -167,13 +167,22 @@ function castOnCommand(msg) {
     case 'prev':      watchPrev(); break;
     case 'jump':      if (msg.video_id && state.watch?.active) watchPlay(msg.video_id); break;
     case 'stop':      watchExit(); break;
+    case 'seek':
+      if (typeof msg.value === 'number' && state.watch?.active) {
+        try { watchPlayer?.seekTo?.(msg.value, true); } catch {}
+      }
+      break;
+    case 'fullscreen':
+      if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
+      else watchRequestFullscreen();
+      break;
   }
 }
 
 
 function castPollStatus() {
   if (!castScreenId) return;
-  let vid = null, ps = null, idx = 0, count = 0, title = '';
+  let vid = null, ps = null, idx = 0, count = 0, title = '', cur = 0, dur = 0;
   if (state.watch?.active) {
     vid = state.watch.currentVideoId;
     const list = state.watch.list || [];
@@ -181,13 +190,20 @@ function castPollStatus() {
     idx = Math.max(0, list.findIndex(v => v.video_id === vid));
     const item = list.find(v => v.video_id === vid);
     title = item ? item.title : '';
-    try { ps = watchPlayer?.getPlayerState?.(); } catch {}
+    try {
+      ps  = watchPlayer?.getPlayerState?.();
+      cur = watchPlayer?.getCurrentTime?.() || 0;
+      dur = watchPlayer?.getDuration?.()    || 0;
+    } catch {}
   }
-  const key = `${vid}|${ps}|${idx}|${count}`;
-  if (key === castLastStatusKey) return;   // only POST on a real change
+  // current_time advances every tick while playing — that's intended so the
+  // remote's seek bar tracks live (≈1 POST/sec). Paused → time frozen → no POST.
+  const key = `${vid}|${ps}|${idx}|${count}|${Math.floor(cur)}|${Math.floor(dur)}`;
+  if (key === castLastStatusKey) return;
   castLastStatusKey = key;
   api.post(`/api/cast/${castScreenId}/status`, {
     video_id: vid, title, player_state: ps, index: idx, count,
+    current_time: cur, duration: dur,
   }).catch(() => {});
 }
 
@@ -227,7 +243,7 @@ function castOnScreenEvent(msg) {
     if (s) s.status = msg.status;
     else castScreens.push({ id: msg.screen_id, name: msg.status?.name || 'Screen', status: msg.status });
     if (castActiveScreen === msg.screen_id && !$('cast-remote').classList.contains('hidden')) {
-      castRenderRemote();
+      castRenderRemote(false);
     }
   }
   castUpdateUI();
@@ -343,10 +359,10 @@ async function castSendPlay(screenId, videos, markMode, startId = null) {
 }
 
 
-async function castSendCommand(action, videoId = null) {
+async function castSendCommand(action, videoId = null, value = null) {
   if (!castActiveScreen) return;
   try {
-    await api.post(`/api/cast/${castActiveScreen}/command`, { action, video_id: videoId });
+    await api.post(`/api/cast/${castActiveScreen}/command`, { action, video_id: videoId, value });
   } catch (e) {
     if (String(e.message).includes('not connected')) {
       status('Screen disconnected', 'err');
@@ -366,7 +382,7 @@ function castOpenRemote() {
   }
   if (!castActiveScreen) return;
   $('cast-remote').classList.remove('hidden');
-  castRenderRemote();
+  castRenderRemote(true);
 }
 
 function castCloseRemote() {
@@ -379,13 +395,28 @@ function castRemoteThumb(v) {
 }
 
 
-function castRenderRemote() {
+let castRemoteSig = '';      // structural signature — rebuild only when it changes
+let castScrubbing = false;   // user is dragging the seek bar; ignore live ticks
+
+// Rebuilds the panel structure only when the screen / current video / list
+// changes; otherwise updates the dynamic bits (play-pause, time, seek) in place
+// so a per-second status tick doesn't yank the slider out from under a finger.
+function castRenderRemote(force) {
   const screen = castScreens.find(s => s.id === castActiveScreen);
-  const el = $('cast-remote');
   const st = screen?.status || {};
   const vids = st.videos || [];
   const curId = st.video_id;
-  const playing = st.player_state === 1;        // YT.PlayerState.PLAYING
+  const sig = `${castActiveScreen}|${curId}|${vids.map(v => v.video_id).join(',')}`;
+  if (force || sig !== castRemoteSig) {
+    castRemoteSig = sig;
+    castScrubbing = false;
+    $('cast-remote').innerHTML = castRemoteHTML(screen, st, vids, curId);
+  }
+  castSyncRemote();
+}
+
+
+function castRemoteHTML(screen, st, vids, curId) {
   const cur = vids.find(v => v.video_id === curId)
             || (curId ? { video_id: curId, title: st.title || '' } : null);
 
@@ -396,6 +427,14 @@ function castRenderRemote() {
       <div class="cast-now-title">${esc(cur.title || '')}</div>
     </div>` : `
     <div class="cast-now cast-now-idle">Idle — nothing playing</div>`;
+
+  const seekbar = curId ? `
+    <div class="cast-seekbar">
+      <span id="cast-time-cur" class="cast-time">0:00</span>
+      <input id="cast-seek" class="cast-seek" type="range" min="0" max="0" value="0" step="1"
+             data-cast-seek aria-label="Seek">
+      <span id="cast-time-dur" class="cast-time">0:00</span>
+    </div>` : '';
 
   const list = (curId && vids.length) ? `
     <div class="queue-list cast-remote-list">
@@ -414,7 +453,7 @@ function castRenderRemote() {
         </div>`).join('')}
     </div>` : '';
 
-  el.innerHTML = `
+  return `
     <div class="cast-remote-box">
       <div class="cast-remote-header">
         <span class="cast-remote-name">📺 ${esc(screen?.name || 'Screen')}</span>
@@ -423,14 +462,52 @@ function castRenderRemote() {
       ${nowPlaying}
       <div class="cast-remote-controls">
         <button class="btn-icon player-btn" data-cast-ctl="prev" title="Previous">⏮</button>
-        <button class="btn-icon player-btn cast-ctl-big" data-cast-ctl="${playing ? 'pause' : 'resume'}"
-                title="${playing ? 'Pause' : 'Play'}">${playing ? '⏸' : '▶'}</button>
+        <button class="btn-icon player-btn cast-ctl-big" id="cast-playpause"
+                data-cast-ctl="resume" title="Play">▶</button>
         <button class="btn-icon player-btn" data-cast-ctl="next" title="Skip">⏭</button>
         <button class="btn-icon player-btn" data-cast-ctl="mark_next" title="Mark watched &amp; skip">✓⏭</button>
+        <button class="btn-icon player-btn" data-cast-ctl="fullscreen" title="Toggle fullscreen on screen">⛶</button>
         <button class="btn-icon player-btn" data-cast-ctl="stop" title="Stop">⏹</button>
       </div>
+      ${seekbar}
       ${list}
     </div>`;
+}
+
+
+function castSyncRemote() {
+  const screen = castScreens.find(s => s.id === castActiveScreen);
+  const st = screen?.status || {};
+  const playing = st.player_state === 1;   // YT.PlayerState.PLAYING
+
+  const pp = document.getElementById('cast-playpause');
+  if (pp) {
+    pp.dataset.castCtl = playing ? 'pause' : 'resume';
+    pp.textContent = playing ? '⏸' : '▶';
+    pp.title = playing ? 'Pause' : 'Play';
+  }
+
+  const dur = Math.floor(st.duration || 0);
+  const cur = Math.floor(st.current_time || 0);
+  const range = document.getElementById('cast-seek');
+  if (range) {
+    range.max = dur > 0 ? dur : 0;
+    range.disabled = dur <= 0;
+    if (!castScrubbing) range.value = Math.min(cur, dur || cur);
+  }
+  const shown = (castScrubbing && range) ? parseInt(range.value, 10) : cur;
+  const curEl = document.getElementById('cast-time-cur');
+  const durEl = document.getElementById('cast-time-dur');
+  if (curEl) curEl.textContent = castFmtTime(shown);
+  if (durEl) durEl.textContent = castFmtTime(dur);
+}
+
+
+function castFmtTime(s) {
+  s = Math.max(0, Math.floor(s || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = h ? String(m).padStart(2, '0') : String(m);
+  return (h ? h + ':' : '') + mm + ':' + String(sec).padStart(2, '0');
 }
 
 
@@ -446,4 +523,21 @@ document.addEventListener('click', e => {
   const jump = e.target.closest('[data-cast-jump]');
   if (jump && jump.dataset.videoId) { castSendCommand('jump', jump.dataset.videoId); return; }
   if (e.target.closest('[data-action="cast-remote-backdrop"]') === e.target) { castCloseRemote(); return; }
+});
+
+
+// Seek bar: while dragging, hold off live ticks and preview the time; on release
+// (change), seek the screen to the chosen second.
+document.addEventListener('input', e => {
+  const seek = e.target.closest('[data-cast-seek]');
+  if (!seek) return;
+  castScrubbing = true;
+  const curEl = document.getElementById('cast-time-cur');
+  if (curEl) curEl.textContent = castFmtTime(parseInt(seek.value, 10));
+});
+document.addEventListener('change', e => {
+  const seek = e.target.closest('[data-cast-seek]');
+  if (!seek) return;
+  castScrubbing = false;
+  castSendCommand('seek', null, parseInt(seek.value, 10));
 });

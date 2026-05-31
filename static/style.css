@@ -1944,8 +1944,30 @@ body.route-cast > .main-layout { display: none; }
   justify-content: center;
   align-items: center;
 }
-.cast-remote-controls .player-btn { font-size: 22px; padding: 10px 14px; }
+.cast-remote-controls .player-btn { font-size: 22px; padding: 10px 12px; }
 .cast-remote-controls .cast-ctl-big { font-size: 28px; color: var(--green); }
+.cast-seekbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px;
+}
+.cast-time {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.cast-seek {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+.cast-seek:disabled { cursor: default; opacity: .5; }
 .cast-remote-list { max-height: 40dvh; overflow-y: auto; }
 .sheet-screen { color: var(--tv); border-color: var(--tv); }
 

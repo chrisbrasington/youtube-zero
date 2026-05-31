@@ -21,8 +21,10 @@ from pydantic import BaseModel
 
 
 # Live remote-control actions a phone may push to a connected screen. Starting a
-# new playlist goes through the dedicated /play route, not this set.
-CAST_ACTIONS = {"pause", "resume", "next", "prev", "mark_next", "jump", "stop"}
+# new playlist goes through the dedicated /play route, not this set. `seek`
+# carries a `value` (seconds); `fullscreen` toggles fullscreen on the screen.
+CAST_ACTIONS = {"pause", "resume", "next", "prev", "mark_next", "jump",
+                "stop", "seek", "fullscreen"}
 
 OFFLINE_GRACE_SECONDS = 8
 _NAME_MAX = 40
@@ -45,6 +47,7 @@ class CastPlayReq(BaseModel):
 class CastCommandReq(BaseModel):
     action: str
     video_id: Optional[str] = None
+    value: Optional[float] = None   # seek target in seconds
 
 
 class CastStatusReq(BaseModel):
@@ -53,6 +56,8 @@ class CastStatusReq(BaseModel):
     player_state: Optional[int] = None
     index: int = 0
     count: int = 0
+    current_time: float = 0
+    duration: float = 0
 
 
 class _Screen:

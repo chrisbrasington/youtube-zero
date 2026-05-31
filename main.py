@@ -765,6 +765,7 @@ async def cast_command(screen_id: str, req: _cast.CastCommandReq):
         "type": "command",
         "action": req.action,
         "video_id": req.video_id,
+        "value": req.value,
     })
     return {"ok": True}
 
@@ -779,6 +780,8 @@ async def cast_status(screen_id: str, req: _cast.CastStatusReq):
         "player_state": req.player_state,
         "index": req.index,
         "count": req.count,
+        "current_time": req.current_time,
+        "duration": req.duration,
         "name": _cast.get_name(screen_id),
     })
     await _broadcast("screen_status", screen_id=screen_id, status=status)
