@@ -926,17 +926,25 @@ function castRemoteRows() {
   const panel = $('cast-remote');
   if (!panel) return [];
   const rows = [];
-  const ctls = [...panel.querySelectorAll('[data-cast-ctl], [data-cast-close]')];
-  if (ctls.length) rows.push(ctls);
+  const close = panel.querySelector('[data-cast-close]');
+  if (close) rows.push([close]);                                   // header ✕ (its own row)
+  const ctls = [...panel.querySelectorAll('.cast-remote-controls [data-cast-ctl]')];
+  if (ctls.length) rows.push(ctls);                               // prev/play/next/… row
   const seek = panel.querySelector('[data-cast-seek]');
   if (seek) rows.push([seek]);
-  panel.querySelectorAll('[data-cast-jump]').forEach(j => rows.push([j]));
+  panel.querySelectorAll('[data-cast-jump]').forEach(j => rows.push([j]));   // jump list
   return rows.filter(r => r.length);
 }
 
 function castRemoteFocusInit() {
+  // Start on the controls row, at play/pause if it's there.
+  const rows = castRemoteRows();
   castRemoteNav.row = 0;
   castRemoteNav.col = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const pp = rows[i].findIndex(el => el.id === 'cast-playpause');
+    if (pp >= 0) { castRemoteNav.row = i; castRemoteNav.col = pp; break; }
+  }
   castRemoteRender();
 }
 
