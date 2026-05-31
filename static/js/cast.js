@@ -360,14 +360,23 @@ function castScrubEnd() {
 // (same as the close/exit control) — and report handled. Otherwise return false
 // so the app handles Back itself (exits).
 function castBack() {
+  if (castRemoteOpen()) { castCloseRemote(); return true; }   // close the remote panel
   if (castScrub.active) { castScrubCancel(); return true; }   // cancel a pending seek
   if (state.watch?.active) { watchExit(); return true; }
   return false;
 }
 
 
+function castRemoteOpen() {
+  const el = $('cast-remote');
+  return !!el && !el.classList.contains('hidden');
+}
+
+
 // Entry point invoked by the APK for each D-pad direction ('up'|'down'|'left'|'right').
 function castKey(name) {
+  // Remote-control panel open (TV) → drive the panel, not the feed behind it.
+  if (castRemoteOpen()) { castRemoteKey(name); return; }
   // A player overlay is open → drive playback (cast receiver, or /tv playback).
   if (state.watch?.active && castNavEligible()) {
     if (document.body.classList.contains('cast-cover')) {
@@ -463,6 +472,7 @@ function castNavReRender() {
 // key) is pressed. In nav mode it activates the focused element; otherwise it
 // toggles the receiver's player with a single tap.
 function castTogglePlay() {
+  if (castRemoteOpen()) { castRemoteSelect(); return; }            // activate panel control
   if (castScrub.active) { castScrubCommit(); return; }             // commit a pending seek
   if (castNav.active) { castNavSelect(); return; }                 // player overlay focus ring
   if (castIsTv() && !state.watch?.active) { tvBrowseKey('ok'); return; }  // browse grid
@@ -897,11 +907,83 @@ function castOpenRemote() {
   $('cast-remote').classList.remove('hidden');
   castRenderRemote(true);
   castRenderResumeBar();   // panel now open → hide the resume prompt
+  if (castIsTv()) castRemoteFocusInit();   // TV remote drives the panel
 }
 
 function castCloseRemote() {
   $('cast-remote').classList.add('hidden');
   castRenderResumeBar();   // re-offer the prompt if the screen is still playing
+}
+
+
+// ── Remote panel: TV-remote D-pad focus ──────────────────────────────────────
+// Drives the open #cast-remote panel from a TV remote (the panel is otherwise
+// touch-only). Rows: the control buttons, the seek slider, then the jump list.
+
+let castRemoteNav = { row: 0, col: 0 };
+
+function castRemoteRows() {
+  const panel = $('cast-remote');
+  if (!panel) return [];
+  const rows = [];
+  const ctls = [...panel.querySelectorAll('[data-cast-ctl], [data-cast-close]')];
+  if (ctls.length) rows.push(ctls);
+  const seek = panel.querySelector('[data-cast-seek]');
+  if (seek) rows.push([seek]);
+  panel.querySelectorAll('[data-cast-jump]').forEach(j => rows.push([j]));
+  return rows.filter(r => r.length);
+}
+
+function castRemoteFocusInit() {
+  castRemoteNav.row = 0;
+  castRemoteNav.col = 0;
+  castRemoteRender();
+}
+
+function castRemoteRender() {
+  const panel = $('cast-remote');
+  if (!panel) return;
+  panel.querySelectorAll('.dpad-focus').forEach(el => el.classList.remove('dpad-focus'));
+  const rows = castRemoteRows();
+  if (!rows.length) return;
+  castRemoteNav.row = Math.min(Math.max(castRemoteNav.row, 0), rows.length - 1);
+  const row = rows[castRemoteNav.row];
+  castRemoteNav.col = Math.min(Math.max(castRemoteNav.col, 0), row.length - 1);
+  const el = row[castRemoteNav.col];
+  if (el) { el.classList.add('dpad-focus'); el.scrollIntoView({ block: 'nearest' }); }
+}
+
+function castRemoteKey(name) {
+  const rows = castRemoteRows();
+  if (!rows.length) return;
+  castRemoteNav.row = Math.min(Math.max(castRemoteNav.row, 0), rows.length - 1);
+  const row = rows[castRemoteNav.row];
+  const cur = row[Math.min(castRemoteNav.col, row.length - 1)];
+  // On the seek slider, left/right scrub the controlled screen instead of moving.
+  if (cur && cur.matches('[data-cast-seek]') && (name === 'left' || name === 'right')) {
+    castRemoteSeek(name === 'left' ? -CAST_SEEK_STEP : CAST_SEEK_STEP);
+    return;
+  }
+  if (name === 'up')         castRemoteNav.row = Math.max(0, castRemoteNav.row - 1);
+  else if (name === 'down')  castRemoteNav.row = Math.min(rows.length - 1, castRemoteNav.row + 1);
+  else if (name === 'left')  castRemoteNav.col = Math.max(0, castRemoteNav.col - 1);
+  else if (name === 'right') castRemoteNav.col = Math.min(row.length - 1, castRemoteNav.col + 1);
+  castRemoteRender();
+}
+
+function castRemoteSelect() {
+  const rows = castRemoteRows();
+  const row = rows[castRemoteNav.row];
+  const el = row && row[Math.min(castRemoteNav.col, row.length - 1)];
+  if (!el || el.matches('[data-cast-seek]')) return;   // seek row uses left/right
+  el.click();   // control button / jump item → existing delegated handler sends the command
+}
+
+function castRemoteSeek(delta) {
+  const st = castScreens.find(s => s.id === castActiveScreen)?.status || {};
+  const dur = st.duration || 0;
+  const t = (st.current_time || 0) + delta;
+  castSendCommand('seek', null, Math.max(0, dur > 0 ? Math.min(t, dur) : t));
 }
 
 
@@ -926,6 +1008,7 @@ function castRenderRemote(force) {
     castRemoteSig = sig;
     castScrubbing = false;
     $('cast-remote').innerHTML = castRemoteHTML(screen, st, vids, curId);
+    if (castIsTv() && castRemoteOpen()) castRemoteRender();   // restore the TV focus ring
   }
   castSyncRemote();
 }
