@@ -405,6 +405,8 @@ function watchExit() {
   } else {
     location.href = '/';
   }
+  // Apply any hourly content refresh that arrived while we were bingeing on /tv.
+  if (typeof tvFlushPendingRefresh === 'function') tvFlushPendingRefresh();
 }
 
 

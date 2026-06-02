@@ -154,7 +154,11 @@ function connectEventSource() {
   es.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'refreshed') loadAll();
+      if (msg.type === 'refreshed') {
+        // On /tv, defer under playback and re-anchor focus; elsewhere reload as-is.
+        if (typeof castIsTv === 'function' && castIsTv()) tvHandleRefreshed();
+        else loadAll();
+      }
       else if (msg.type === 'refresh_start') {
         $('refresh-label').textContent = `↻ 0/${msg.total}`;
         setRefreshProgress(0.001);

@@ -59,6 +59,7 @@ async function tvEnter() {
 const tvNav = {
   row: 0,
   col: 0,
+  key: '',   // identity of the focused element, for re-anchoring across rebuilds
 
   // Ordered rows of focusable elements, derived from the current DOM. The
   // vertical flow reads like the page: a folder's "play everything" header,
@@ -145,19 +146,52 @@ const tvNav = {
     return row ? row[this.col] : null;
   },
 
+  // Stable identity for a focusable element, so focus survives a feed rebuild
+  // even when rows shift (new videos prepend, fully-read items drop out). Video
+  // tiles / folder headers / channels carry a data-id; controls carry an id.
+  keyOf(el) {
+    if (!el) return '';
+    if (el.dataset?.videoId)   return 'v:' + el.dataset.videoId;
+    if (el.dataset?.folderId)  return 'f:' + el.dataset.folderId;
+    if (el.dataset?.channelId) return 'c:' + el.dataset.channelId;
+    if (el.id)                 return '#' + el.id;
+    const fc = el.closest?.('[data-folder-id]');   // folder-header row
+    if (fc) return 'f:' + fc.dataset.folderId;
+    return '';
+  },
+
   render(rows) {
     rows = rows || this.rows();
     document.querySelectorAll('.dpad-focus').forEach(el => el.classList.remove('dpad-focus'));
     const el = this.current(rows);
-    if (!el) return;
+    if (!el) { this.key = ''; return; }
+    this.key = this.keyOf(el);
     el.classList.add('dpad-focus');
     el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   },
 
   // Re-apply the ring after the feed re-renders (called from renderFeed).
+  // Re-anchor to the same element by identity rather than by stale row/col —
+  // the hourly content refresh inserts/removes rows under us.
   refocus() {
     if (!castIsTv() || state.watch?.active) return;
-    this.render();
+    const rows = this.rows();
+    if (this.key) {
+      for (let r = 0; r < rows.length; r++) {
+        for (let c = 0; c < rows[r].length; c++) {
+          if (this.keyOf(rows[r][c]) === this.key) {
+            this.row = r; this.col = c;
+            this.render(rows);
+            return;
+          }
+        }
+      }
+    }
+    // Anchor gone (e.g. its channel fully cleared) — clamp into range so the
+    // ring lands nearby instead of vanishing.
+    this.row = Math.min(Math.max(this.row, 0), Math.max(0, rows.length - 1));
+    if (rows[this.row]) this.col = Math.min(Math.max(this.col, 0), rows[this.row].length - 1);
+    this.render(rows);
   },
 };
 
@@ -172,4 +206,23 @@ function tvBrowseKey(name) {
 // watchRenderQueue()/castNavReRender().
 function tvRefocus() {
   tvNav.refocus();
+}
+
+
+// ── Hourly content refresh ─────────────────────────────────────────────────────
+//
+// The TV holds the page indefinitely; new videos arrive ~hourly server-side and
+// land as an SSE 'refreshed' event. Reload the feed for them — but never under an
+// active binge (it would churn state.feed for no benefit and the overlay covers
+// the feed anyway). Hold it and flush when playback exits.
+
+let tvPendingRefresh = false;
+
+function tvHandleRefreshed() {
+  if (state.watch?.active) { tvPendingRefresh = true; return; }
+  loadAll();   // render() → renderFeed() → tvRefocus() re-anchors the ring
+}
+
+function tvFlushPendingRefresh() {
+  if (tvPendingRefresh) { tvPendingRefresh = false; loadAll(); }
 }
