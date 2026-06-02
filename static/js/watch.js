@@ -378,6 +378,11 @@ function watchEnter(config) {
     ? config.startId
     : state.watch.list[0].video_id;
   watchPlay(startId, config.startSeconds || 0);   // startSeconds: resume offset on transfer
+
+  // A local "play here" on / becomes a discoverable screen so another instance
+  // can remote-control, pull, or transfer it. No-ops for /tv, the /watch
+  // receiver, and incoming casts (which already own the command channel).
+  if (typeof castLocalScreenStart === 'function') castLocalScreenStart();
 }
 
 
@@ -391,6 +396,7 @@ function watchExit() {
   document.body.classList.remove('cast-cover');   // clean up /tv + cast fullscreen
   if (typeof castNavReset === 'function') castNavReset();  // drop any overlay D-pad focus
   if (typeof castScrubEnd === 'function') castScrubEnd();  // drop any pending scrub
+  if (typeof castLocalScreenStop === 'function') castLocalScreenStop();  // stop being a / screen
   $('watch-layout').classList.add('hidden');
   $('watch-layout').classList.remove('theater');
   $('watch-unmute').classList.add('hidden');

@@ -108,6 +108,15 @@ $('force-mobile-check').addEventListener('change', () => {
   syncMobileUI();
 });
 
+// Per-device screen name (shared with /watch + /tv via localStorage). 'change'
+// fires on blur/Enter, so castRename only reconnects an active screen once.
+$('screen-name-input').value = castGetScreenName();
+$('screen-name-input').addEventListener('change', () => {
+  const el = $('screen-name-input');
+  castRename(el.value.trim());
+  el.value = castGetScreenName();   // reflect the cleaned/fallback name back
+});
+
 
 // ── Cache buster (settings panel) ────────────────────────────────────────────
 

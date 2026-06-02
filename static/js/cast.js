@@ -31,6 +31,7 @@ let castStatusTimer = null;
 let castLastStatusKey = '';
 let castLastListSig = '';         // last jump-list signature sent in a status poll
 let castCcOn = false;            // captions toggle (YT API has no getter — we track it)
+let castLocalScreen = false;     // is a "play here" on / currently registered as a screen?
 
 // Kiosk mode (set via ?kiosk=1, e.g. the Android WebView wrapper): the host has
 // already allowed autoplay-with-sound, so start unmuted and skip the tap hint.
@@ -104,9 +105,15 @@ function castRenderIdle() {
 function castRename(name) {
   const clean = (name || '').slice(0, 40) || ('Screen ' + castGetScreenId().slice(0, 4));
   localStorage.setItem('castScreenName', clean);
-  // Reconnect so the server (and remotes) pick up the new name.
-  if (castReceiverES) { castReceiverES.close(); castReceiverES = null; }
-  castConnectReceiver();
+  // If we're currently registered as a screen, reconnect so the server (and
+  // remotes) pick up the new name. If not — e.g. editing from / settings while
+  // nothing is playing — just persist; the next registration uses it. (Always
+  // reconnecting here would turn an idle / page into a phantom screen.)
+  if (castReceiverES) {
+    castReceiverES.close();
+    castReceiverES = null;
+    castConnectReceiver();
+  }
 }
 
 
@@ -114,12 +121,42 @@ function castReturnToIdle() {
   document.body.classList.remove('cast-cover');
   castNavReset();
   $('watch-layout').classList.add('hidden');
-  if (castIsTv()) {
-    render();           // /tv: back to the browse feed, not a blank idle screen
+  if (document.body.classList.contains('route-cast')) {
+    $('cast-idle').classList.remove('hidden');   // bare /watch receiver: idle screen
   } else {
-    $('cast-idle').classList.remove('hidden');
+    render();           // /tv or a / local screen: back to the browse feed
   }
   castLastStatusKey = '';   // force an idle status on the next poll
+}
+
+
+// ── Receiver: a local "play here" on / as a screen ───────────────────────────
+//
+// A normal "play here" binge on / is private — invisible to other instances. To
+// make it remote-controllable / pullable / transferable like a /tv or /watch
+// receiver, register it as a screen for the life of the playback: connect the
+// same command channel and report status. The command vocabulary (pause/seek/
+// next/jump/stop) already maps onto watchPlayer in castOnCommand, so nothing
+// else is needed. /tv and the bare /watch receiver own their own channel, so
+// this only fires for a true in-page play on /.
+
+function castLocalScreenStart() {
+  if (castReceiverES || castIsTv()) return;              // already a receiver / TV screen
+  const w = state.watch;
+  if (!w?.active || w.mode === 'cast' || !w.inPage) return;
+  castScreenId = castGetScreenId();
+  castLocalScreen = true;
+  castConnectReceiver();
+  if (!castStatusTimer) castStatusTimer = setInterval(castPollStatus, 1000);
+}
+
+function castLocalScreenStop() {
+  if (!castLocalScreen) return;
+  castLocalScreen = false;
+  if (castReceiverES) { castReceiverES.close(); castReceiverES = null; }
+  if (castStatusTimer) { clearInterval(castStatusTimer); castStatusTimer = null; }
+  castLastStatusKey = '';
+  castLastListSig = '';
 }
 
 
@@ -141,7 +178,7 @@ function castConnectReceiver() {
     es.close();
     if (castReceiverES === es) castReceiverES = null;
     setTimeout(() => {
-      const stillReceiving = document.body.classList.contains('route-cast') || castIsTv();
+      const stillReceiving = document.body.classList.contains('route-cast') || castIsTv() || castLocalScreen;
       if (stillReceiving && !castReceiverES) {
         castConnectReceiver();
       }
@@ -531,7 +568,13 @@ let castScreens = [];          // [{id, name, status}]
 let castActiveScreen = null;   // screen id the remote is currently driving
 
 
-function castAvailable() { return castScreens.length > 0; }
+// Screens this instance can act on — everything except its own (a / local play
+// registers itself as a screen, and it must never offer to cast/transfer to self).
+function castOtherScreens() {
+  return castScreens.filter(s => s.id !== castScreenId);
+}
+
+function castAvailable() { return castOtherScreens().length > 0; }
 
 
 async function castRefreshScreens() {
@@ -585,7 +628,7 @@ function castSyncHereTransfer() {
   const local = !!(state.watch?.active && state.watch.mode !== 'cast' && !castIsTv());
   if (!(local && castAvailable())) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
   bar.innerHTML = `<span class="watch-transfer-label">Transfer to</span>` +
-    castScreens.map(s => `
+    castOtherScreens().map(s => `
       <button class="watch-transfer-btn" data-action="watch-transfer" data-screen-id="${escAttr(s.id)}">
         📺 ${esc(s.name || 'Screen')}
       </button>`).join('');
@@ -802,10 +845,11 @@ function castResolvePick(value) {
 // Returns a screen id (auto when there's exactly one), or null if cancelled.
 // `thumb` (optional) shows a large preview of what's being cast in the picker.
 async function castPickScreen(thumb = null) {
-  if (castScreens.length === 0) return null;
-  if (castScreens.length === 1) return castScreens[0].id;
+  const screens = castOtherScreens();
+  if (screens.length === 0) return null;
+  if (screens.length === 1) return screens[0].id;
   const choice = await castShowPick('Which screen?',
-    castScreens.map(s => ({ label: '📺 ' + (s.name || 'Screen'), value: s.id })), thumb);
+    screens.map(s => ({ label: '📺 ' + (s.name || 'Screen'), value: s.id })), thumb);
   return choice || null;
 }
 
