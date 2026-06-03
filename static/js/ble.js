@@ -102,6 +102,44 @@ const ble = (() => {
     return [...best.values()];
   }
 
+  function _hex(dv) {
+    let s = '';
+    for (let i = 0; i < dv.byteLength; i++) s += dv.getUint8(i).toString(16).padStart(2, '0');
+    return s;
+  }
+
+  // Full per-advertisement dump for diagnostics. onAdv(line) gets a formatted
+  // string for EVERY advertisement: rssi, name, every manufacturer-data entry
+  // (company id + raw hex) and service-data entry. Returns stop().
+  // iBeacon shows as mfr[0x4C=0215<32-hex-uuid><major><minor><tx>].
+  // Eddystone shows as svc[0000feaa-…=…].
+  async function startScanDump(onAdv) {
+    if (!canScan()) throw Object.assign(new Error('scan-unavailable'), { kind: 'unsupported' });
+    const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
+    const handler = (ev) => {
+      const parts = [`rssi=${ev.rssi}`];
+      const nm = (ev.device && ev.device.name) || ev.name;
+      if (nm) parts.push(`name="${nm}"`);
+      if (ev.manufacturerData && ev.manufacturerData.size) {
+        const m = [];
+        ev.manufacturerData.forEach((dv, id) => m.push(`0x${id.toString(16).toUpperCase()}=${_hex(dv)}`));
+        parts.push('mfr[' + m.join(' ') + ']');
+      }
+      if (ev.serviceData && ev.serviceData.size) {
+        const s = [];
+        ev.serviceData.forEach((dv, uuid) => s.push(`${uuid}=${_hex(dv)}`));
+        parts.push('svc[' + s.join(' ') + ']');
+      }
+      if (ev.uuids && ev.uuids.length) parts.push('uuids[' + ev.uuids.join(',') + ']');
+      onAdv(parts.join(' '));
+    };
+    navigator.bluetooth.addEventListener('advertisementreceived', handler);
+    return function stop() {
+      try { scan.stop(); } catch (_) {}
+      navigator.bluetooth.removeEventListener('advertisementreceived', handler);
+    };
+  }
+
   // Human-readable explanation for a scan failure, for toasts / admin results.
   function explainError(e) {
     if (!e) return 'Bluetooth scan failed.';
@@ -119,5 +157,5 @@ const ble = (() => {
     return 'Bluetooth scan failed: ' + (msg || 'unknown error');
   }
 
-  return { support, canScan, parseIBeacon, startScan, scanFor, explainError };
+  return { support, canScan, parseIBeacon, startScan, startScanDump, scanFor, explainError };
 })();

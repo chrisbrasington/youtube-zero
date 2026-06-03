@@ -41,6 +41,8 @@ function adminDiag(msg) {
   const el = $('admin-diag');
   if (!el) return;
   el.classList.remove('hidden');
+  const bar = $('admin-diag-bar');
+  if (bar) bar.classList.remove('hidden');
   el.textContent += (el.textContent ? '\n' : '') + msg;
   el.scrollTop = el.scrollHeight;
 }
@@ -49,6 +51,52 @@ function adminDiagClear() {
   if (!el) return;
   el.textContent = '';
   el.classList.remove('hidden');
+  const bar = $('admin-diag-bar');
+  if (bar) bar.classList.remove('hidden');
+}
+
+function adminCopyLog() {
+  const el = $('admin-diag');
+  const text = el ? el.textContent : '';
+  if (!text) { status('Nothing to copy', ''); setTimeout(() => status(''), 1500); return; }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(
+      () => { status('Log copied ✓', 'ok'); setTimeout(() => status(''), 1800); },
+      () => { status('Copy failed — select the text manually', 'err'); setTimeout(() => status(''), 3000); }
+    );
+  } else {
+    status('Clipboard unavailable — select the text manually', 'err'); setTimeout(() => status(''), 3000);
+  }
+}
+
+// Dump every UNIQUE BLE advertisement seen in a 6s window (deduped by payload,
+// with a repeat count), so we can eyeball what's actually broadcasting.
+async function adminDumpBle() {
+  adminDiagClear();
+  if (!ble.canScan()) {
+    adminDiag('Cannot scan in this browser. ' + ble.explainError({ kind: 'unsupported' }));
+    return;
+  }
+  adminDiag('Dumping ALL BLE advertisements for 6s — keep the beacon broadcasting nearby…');
+  const seen = new Map();   // unique line → repeat count
+  let stop = null;
+  try {
+    stop = await ble.startScanDump((line) => { seen.set(line, (seen.get(line) || 0) + 1); });
+  } catch (e) {
+    adminDiag('Scan error: ' + ble.explainError(e));
+    return;
+  }
+  setTimeout(() => {
+    if (stop) stop();
+    const lines = [...seen.entries()].sort((a, z) => z[1] - a[1]);
+    adminDiag(`— done. ${lines.length} unique signal(s):`);
+    if (!lines.length) adminDiag('(nothing — is Bluetooth on and something advertising?)');
+    lines.forEach(([line, n]) => adminDiag(`(${n}×) ${line}`));
+    const hasApple = lines.some(([l]) => /mfr\[[^\]]*0x4C=/.test(l));
+    adminDiag(hasApple
+      ? '✓ An Apple/iBeacon (0x4C) signal is present above.'
+      : '✗ No 0x4C (Apple/iBeacon) in the air. Whatever you set to broadcast isn’t emitting iBeacon, or isn’t in range / is backgrounded.');
+  }, 6000);
 }
 
 function adminShellHtml() {
@@ -62,7 +110,11 @@ function adminShellHtml() {
 
       <div class="admin-test">
         <button type="button" class="btn-ghost" id="btn-admin-test">🧪 Test — fling Rick Roll to nearest screen</button>
-        <div class="admin-test-hint">Scans for a nearby bound beacon and plays on that screen — same path as flick-up.</div>
+        <button type="button" class="btn-ghost" id="btn-admin-dump">🔍 Dump all BLE signals (6s)</button>
+        <div class="admin-test-hint">Test runs the fling path. Dump lists every unique advertisement in the air — look for <code>mfr[0x4C=0215…]</code> (iBeacon).</div>
+        <div class="admin-diag-bar hidden" id="admin-diag-bar">
+          <button type="button" class="btn-ghost admin-mini" id="btn-admin-copy">📋 Copy log</button>
+        </div>
         <pre id="admin-diag" class="admin-diag hidden"></pre>
       </div>
 
@@ -310,6 +362,9 @@ function adminWire() {
     if (typeof castTestNearest === 'function') castTestNearest();
     else adminDiag('castTestNearest() is not available — is cast.js loaded?');
   });
+
+  $('btn-admin-dump').addEventListener('click', adminDumpBle);
+  $('btn-admin-copy').addEventListener('click', adminCopyLog);
 
   $('btn-admin-screens-refresh').addEventListener('click', adminLoadScreens);
 
