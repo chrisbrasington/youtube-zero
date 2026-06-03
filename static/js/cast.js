@@ -627,11 +627,16 @@ function castSyncHereTransfer() {
   if (!bar) return;
   const local = !!(state.watch?.active && state.watch.mode !== 'cast' && !castIsTv());
   if (!(local && castAvailable())) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  const nearestBtn = ble.canScan()
+    ? `<button class="watch-transfer-btn watch-transfer-nearest" data-action="watch-transfer-nearest"
+               title="Transfer to the nearest screen (Bluetooth)">📡 Nearest</button>`
+    : '';
   bar.innerHTML = `<span class="watch-transfer-label">Transfer to</span>` +
     castOtherScreens().map(s => `
       <button class="watch-transfer-btn" data-action="watch-transfer" data-screen-id="${escAttr(s.id)}">
         📺 ${esc(s.name || 'Screen')}
-      </button>`).join('');
+      </button>`).join('') +
+    nearestBtn;
   bar.classList.remove('hidden');
 }
 
@@ -902,27 +907,56 @@ async function flingToNearest(videoId) {
   return flingVideoToNearest(video);
 }
 
-// 📡 transfer menu for a queue item: lists connected screens to pick directly,
-// plus a "📡 Nearest" option (beacon auto-detect) when scanning is available.
-function castTransferQueueItem(videoId) {
-  const video = _castQueueVideo(videoId);
-  if (video) castTransferMenu(video);
-}
-
-async function castTransferMenu(video) {
-  const screens = castOtherScreens();
-  const options = [];
-  if (ble.canScan()) options.push({ label: '📡 Nearest screen', value: '__nearest__' });
-  screens.forEach(s => options.push({ label: '📺 ' + (s.name || 'Screen'), value: s.id }));
-  if (!options.length) {
-    status('No screens connected', 'err'); setTimeout(() => status(''), 2000);
+// 📡 in the "Transfer to" row: find the nearest bound+connected screen by beacon
+// and hand the WHOLE current queue to it — same action as tapping a named screen
+// button, just auto-picking the closest. Early-stop scan: 1s after first match.
+async function castTransferLocalNearest() {
+  if (!state.watch?.active) return;
+  if (!ble.canScan()) {
+    status('Bluetooth scan not available — pick a screen', ''); setTimeout(() => status(''), 2200);
     return;
   }
-  const thumb = video.video_id ? `https://i.ytimg.com/vi/${video.video_id}/hqdefault.jpg` : null;
-  const choice = await castShowPick('Send video to…', options, thumb);
-  if (!choice) return;
-  if (choice === '__nearest__') return flingVideoToNearest(video);
-  castSendPlay(choice, [video], 'read');
+  const map = _castBeaconMap || await castLoadBeaconMap();
+  if (!map.size) {
+    status('No beacons set up yet (see /admin)', 'err'); setTimeout(() => status(''), 2800);
+    return;
+  }
+  status('Finding nearest screen…', '');
+  let beacons = [];
+  try {
+    const best = new Map();
+    let graceTimer = null, resolveScan;
+    const done = new Promise(res => { resolveScan = res; });
+    const stop = await ble.startScan((b) => {
+      const k = `${b.uuid}:${b.major}:${b.minor}`;
+      const prev = best.get(k);
+      if (!prev || b.rssi > prev.rssi) best.set(k, b);
+      if (map.has(k) && graceTimer === null) graceTimer = setTimeout(resolveScan, 1000);
+    });
+    const maxTimer = setTimeout(resolveScan, 5000);
+    await done;
+    clearTimeout(maxTimer); if (graceTimer) clearTimeout(graceTimer);
+    stop();
+    beacons = [...best.values()];
+  } catch (e) {
+    status(ble.explainError(e), 'err'); setTimeout(() => status(''), 3000);
+    return;
+  }
+  const matches = beacons
+    .filter(b => map.has(`${b.uuid}:${b.major}:${b.minor}`))
+    .sort((a, z) => z.rssi - a.rssi);
+  if (!matches.length) {
+    status('No known screen nearby', 'err'); setTimeout(() => status(''), 2500);
+    return;
+  }
+  const name = map.get(`${matches[0].uuid}:${matches[0].major}:${matches[0].minor}`);
+  const want = name.trim().toLowerCase();
+  const live = castOtherScreens().filter(s => (s.name || '').trim().toLowerCase() === want);
+  if (!live.length) {
+    status(`“${name}” isn’t connected`, 'err'); setTimeout(() => status(''), 3000);
+    return;
+  }
+  castTransferLocal(live[0].id);   // hands off the whole remaining queue
 }
 
 // Fling Rick Astley straight to a specific screen by id — no beacon scan, no
@@ -1369,6 +1403,9 @@ function castFmtTime(s) {
 
 // Delegated clicks for the remote panel + the destination/screen chooser.
 document.addEventListener('click', e => {
+  const hereTransferNearest = e.target.closest('[data-action="watch-transfer-nearest"]');
+  if (hereTransferNearest) { castTransferLocalNearest(); return; }
+
   const hereTransfer = e.target.closest('[data-action="watch-transfer"]');
   if (hereTransfer) { castTransferLocal(hereTransfer.dataset.screenId); return; }
 
