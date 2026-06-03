@@ -71,17 +71,21 @@ function adminCopyLog() {
 
 // Dump every UNIQUE BLE advertisement seen in a 6s window (deduped by payload,
 // with a repeat count), so we can eyeball what's actually broadcasting.
-async function adminDumpBle() {
+// appleOnly=true scans with an Apple (0x4C) manufacturer-data filter instead of
+// acceptAll — the reliable way to receive iBeacon payloads in Chrome/Edge.
+async function adminDumpBle(appleOnly) {
   adminDiagClear();
   if (!ble.canScan()) {
     adminDiag('Cannot scan in this browser. ' + ble.explainError({ kind: 'unsupported' }));
     return;
   }
-  adminDiag('Dumping ALL BLE advertisements for 6s — keep the beacon broadcasting nearby…');
+  adminDiag(appleOnly
+    ? 'iBeacon-only scan (Apple 0x4C filter) for 6s — keep the beacon broadcasting nearby…'
+    : 'Dumping ALL BLE advertisements for 6s — keep the beacon broadcasting nearby…');
   const seen = new Map();   // unique line → repeat count
   let stop = null;
   try {
-    stop = await ble.startScanDump((line) => { seen.set(line, (seen.get(line) || 0) + 1); });
+    stop = await ble.startScanDump((line) => { seen.set(line, (seen.get(line) || 0) + 1); }, { appleOnly });
   } catch (e) {
     adminDiag('Scan error: ' + ble.explainError(e));
     return;
@@ -90,12 +94,18 @@ async function adminDumpBle() {
     if (stop) stop();
     const lines = [...seen.entries()].sort((a, z) => z[1] - a[1]);
     adminDiag(`— done. ${lines.length} unique signal(s):`);
-    if (!lines.length) adminDiag('(nothing — is Bluetooth on and something advertising?)');
+    if (!lines.length) adminDiag('(nothing)');
     lines.forEach(([line, n]) => adminDiag(`(${n}×) ${line}`));
     const hasApple = lines.some(([l]) => /mfr\[[^\]]*0x4C=/.test(l));
-    adminDiag(hasApple
-      ? '✓ An Apple/iBeacon (0x4C) signal is present above.'
-      : '✗ No 0x4C (Apple/iBeacon) in the air. Whatever you set to broadcast isn’t emitting iBeacon, or isn’t in range / is backgrounded.');
+    if (appleOnly) {
+      adminDiag(hasApple
+        ? '✓ iBeacon received via the Apple filter! "Accept all" was hiding it — Test/flick should work now.'
+        : '✗ Even the Apple-filtered scan saw nothing. Chrome on THIS device isn’t receiving the iBeacon — try a different Chromium browser/device, or confirm with nRF Connect that it’s really on air.');
+    } else {
+      adminDiag(hasApple
+        ? '✓ An Apple/iBeacon (0x4C) signal is present above.'
+        : '✗ No 0x4C here. If a native app sees the beacon, try the 🍏 iBeacon-only scan — Chrome often needs the manufacturer filter to deliver Apple data.');
+    }
   }, 6000);
 }
 
@@ -111,7 +121,8 @@ function adminShellHtml() {
       <div class="admin-test">
         <button type="button" class="btn-ghost" id="btn-admin-test">🧪 Test — fling Rick Roll to nearest screen</button>
         <button type="button" class="btn-ghost" id="btn-admin-dump">🔍 Dump all BLE signals (6s)</button>
-        <div class="admin-test-hint">Test runs the fling path. Dump lists every unique advertisement in the air — look for <code>mfr[0x4C=0215…]</code> (iBeacon).</div>
+        <button type="button" class="btn-ghost" id="btn-admin-dump-apple">🍏 iBeacon-only scan (6s, filtered)</button>
+        <div class="admin-test-hint">Test runs the fling path. Dump lists every unique advertisement. The 🍏 scan filters on Apple <code>0x4C</code> — use it if Dump shows no <code>mfr[0x4C=0215…]</code> but a native app sees the beacon.</div>
         <div class="admin-diag-bar hidden" id="admin-diag-bar">
           <button type="button" class="btn-ghost admin-mini" id="btn-admin-copy">📋 Copy log</button>
         </div>
@@ -363,7 +374,8 @@ function adminWire() {
     else adminDiag('castTestNearest() is not available — is cast.js loaded?');
   });
 
-  $('btn-admin-dump').addEventListener('click', adminDumpBle);
+  $('btn-admin-dump').addEventListener('click', () => adminDumpBle(false));
+  $('btn-admin-dump-apple').addEventListener('click', () => adminDumpBle(true));
   $('btn-admin-copy').addEventListener('click', adminCopyLog);
 
   $('btn-admin-screens-refresh').addEventListener('click', adminLoadScreens);

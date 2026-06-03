@@ -113,9 +113,16 @@ const ble = (() => {
   // (company id + raw hex) and service-data entry. Returns stop().
   // iBeacon shows as mfr[0x4C=0215<32-hex-uuid><major><minor><tx>].
   // Eddystone shows as svc[0000feaa-…=…].
-  async function startScanDump(onAdv) {
+  // opts.appleOnly → scan with an explicit Apple (0x004C) manufacturer-data
+  // filter instead of acceptAllAdvertisements. Chrome only reliably delivers
+  // manufacturer-data RECORDS for company IDs named in a filter, so this is the
+  // way to actually receive iBeacon payloads when "accept all" comes up empty.
+  async function startScanDump(onAdv, opts) {
     if (!canScan()) throw Object.assign(new Error('scan-unavailable'), { kind: 'unsupported' });
-    const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true });
+    const scanOpts = (opts && opts.appleOnly)
+      ? { filters: [{ manufacturerData: [{ companyIdentifier: APPLE_COMPANY_ID }] }], keepRepeatedDevices: true }
+      : { acceptAllAdvertisements: true, keepRepeatedDevices: true };
+    const scan = await navigator.bluetooth.requestLEScan(scanOpts);
     const handler = (ev) => {
       const parts = [`rssi=${ev.rssi}`];
       const nm = (ev.device && ev.device.name) || ev.name;
