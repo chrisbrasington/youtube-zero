@@ -384,6 +384,10 @@ function qItemHtml(item, subscribedIds, group) {
                   data-video-id="${escAttr(item.video_id)}"
                   data-title="${escAttr(item.title)}"
                   title="Play">▶</button>
+          ${(typeof isMobile === 'function' && isMobile()) ? `<button class="q-icon-btn q-nearest"
+                  data-action="fling-nearest"
+                  data-video-id="${escAttr(item.video_id)}"
+                  title="Send to a screen (📡 nearest, or pick)">📡</button>` : ''}
           <a class="q-icon-btn"
              href="https://www.youtube.com/watch?v=${escAttr(item.video_id)}"
              target="_blank" rel="noopener noreferrer"

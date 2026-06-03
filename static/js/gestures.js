@@ -126,72 +126,8 @@
 })();
 
 
-// ── Flick a queue item UP to send it to the nearest screen ───────────────────
-
-(function setupQueueFlickUp() {
-  const THRESHOLD = 80;   // px of upward travel to trigger
-  let item = null, vid = null, startX = 0, startY = 0, dx = 0, dy = 0, axis = null;
-  let suppressClickUntil = 0;   // swallow the play-from-queue tap right after a flick
-
-  // Capture-phase: if a flick just fired, eat the synthesized click so the
-  // thumbnail's play-from-queue handler doesn't open the embed instead.
-  document.addEventListener('click', (e) => {
-    if (Date.now() < suppressClickUntil && e.target.closest('.q-item')) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-  }, true);
-
-  function pick(target) {
-    // Start only from the thumbnail, leaving the rest of the row for scroll/drag.
-    const wrap = target.closest('.q-thumb-wrap');
-    if (!wrap) return null;
-    const q = wrap.closest('.q-item');
-    return q ? { el: q, vid: q.dataset.videoId } : null;
-  }
-
-  document.addEventListener('touchstart', (e) => {
-    if (!isMobile()) return;
-    const m = pick(e.target);
-    if (!m || !m.vid) return;
-    item = m.el; vid = m.vid;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    dx = dy = 0; axis = null;
-    item.style.transition = '';
-  }, { passive: true });
-
-  document.addEventListener('touchmove', (e) => {
-    if (!item) return;
-    dx = e.touches[0].clientX - startX;
-    dy = e.touches[0].clientY - startY;
-    if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
-      axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
-    }
-    // Only commit (and block scroll) for an upward y-axis drag.
-    if (axis === 'y' && dy < 0) {
-      if (e.cancelable) e.preventDefault();
-      const up = Math.min(-dy, 120);
-      item.style.transform = `translateY(${-up}px)`;
-      item.style.opacity = String(Math.max(0.4, 1 + dy / 300));
-    }
-  }, { passive: false });
-
-  document.addEventListener('touchend', () => {
-    if (!item) return;
-    const el = item, id = vid;
-    const fire = (axis === 'y' && dy <= -THRESHOLD);
-    el.style.transition = 'transform .18s, opacity .18s';
-    el.style.transform = '';
-    el.style.opacity = '';
-    item = null; vid = null;
-    if (fire) {
-      suppressClickUntil = Date.now() + 700;   // block the follow-up tap
-      if (typeof status === 'function') { status('Flick ↑ — finding nearest screen…', ''); }
-      if (typeof flingToNearest === 'function') flingToNearest(id);
-    }
-  }, { passive: true });
-})();
+// (The queue flick-up gesture was removed — too finicky and fought the queue
+//  scroll. Use the 📡 transfer button on each queue item instead.)
 
 
 // ── Action-sheet thumbnail swipe to advance previous/next ────────────────────

@@ -113,6 +113,13 @@ document.addEventListener('click', e => {
     return;
   }
 
+  const nearestBtn = e.target.closest('[data-action="fling-nearest"]');
+  if (nearestBtn) {
+    e.stopPropagation();
+    if (typeof castTransferQueueItem === 'function') castTransferQueueItem(nearestBtn.dataset.videoId);
+    return;
+  }
+
   // Open player (tile or row thumb)
   const openEl = e.target.closest('[data-action="open-player"]');
   if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {

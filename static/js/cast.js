@@ -902,6 +902,29 @@ async function flingToNearest(videoId) {
   return flingVideoToNearest(video);
 }
 
+// 📡 transfer menu for a queue item: lists connected screens to pick directly,
+// plus a "📡 Nearest" option (beacon auto-detect) when scanning is available.
+function castTransferQueueItem(videoId) {
+  const video = _castQueueVideo(videoId);
+  if (video) castTransferMenu(video);
+}
+
+async function castTransferMenu(video) {
+  const screens = castOtherScreens();
+  const options = [];
+  if (ble.canScan()) options.push({ label: '📡 Nearest screen', value: '__nearest__' });
+  screens.forEach(s => options.push({ label: '📺 ' + (s.name || 'Screen'), value: s.id }));
+  if (!options.length) {
+    status('No screens connected', 'err'); setTimeout(() => status(''), 2000);
+    return;
+  }
+  const thumb = video.video_id ? `https://i.ytimg.com/vi/${video.video_id}/hqdefault.jpg` : null;
+  const choice = await castShowPick('Send video to…', options, thumb);
+  if (!choice) return;
+  if (choice === '__nearest__') return flingVideoToNearest(video);
+  castSendPlay(choice, [video], 'read');
+}
+
 // Fling Rick Astley straight to a specific screen by id — no beacon scan, no
 // remote panel. A quick "is this screen alive?" check for /admin.
 async function castTestScreen(screenId) {
@@ -968,15 +991,34 @@ async function flingVideoToNearest(video, log, onFallback) {
     return onFallback('No beacons configured in /admin');
   }
 
-  log('Scanning (4s)… make sure the beacon is broadcasting nearby.');
+  log('Scanning… stops 1s after the first known beacon (5s max).');
   status('Finding nearest screen…', '');
-  let beacons, rawTotal = 0;
+  let beacons = [], rawTotal = 0;
   const companyCounts = new Map();
   try {
-    beacons = await ble.scanFor(4000, (a) => {
-      rawTotal++;
-      a.companyIds.forEach(id => companyCounts.set(id, (companyCounts.get(id) || 0) + 1));
-    });
+    // Early-stop: as soon as we see a beacon that matches a binding, take one
+    // more second (to let a closer one register), then stop and pick the
+    // strongest. Falls back to a 5s hard cap if nothing matches.
+    const best = new Map();
+    let graceTimer = null, resolveScan;
+    const done = new Promise(res => { resolveScan = res; });
+    const stop = await ble.startScan(
+      (b) => {
+        const k = `${b.uuid}:${b.major}:${b.minor}`;
+        const prev = best.get(k);
+        if (!prev || b.rssi > prev.rssi) best.set(k, b);
+        if (map.has(k) && graceTimer === null) {
+          log(`Saw "${map.get(k)}" — grabbing 1s more in case a closer one is near…`);
+          graceTimer = setTimeout(resolveScan, 1000);
+        }
+      },
+      (a) => { rawTotal++; a.companyIds.forEach(id => companyCounts.set(id, (companyCounts.get(id) || 0) + 1)); }
+    );
+    const maxTimer = setTimeout(resolveScan, 5000);
+    await done;
+    clearTimeout(maxTimer); if (graceTimer) clearTimeout(graceTimer);
+    stop();
+    beacons = [...best.values()];
   } catch (e) {
     log('Scan error: ' + (e.name || '') + ' — ' + (e.message || ''));
     status(ble.explainError(e), 'err'); setTimeout(() => status(''), 3000);
