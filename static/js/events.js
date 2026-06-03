@@ -152,14 +152,6 @@ document.addEventListener('click', e => {
     });
     return;
   }
-  if (e.target.closest('[data-action="sheet-play-nearest"]') && sheetCtx) {
-    const c = sheetCtx; closeActionSheet();
-    if (typeof flingVideoToNearest === 'function') flingVideoToNearest({
-      video_id: c.videoId, title: c.title,
-      channel_name: c.channelName, thumbnail_url: c.thumbnailUrl,
-    });
-    return;
-  }
   if (e.target.closest('[data-action="sheet-play-tv"]') && sheetCtx) {
     const c = sheetCtx; closeActionSheet();
     tvSend(c.videoId);
