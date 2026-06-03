@@ -2022,6 +2022,20 @@ body.narrow-ui {
     border-top: 1px solid var(--border);
     max-height: unset;
   }
+  /* Anchor the Transfer-to row to the bottom of the screen (thumb-reach). */
+  .watch-transfer-bar:not(.hidden) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-overlay);
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, .4);
+  }
+  /* Keep the last queue item scrollable above the anchored bar. */
+  .watch-layout.has-transfer .watch-queue-pane .queue-list { padding-bottom: 76px; }
 }
 
 

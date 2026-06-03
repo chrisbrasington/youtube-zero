@@ -625,8 +625,14 @@ function castUpdateUI() {
 function castSyncHereTransfer() {
   const bar = $('watch-transfer-bar');
   if (!bar) return;
+  const layout = $('watch-layout');
   const local = !!(state.watch?.active && state.watch.mode !== 'cast' && !castIsTv());
-  if (!(local && castAvailable())) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  if (!(local && castAvailable())) {
+    bar.classList.add('hidden'); bar.innerHTML = '';
+    if (layout) layout.classList.remove('has-transfer');
+    return;
+  }
+  if (layout) layout.classList.add('has-transfer');
   const nearestBtn = ble.canScan()
     ? `<button class="watch-transfer-btn watch-transfer-nearest" data-action="watch-transfer-nearest"
                title="Transfer to the nearest screen (Bluetooth)">📡</button>`
