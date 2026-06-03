@@ -70,7 +70,7 @@ const ble = (() => {
   async function startScan(onBeacon, onRaw) {
     if (!canScan()) throw Object.assign(new Error('scan-unavailable'), { kind: 'unsupported' });
     // iBeacons expose no GATT services to filter on, so accept everything.
-    const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
+    const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true });
     const handler = (ev) => {
       if (onRaw) {
         const companyIds = ev.manufacturerData ? [...ev.manufacturerData.keys()] : [];
@@ -115,7 +115,7 @@ const ble = (() => {
   // Eddystone shows as svc[0000feaa-…=…].
   async function startScanDump(onAdv) {
     if (!canScan()) throw Object.assign(new Error('scan-unavailable'), { kind: 'unsupported' });
-    const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
+    const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true });
     const handler = (ev) => {
       const parts = [`rssi=${ev.rssi}`];
       const nm = (ev.device && ev.device.name) || ev.name;
