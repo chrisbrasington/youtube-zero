@@ -2349,6 +2349,21 @@ body.route-admin #settings-panel { display: none; }
 .admin-test { margin-top: 14px; }
 .admin-test #btn-admin-test { width: 100%; padding: 11px 14px; font-size: 15px; }
 .admin-test-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.admin-diag {
+  margin-top: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border-l);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow-y: auto;
+}
 
 .admin-section-h {
   font-size: 14px;
@@ -2356,7 +2371,17 @@ body.route-admin #settings-panel { display: none; }
   letter-spacing: .04em;
   color: var(--muted);
   margin: 22px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.admin-mini {
+  padding: 2px 8px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.admin-row .admin-test-screen { padding: 6px 12px; font-size: 14px; flex-shrink: 0; }
 
 .admin-empty { color: var(--muted); padding: 8px 2px; }
 
@@ -2381,6 +2406,30 @@ body.route-admin #settings-panel { display: none; }
   white-space: nowrap;
 }
 .admin-row .btn-ghost, .admin-row .btn-danger { padding: 6px 12px; font-size: 14px; flex-shrink: 0; }
+
+.admin-pair {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border-l);
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.admin-pair.paired { color: var(--green); border-color: var(--green); }
+
+.admin-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+  margin-right: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.admin-dot.online { background: var(--green); }
 
 .admin-form { display: flex; flex-direction: column; gap: 10px; }
 .admin-form label {

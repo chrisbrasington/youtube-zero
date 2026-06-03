@@ -13,6 +13,7 @@
  */
 
 let adminBeacons = [];
+let adminScreens = [];
 let adminStopScan = null;     // active scan's stop() fn, or null
 let adminScanSeen = new Map();
 
@@ -25,7 +26,29 @@ async function adminBoot() {
 
   adminRenderBanner();
   adminWire();
-  await adminLoad();
+  await adminLoad();          // beacons first, so screen pairing badges are accurate
+  await adminLoadScreens();
+}
+
+// Screen name ↔ beacon name match — same trim/case rule as the fling resolver.
+function _adminEqName(a, b) {
+  return (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+}
+
+// On-screen diagnostics for the "fling to nearest" test. castTestNearest()
+// calls adminDiag(...) at each step so failures are readable without DevTools.
+function adminDiag(msg) {
+  const el = $('admin-diag');
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.textContent += (el.textContent ? '\n' : '') + msg;
+  el.scrollTop = el.scrollHeight;
+}
+function adminDiagClear() {
+  const el = $('admin-diag');
+  if (!el) return;
+  el.textContent = '';
+  el.classList.remove('hidden');
 }
 
 function adminShellHtml() {
@@ -40,7 +63,14 @@ function adminShellHtml() {
       <div class="admin-test">
         <button type="button" class="btn-ghost" id="btn-admin-test">🧪 Test — fling Rick Roll to nearest screen</button>
         <div class="admin-test-hint">Scans for a nearby bound beacon and plays on that screen — same path as flick-up.</div>
+        <pre id="admin-diag" class="admin-diag hidden"></pre>
       </div>
+
+      <h3 class="admin-section-h">
+        Connected screens
+        <button type="button" class="btn-ghost admin-mini" id="btn-admin-screens-refresh" title="Refresh">↻</button>
+      </h3>
+      <div id="admin-screens" class="admin-list"></div>
 
       <h3 class="admin-section-h">Bound screens</h3>
       <div id="admin-list" class="admin-list"></div>
@@ -106,12 +136,46 @@ function adminRenderBanner() {
   if (scanBtn) scanBtn.disabled = !ble.canScan();
 }
 
+// ── Connected screens (live, beacon-independent) ──────────────────────────────
+
+async function adminLoadScreens() {
+  try { adminScreens = await api.get('/api/cast/screens'); }
+  catch { adminScreens = []; }
+  adminRenderScreens();
+  adminRenderList();   // refresh online/offline dots on the bound-screen list
+}
+
+function adminRenderScreens() {
+  const el = $('admin-screens');
+  if (!el) return;
+  if (!adminScreens.length) {
+    el.innerHTML = `<div class="admin-empty">No screens connected. Open /watch or /tv on a device.</div>`;
+    return;
+  }
+  el.innerHTML = adminScreens.map(s => {
+    const beacon = adminBeacons.find(b => _adminEqName(b.screen_name, s.name));
+    const badge = beacon
+      ? `<span class="admin-pair paired" title="${escAttr(beacon.uuid + ' · ' + beacon.major + '/' + beacon.minor)}">📡 paired</span>`
+      : `<span class="admin-pair">no beacon</span>`;
+    return `
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <div class="admin-row-name">${esc(s.name || 'Screen')} ${badge}</div>
+        <div class="admin-row-id">${esc(s.id)}</div>
+      </div>
+      <button class="btn-ghost admin-test-screen" data-id="${escAttr(s.id)}">🧪 Test</button>
+    </div>`;
+  }).join('');
+}
+
+
 // ── Mappings list ───────────────────────────────────────────────────────────
 
 async function adminLoad() {
   try { adminBeacons = await api.get('/api/screen-beacons'); }
   catch (e) { adminBeacons = []; }
   adminRenderList();
+  adminRenderScreens();   // refresh "paired" badges on the connected-screen list
 }
 
 function adminRenderList() {
@@ -121,15 +185,19 @@ function adminRenderList() {
     el.innerHTML = `<div class="admin-empty">No screens bound yet. Add one below.</div>`;
     return;
   }
-  el.innerHTML = adminBeacons.map(b => `
+  el.innerHTML = adminBeacons.map(b => {
+    const online = adminScreens.some(s => _adminEqName(s.name, b.screen_name));
+    const dot = `<span class="admin-dot ${online ? 'online' : ''}" title="${online ? 'Connected now' : 'Not connected'}"></span>`;
+    return `
     <div class="admin-row">
       <div class="admin-row-main">
-        <div class="admin-row-name">${esc(b.screen_name)}</div>
+        <div class="admin-row-name">${dot}${esc(b.screen_name)}</div>
         <div class="admin-row-id">${esc(b.uuid)} · ${b.major}/${b.minor}</div>
       </div>
       <button class="btn-ghost admin-edit" data-id="${b.id}">Edit</button>
       <button class="btn-danger admin-del" data-id="${b.id}">Remove</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ── Form ──────────────────────────────────────────────────────────────────────
@@ -237,7 +305,17 @@ function adminWire() {
   $('btn-admin-reset').addEventListener('click', adminResetForm);
 
   $('btn-admin-test').addEventListener('click', () => {
+    adminDiagClear();
+    adminDiag('Starting nearest-screen test…');
     if (typeof castTestNearest === 'function') castTestNearest();
+    else adminDiag('castTestNearest() is not available — is cast.js loaded?');
+  });
+
+  $('btn-admin-screens-refresh').addEventListener('click', adminLoadScreens);
+
+  $('admin-screens').addEventListener('click', (e) => {
+    const btn = e.target.closest('.admin-test-screen');
+    if (btn && typeof castTestScreen === 'function') castTestScreen(btn.dataset.id);
   });
 
   // chrome://flags links can't be opened by a page, so copy to clipboard instead.

@@ -902,58 +902,105 @@ async function flingToNearest(videoId) {
   return flingVideoToNearest(video);
 }
 
+// Fling Rick Astley straight to a specific screen by id — no beacon scan, no
+// remote panel. A quick "is this screen alive?" check for /admin.
+async function castTestScreen(screenId) {
+  const rick = {
+    video_id: 'dQw4w9WgXcQ', title: 'Test — Never Gonna Give You Up',
+    channel_name: 'Test', thumbnail_url: '', duration: '',
+  };
+  try {
+    await api.post(`/api/cast/${screenId}/play`, { videos: [rick], mark_mode: 'read', start_id: null });
+    status('Sent to screen ✓', 'ok'); setTimeout(() => status(''), 2000);
+  } catch (e) {
+    status('Test failed: ' + e.message, 'err'); setTimeout(() => status(''), 3000);
+  }
+}
+
 // Send Rick Astley to the nearest screen — same path as flick-up, but with a
 // fixed video so /admin can test the beacon→screen wiring without a queue item.
-function castTestNearest() {
+// Plumbs a diagnostic logger (on-screen via adminDiag when present) so each
+// step is visible.
+async function castTestNearest() {
+  const log = (m) => {
+    try { console.log('[fling]', m); } catch (_) {}
+    if (typeof adminDiag === 'function') adminDiag(m);
+  };
+  // /admin keeps no live screen list or SSE connection, so castScreens is empty
+  // there — refresh it (and the beacon map) before resolving, or the name→screen
+  // lookup always fails.
+  log('Refreshing connected screens…');
+  await castRefreshScreens();
+  log(`Connected screens: ${castScreens.length ? castScreens.map(s => `"${s.name}"`).join(', ') : '(none)'}`);
+  castInvalidateBeaconMap();
   return flingVideoToNearest({
     video_id: 'dQw4w9WgXcQ', title: 'Test — Never Gonna Give You Up',
     channel_name: 'Test', thumbnail_url: '', duration: '',
-  });
+  }, log);
 }
 
-async function flingVideoToNearest(video) {
-  if (!video) return;
+async function flingVideoToNearest(video, log) {
+  log = log || ((m) => { try { console.log('[fling]', m); } catch (_) {} });
+  if (!video) { log('No video to send.'); return; }
 
-  // No Bluetooth scanning here → just use the manual picker.
+  const cap = ble.support();
+  log(`Bluetooth: secure=${cap.secure} hasScan=${cap.hasScan} browser=${cap.browser} → canScan=${ble.canScan()}`);
   if (!ble.canScan()) {
+    log('Scanning unavailable in this browser → falling back to manual picker.');
     status('Bluetooth scan not available — pick a screen', '');
     setTimeout(() => status(''), 1800);
     return castSingleVideo(video);
   }
 
   const map = _castBeaconMap || await castLoadBeaconMap();
+  log(`Bound beacons: ${map.size}` +
+      (map.size ? ' [' + [...map.entries()].map(([k, v]) => `"${v}"=${k}`).join(', ') + ']' : ''));
   if (!map.size) {
+    log('No beacons configured → falling back to manual picker.');
     status('No beacons configured — set them up in /admin', 'err');
     setTimeout(() => status(''), 2800);
     return castSingleVideo(video);
   }
 
+  log('Scanning for beacons (3s)… make sure the beacon is broadcasting nearby.');
   status('Finding nearest screen…', '');
   let beacons;
   try { beacons = await ble.scanFor(3000); }
   catch (e) {
+    log('Scan error: ' + (e.name || '') + ' — ' + (e.message || ''));
     status(ble.explainError(e), 'err'); setTimeout(() => status(''), 3000);
     return castSingleVideo(video);
   }
+  log(`Beacons seen: ${beacons.length}`);
+  beacons.forEach(b => log(`  • ${b.uuid}:${b.major}/${b.minor} rssi=${b.rssi}`));
 
   // Strongest RSSI among beacons we recognise = nearest bound screen.
   const matches = beacons
     .filter(b => map.has(`${b.uuid}:${b.major}:${b.minor}`))
     .sort((a, z) => z.rssi - a.rssi);
+  log(`Beacons matching a binding: ${matches.length}`);
   if (!matches.length) {
+    log('None of the beacons seen are bound to a screen → falling back to manual picker.');
     status('No known screen nearby', 'err'); setTimeout(() => status(''), 2500);
     return castSingleVideo(video);
   }
 
   const screenName = map.get(`${matches[0].uuid}:${matches[0].major}:${matches[0].minor}`);
+  log(`Nearest bound screen: "${screenName}" (rssi=${matches[0].rssi})`);
   const want = screenName.trim().toLowerCase();
-  const live = castOtherScreens().filter(s => (s.name || '').trim().toLowerCase() === want);
+  const others = castOtherScreens();
+  log(`Connected screens: ${others.length ? others.map(s => `"${s.name}"`).join(', ') : '(none)'}`);
+  const live = others.filter(s => (s.name || '').trim().toLowerCase() === want);
   if (!live.length) {
+    log(`"${screenName}" is bound but no connected screen has that name → can't send. ` +
+        `Check the screen's name on /watch matches the binding exactly.`);
     status(`“${screenName}” isn’t connected`, 'err'); setTimeout(() => status(''), 3000);
     return castSingleVideo(video);
   }
 
+  log(`Sending Rick Roll to "${screenName}" (id ${live[0].id})…`);
   castSendPlay(live[0].id, [video], 'read');
+  log('Play command sent ✓');
 }
 
 
