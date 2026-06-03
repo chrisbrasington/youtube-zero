@@ -16,6 +16,7 @@ let adminBeacons = [];
 let adminScreens = [];
 let adminStopScan = null;     // active scan's stop() fn, or null
 let adminScanSeen = new Map();
+let adminEditingId = null;    // id of the binding being edited (for rename handling)
 
 async function adminBoot() {
   document.body.classList.add('route-admin');
@@ -355,12 +356,13 @@ function adminRenderList() {
 
 function adminFillForm(b) {
   const f = $('admin-form');
+  adminEditingId = b.id;
   f.screen_name.value = b.screen_name || '';
   f.uuid.value = b.uuid || '';
   f.major.value = b.major != null ? b.major : 0;
   f.minor.value = b.minor != null ? b.minor : 0;
   f.tx_power.value = b.tx_power != null ? b.tx_power : '';
-  $('admin-form-h').textContent = 'Edit beacon';
+  $('admin-form-h').textContent = `Edit "${b.screen_name}"`;
   $('btn-admin-reset').classList.remove('hidden');
   f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -368,6 +370,7 @@ function adminFillForm(b) {
 function adminResetForm() {
   const f = $('admin-form');
   f.reset();
+  adminEditingId = null;
   $('admin-form-h').textContent = 'Add a beacon';
   $('btn-admin-reset').classList.add('hidden');
   $('admin-scan-results').innerHTML = '';
@@ -384,8 +387,14 @@ async function adminSave(e) {
     tx_power: f.tx_power.value === '' ? null : Number(f.tx_power.value),
   };
   if (!body.screen_name) { status('Screen name required', 'err'); setTimeout(() => status(''), 2000); return; }
+  const wasEditing = adminEditingId;
   try {
-    await api.post('/api/screen-beacons', body);
+    const row = await api.post('/api/screen-beacons', body);
+    // Renamed while editing → upsert created a NEW row (keyed on name); remove
+    // the old one so it's a rename, not a duplicate.
+    if (wasEditing && row && row.id && row.id !== wasEditing) {
+      try { await api.del('/api/screen-beacons/' + wasEditing); } catch (_) {}
+    }
     status('Saved ✓', 'ok'); setTimeout(() => status(''), 1500);
     adminResetForm();
     await adminLoad();

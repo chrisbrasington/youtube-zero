@@ -2309,8 +2309,9 @@ body.route-admin #refresh-progress,
 body.route-admin #settings-panel { display: none; }
 
 #admin-root {
-  flex: 1;
-  min-height: 0;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   background: var(--bg);
