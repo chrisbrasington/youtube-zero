@@ -866,6 +866,97 @@ async function castSingleVideo(video) {
 }
 
 
+// ── Fling to nearest screen (beacon proximity) ───────────────────────────────
+//
+// Bound screen↔beacon mappings live server-side (/api/screen-beacons, managed
+// in /admin). A flick-up on a queue item scans for nearby iBeacons, ranks by
+// RSSI, maps the strongest to its screen name, resolves that to a live screen,
+// and plays. Every failure path falls back to the manual picker so the gesture
+// never dead-ends.
+
+let _castBeaconMap = null;   // Map "uuid:major:minor" → screen_name, or null when stale
+
+async function castLoadBeaconMap() {
+  try {
+    const rows = await api.get('/api/screen-beacons');
+    _castBeaconMap = new Map(rows.map(r => [`${r.uuid}:${r.major}:${r.minor}`, r.screen_name]));
+  } catch { _castBeaconMap = new Map(); }
+  return _castBeaconMap;
+}
+
+// Called from wire.js on the SSE 'refreshed' event (upsert/delete broadcast it).
+function castInvalidateBeaconMap() { _castBeaconMap = null; }
+
+function _castQueueVideo(videoId) {
+  const q = state.queue.find(v => v.video_id === videoId);
+  if (!q) return null;
+  return {
+    video_id: q.video_id, title: q.title,
+    channel_name: q.channel_name, thumbnail_url: q.thumbnail_url, duration: q.duration,
+  };
+}
+
+async function flingToNearest(videoId) {
+  const video = _castQueueVideo(videoId);
+  if (!video) return;
+  return flingVideoToNearest(video);
+}
+
+// Send Rick Astley to the nearest screen — same path as flick-up, but with a
+// fixed video so /admin can test the beacon→screen wiring without a queue item.
+function castTestNearest() {
+  return flingVideoToNearest({
+    video_id: 'dQw4w9WgXcQ', title: 'Test — Never Gonna Give You Up',
+    channel_name: 'Test', thumbnail_url: '', duration: '',
+  });
+}
+
+async function flingVideoToNearest(video) {
+  if (!video) return;
+
+  // No Bluetooth scanning here → just use the manual picker.
+  if (!ble.canScan()) {
+    status('Bluetooth scan not available — pick a screen', '');
+    setTimeout(() => status(''), 1800);
+    return castSingleVideo(video);
+  }
+
+  const map = _castBeaconMap || await castLoadBeaconMap();
+  if (!map.size) {
+    status('No beacons configured — set them up in /admin', 'err');
+    setTimeout(() => status(''), 2800);
+    return castSingleVideo(video);
+  }
+
+  status('Finding nearest screen…', '');
+  let beacons;
+  try { beacons = await ble.scanFor(3000); }
+  catch (e) {
+    status(ble.explainError(e), 'err'); setTimeout(() => status(''), 3000);
+    return castSingleVideo(video);
+  }
+
+  // Strongest RSSI among beacons we recognise = nearest bound screen.
+  const matches = beacons
+    .filter(b => map.has(`${b.uuid}:${b.major}:${b.minor}`))
+    .sort((a, z) => z.rssi - a.rssi);
+  if (!matches.length) {
+    status('No known screen nearby', 'err'); setTimeout(() => status(''), 2500);
+    return castSingleVideo(video);
+  }
+
+  const screenName = map.get(`${matches[0].uuid}:${matches[0].major}:${matches[0].minor}`);
+  const want = screenName.trim().toLowerCase();
+  const live = castOtherScreens().filter(s => (s.name || '').trim().toLowerCase() === want);
+  if (!live.length) {
+    status(`“${screenName}” isn’t connected`, 'err'); setTimeout(() => status(''), 3000);
+    return castSingleVideo(video);
+  }
+
+  castSendPlay(live[0].id, [video], 'read');
+}
+
+
 async function castOrWatchQueue() {
   const list = shallowQueue().map(q => ({
     video_id: q.video_id, title: q.title,

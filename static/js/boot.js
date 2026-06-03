@@ -19,6 +19,11 @@
     return;
   }
 
+  if (location.pathname.replace(/\/+$/, '') === '/admin') {
+    await adminBoot();
+    return;
+  }
+
   const route = watchRouteFor(location.pathname);
   if (route) {
     if (route.mode === 'tv') { await tvEnter(); return; }

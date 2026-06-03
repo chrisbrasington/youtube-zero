@@ -44,6 +44,52 @@ def get_all_settings() -> dict:
     return {r["key"]: r["value"] for r in rows}
 
 
+# ── Screen beacons ─────────────────────────────────────────────────────────────
+
+def _norm_uuid(u: str) -> str:
+    """Canonical iBeacon UUID for storage/matching: lowercase hex, no dashes."""
+    return (u or "").strip().lower().replace("-", "")
+
+
+def list_screen_beacons() -> list:
+    with db() as c:
+        rows = c.execute(
+            "SELECT * FROM screen_beacons ORDER BY screen_name COLLATE NOCASE"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_screen_beacon(screen_name, uuid, major, minor, tx_power=None) -> dict:
+    """Bind a screen name to a beacon. Keyed on screen_name (one beacon per name).
+
+    Raises sqlite3.IntegrityError if the (uuid, major, minor) triple is already
+    bound to a *different* screen name.
+    """
+    name = (screen_name or "").strip()
+    uid = _norm_uuid(uuid)
+    now = datetime.now(timezone.utc).isoformat()
+    with db() as c:
+        c.execute(
+            """INSERT INTO screen_beacons (screen_name, uuid, major, minor, tx_power, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(screen_name) DO UPDATE SET
+                 uuid=excluded.uuid, major=excluded.major, minor=excluded.minor,
+                 tx_power=excluded.tx_power, updated_at=excluded.updated_at""",
+            (name, uid, int(major), int(minor), tx_power, now),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM screen_beacons WHERE screen_name=?", (name,)
+        ).fetchone()
+    return dict(row)
+
+
+def delete_screen_beacon(beacon_id: int) -> None:
+    with db() as c:
+        c.execute("DELETE FROM screen_beacons WHERE id=?", (beacon_id,))
+        c.commit()
+
+
 # ── Quota ────────────────────────────────────────────────────────────────────
 
 # Process-level counter for "units consumed since this uvicorn started".

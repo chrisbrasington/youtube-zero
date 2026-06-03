@@ -164,6 +164,8 @@ function connectEventSource() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'refreshed') {
+        // Beacon mappings may have changed (admin upsert/delete broadcasts this).
+        if (typeof castInvalidateBeaconMap === 'function') castInvalidateBeaconMap();
         // On /tv, defer under playback and re-anchor focus; elsewhere reload as-is.
         if (typeof castIsTv === 'function' && castIsTv()) tvHandleRefreshed();
         else loadAll();

@@ -1,0 +1,274 @@
+'use strict';
+
+/*
+ * /admin — bind screen names to Bluetooth iBeacons (UUID + Major + Minor).
+ *
+ * Mappings are stored server-side (GET/POST/DELETE /api/screen-beacons) so any
+ * client uses the same set. Scanning needs Chromium + the experimental flag +
+ * a secure context (see ble.js); elsewhere the manual form still works and the
+ * banner explains why scanning is unavailable.
+ *
+ * Reached via the /admin branch in boot.js. Depends on api, esc/escAttr,
+ * status, and ble — all loaded earlier.
+ */
+
+let adminBeacons = [];
+let adminStopScan = null;     // active scan's stop() fn, or null
+let adminScanSeen = new Map();
+
+async function adminBoot() {
+  document.body.classList.add('route-admin');
+  const root = document.createElement('div');
+  root.id = 'admin-root';
+  root.innerHTML = adminShellHtml();
+  document.body.appendChild(root);
+
+  adminRenderBanner();
+  adminWire();
+  await adminLoad();
+}
+
+function adminShellHtml() {
+  return `
+    <div class="admin-header">
+      <button class="btn-icon" id="btn-admin-back" title="Back">←</button>
+      <span class="admin-title">Screens &amp; Beacons</span>
+    </div>
+    <div class="admin-body">
+      <div id="admin-banner" class="admin-banner"></div>
+
+      <div class="admin-test">
+        <button type="button" class="btn-ghost" id="btn-admin-test">🧪 Test — fling Rick Roll to nearest screen</button>
+        <div class="admin-test-hint">Scans for a nearby bound beacon and plays on that screen — same path as flick-up.</div>
+      </div>
+
+      <h3 class="admin-section-h">Bound screens</h3>
+      <div id="admin-list" class="admin-list"></div>
+
+      <h3 class="admin-section-h" id="admin-form-h">Add a beacon</h3>
+      <form id="admin-form" class="admin-form" autocomplete="off">
+        <label>Screen name
+          <input type="text" name="screen_name" placeholder="e.g. Laptop" required>
+        </label>
+        <label>Beacon UUID
+          <input type="text" name="uuid" placeholder="E20A39F4-73F5-4BC4-A12F-17D1AD07A961" required>
+        </label>
+        <div class="admin-form-row">
+          <label>Major <input type="number" name="major" min="0" max="65535" value="0" required></label>
+          <label>Minor <input type="number" name="minor" min="0" max="65535" value="0" required></label>
+          <label>Tx power <input type="number" name="tx_power" placeholder="optional"></label>
+        </div>
+        <div class="admin-form-actions">
+          <button type="button" class="btn-ghost" id="btn-admin-scan">📡 Scan</button>
+          <button type="submit" class="btn-primary" id="btn-admin-save">Save</button>
+          <button type="button" class="btn-ghost hidden" id="btn-admin-reset">Clear</button>
+        </div>
+        <div id="admin-scan-results" class="admin-scan-results"></div>
+      </form>
+    </div>`;
+}
+
+// ── Capability banner ─────────────────────────────────────────────────────────
+
+function adminFlagUrl() {
+  // chrome:// vs edge:// — pages can't navigate to these, so the link copies it.
+  const scheme = /Edg/.test(navigator.userAgent) ? 'edge' : 'chrome';
+  return scheme + '://flags/#enable-experimental-web-platform-features';
+}
+
+function adminRenderBanner() {
+  const el = $('admin-banner');
+  if (!el) return;
+  const s = ble.support();
+  let cls = 'warn', msg = null, html = null;
+  if (ble.canScan()) {
+    cls = 'ok';
+    msg = 'Bluetooth scanning is ready. Tap Scan and pick your beacon, or enter its values by hand.';
+  } else if (s.browser === 'firefox') {
+    msg = 'Firefox doesn’t support Web Bluetooth. To scan for beacons, open this page in Chrome or Edge. You can still bind a beacon by typing its UUID, Major, and Minor below.';
+  } else if (s.browser === 'ios') {
+    msg = 'Safari and all iOS browsers can’t read Bluetooth. Scanning isn’t available on this device. You can still type a beacon’s values below — any Chrome/Edge device will use this mapping.';
+  } else if (!s.secure) {
+    msg = 'Bluetooth scanning needs a secure connection. Open this page over HTTPS or on localhost.';
+  } else if (!s.hasScan) {
+    const url = adminFlagUrl();
+    html = `Bluetooth scanning is behind a browser flag. Open `
+      + `<a href="#" class="admin-flaglink" data-copy="${escAttr(url)}">${esc(url)}</a>`
+      + `, set it to Enabled, restart the browser, and reload. You can type a beacon manually meanwhile.`;
+  } else {
+    msg = 'Bluetooth scanning isn’t available in this browser. Use Chrome or Edge, or type a beacon manually.';
+  }
+  el.className = 'admin-banner ' + cls;
+  if (html != null) el.innerHTML = html;
+  else el.textContent = msg;
+
+  const scanBtn = $('btn-admin-scan');
+  if (scanBtn) scanBtn.disabled = !ble.canScan();
+}
+
+// ── Mappings list ───────────────────────────────────────────────────────────
+
+async function adminLoad() {
+  try { adminBeacons = await api.get('/api/screen-beacons'); }
+  catch (e) { adminBeacons = []; }
+  adminRenderList();
+}
+
+function adminRenderList() {
+  const el = $('admin-list');
+  if (!el) return;
+  if (!adminBeacons.length) {
+    el.innerHTML = `<div class="admin-empty">No screens bound yet. Add one below.</div>`;
+    return;
+  }
+  el.innerHTML = adminBeacons.map(b => `
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <div class="admin-row-name">${esc(b.screen_name)}</div>
+        <div class="admin-row-id">${esc(b.uuid)} · ${b.major}/${b.minor}</div>
+      </div>
+      <button class="btn-ghost admin-edit" data-id="${b.id}">Edit</button>
+      <button class="btn-danger admin-del" data-id="${b.id}">Remove</button>
+    </div>`).join('');
+}
+
+// ── Form ──────────────────────────────────────────────────────────────────────
+
+function adminFillForm(b) {
+  const f = $('admin-form');
+  f.screen_name.value = b.screen_name || '';
+  f.uuid.value = b.uuid || '';
+  f.major.value = b.major != null ? b.major : 0;
+  f.minor.value = b.minor != null ? b.minor : 0;
+  f.tx_power.value = b.tx_power != null ? b.tx_power : '';
+  $('admin-form-h').textContent = 'Edit beacon';
+  $('btn-admin-reset').classList.remove('hidden');
+  f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function adminResetForm() {
+  const f = $('admin-form');
+  f.reset();
+  $('admin-form-h').textContent = 'Add a beacon';
+  $('btn-admin-reset').classList.add('hidden');
+  $('admin-scan-results').innerHTML = '';
+}
+
+async function adminSave(e) {
+  e.preventDefault();
+  const f = $('admin-form');
+  const body = {
+    screen_name: f.screen_name.value.trim(),
+    uuid: f.uuid.value.trim(),
+    major: Number(f.major.value),
+    minor: Number(f.minor.value),
+    tx_power: f.tx_power.value === '' ? null : Number(f.tx_power.value),
+  };
+  if (!body.screen_name) { status('Screen name required', 'err'); setTimeout(() => status(''), 2000); return; }
+  try {
+    await api.post('/api/screen-beacons', body);
+    status('Saved ✓', 'ok'); setTimeout(() => status(''), 1500);
+    adminResetForm();
+    await adminLoad();
+  } catch (err) {
+    status('Save failed: ' + err.message, 'err'); setTimeout(() => status(''), 3500);
+  }
+}
+
+async function adminDelete(id) {
+  try {
+    await api.del('/api/screen-beacons/' + id);
+    await adminLoad();
+  } catch (err) {
+    status('Remove failed: ' + err.message, 'err'); setTimeout(() => status(''), 3000);
+  }
+}
+
+// ── Scan ──────────────────────────────────────────────────────────────────────
+
+async function adminScan() {
+  if (adminStopScan) { adminStopScan(); adminStopScan = null; $('btn-admin-scan').textContent = '📡 Scan'; return; }
+  const out = $('admin-scan-results');
+  adminScanSeen = new Map();
+  out.innerHTML = '<div class="admin-scan-status">Scanning… move close to the beacon. Tap Scan again to stop.</div>';
+  try {
+    adminStopScan = await ble.startScan((b) => {
+      const key = `${b.uuid}:${b.major}:${b.minor}`;
+      adminScanSeen.set(key, b);   // keep latest reading
+      adminRenderScanResults();
+    });
+    $('btn-admin-scan').textContent = '■ Stop';
+    // Auto-stop after a generous window so a forgotten scan doesn't run forever.
+    setTimeout(() => {
+      if (adminStopScan) { adminStopScan(); adminStopScan = null; $('btn-admin-scan').textContent = '📡 Scan'; }
+    }, 20000);
+  } catch (e) {
+    out.innerHTML = `<div class="admin-scan-status err">${esc(ble.explainError(e))}</div>`;
+  }
+}
+
+function adminRenderScanResults() {
+  const out = $('admin-scan-results');
+  const list = [...adminScanSeen.values()].sort((a, z) => z.rssi - a.rssi);
+  if (!list.length) { out.innerHTML = '<div class="admin-scan-status">Scanning… no beacons yet.</div>'; return; }
+  out.innerHTML = list.map(b => `
+    <button type="button" class="admin-beacon" data-uuid="${escAttr(b.uuid)}"
+            data-major="${b.major}" data-minor="${b.minor}" data-tx="${b.txPower}">
+      <span class="admin-beacon-id">${esc(b.uuid)}</span>
+      <span class="admin-beacon-meta">${b.major}/${b.minor} · ${b.rssi} dBm</span>
+    </button>`).join('');
+}
+
+function adminPickScanned(btn) {
+  const f = $('admin-form');
+  f.uuid.value = btn.dataset.uuid;
+  f.major.value = btn.dataset.major;
+  f.minor.value = btn.dataset.minor;
+  if (btn.dataset.tx && btn.dataset.tx !== 'undefined') f.tx_power.value = btn.dataset.tx;
+  if (!f.screen_name.value) f.screen_name.focus();
+}
+
+// ── Wiring ──────────────────────────────────────────────────────────────────
+
+function adminWire() {
+  $('btn-admin-back').addEventListener('click', () => { location.href = '/'; });
+  $('admin-form').addEventListener('submit', adminSave);
+  $('btn-admin-scan').addEventListener('click', adminScan);
+  $('btn-admin-reset').addEventListener('click', adminResetForm);
+
+  $('btn-admin-test').addEventListener('click', () => {
+    if (typeof castTestNearest === 'function') castTestNearest();
+  });
+
+  // chrome://flags links can't be opened by a page, so copy to clipboard instead.
+  $('admin-banner').addEventListener('click', (e) => {
+    const link = e.target.closest('.admin-flaglink');
+    if (!link) return;
+    e.preventDefault();
+    const url = link.dataset.copy || '';
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(
+        () => { status('Copied — paste into a new tab', 'ok'); setTimeout(() => status(''), 2500); },
+        () => { status('Copy this: ' + url, ''); setTimeout(() => status(''), 4000); }
+      );
+    } else {
+      status('Copy this: ' + url, ''); setTimeout(() => status(''), 4000);
+    }
+  });
+
+  $('admin-list').addEventListener('click', (e) => {
+    const edit = e.target.closest('.admin-edit');
+    if (edit) {
+      const b = adminBeacons.find(x => String(x.id) === edit.dataset.id);
+      if (b) adminFillForm(b);
+      return;
+    }
+    const del = e.target.closest('.admin-del');
+    if (del) adminDelete(del.dataset.id);
+  });
+
+  $('admin-scan-results').addEventListener('click', (e) => {
+    const btn = e.target.closest('.admin-beacon');
+    if (btn) adminPickScanned(btn);
+  });
+}

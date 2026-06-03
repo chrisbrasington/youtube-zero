@@ -13,7 +13,7 @@ import websockets
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from const import (
     ADB_API_URL,
@@ -52,8 +52,10 @@ from queries import (
     get_queue,
     get_quota_today_units,
     get_setting,
+    delete_screen_beacon,
     list_channels,
     list_folders,
+    list_screen_beacons,
     max_last_refreshed,
     next_queue_sort_order,
     record_watched,
@@ -61,6 +63,7 @@ from queries import (
     session_quota_units,
     set_setting,
     unwatched_queue_video_ids,
+    upsert_screen_beacon,
 )
 
 
@@ -1040,6 +1043,61 @@ def get_feed():
         for ch in standalone:
             ch["videos"] = _channel_videos(c, ch["channel_id"], ch["read_before"], queued_ids)
     return {"folders": folders, "channels": standalone}
+
+
+# ── Screen ↔ beacon mappings ────────────────────────────────────────────────
+# Bind a screen NAME to an iBeacon (UUID + Major + Minor) so a phone can fling
+# to the screen it's physically nearest. Stored server-side so any client uses
+# the same mappings. Matching is on the normalized (uuid, major, minor) triple.
+
+class ScreenBeaconReq(BaseModel):
+    screen_name: str
+    uuid: str
+    major: int
+    minor: int
+    tx_power: Optional[int] = None
+
+    @field_validator("uuid")
+    @classmethod
+    def _uuid_shape(cls, v):
+        hexs = (v or "").strip().lower().replace("-", "")
+        if not re.fullmatch(r"[0-9a-f]{32}", hexs):
+            raise ValueError("uuid must be 32 hex digits (16 bytes)")
+        return v
+
+    @field_validator("major", "minor")
+    @classmethod
+    def _u16(cls, v):
+        v = int(v)
+        if not (0 <= v <= 0xFFFF):
+            raise ValueError("major/minor must be 0..65535")
+        return v
+
+
+@app.get("/api/screen-beacons")
+def screen_beacons_list():
+    return list_screen_beacons()
+
+
+@app.post("/api/screen-beacons")
+def screen_beacons_upsert(req: ScreenBeaconReq, background_tasks: BackgroundTasks):
+    if not req.screen_name.strip():
+        raise HTTPException(400, "screen name required")
+    try:
+        row = upsert_screen_beacon(
+            req.screen_name, req.uuid, req.major, req.minor, req.tx_power
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "That beacon (UUID+Major+Minor) is already bound to another screen")
+    background_tasks.add_task(_broadcast, "refreshed")
+    return row
+
+
+@app.delete("/api/screen-beacons/{beacon_id}")
+def screen_beacons_delete(beacon_id: int, background_tasks: BackgroundTasks):
+    delete_screen_beacon(beacon_id)
+    background_tasks.add_task(_broadcast, "refreshed")
+    return {"ok": True}
 
 
 # ── Folder CRUD ───────────────────────────────────────────────────────────────

@@ -90,6 +90,18 @@ _SCHEMA = """
         published_at  TEXT,
         watched_at    TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS screen_beacons (
+        id          INTEGER PRIMARY KEY,
+        screen_name TEXT NOT NULL,
+        uuid        TEXT NOT NULL,          -- normalized: lowercase, no dashes
+        major       INTEGER NOT NULL,
+        minor       INTEGER NOT NULL,
+        tx_power    INTEGER,
+        created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(screen_name),
+        UNIQUE(uuid, major, minor)
+    );
 """
 
 # Idempotent column additions for databases created before each column existed.
