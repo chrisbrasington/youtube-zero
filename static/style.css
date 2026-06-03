@@ -1778,6 +1778,8 @@ input[type="password"] { font-size: 13px; }
 }
 .watch-transfer-bar.hidden { display: none; }
 .watch-transfer-label { color: var(--muted); font-size: 13px; flex-shrink: 0; }
+/* Keep the label at the left, push the icon row to the right edge. */
+.watch-transfer-bar .watch-transfer-btn:first-of-type { margin-left: auto; }
 .watch-transfer-btn {
   flex: 0 0 auto;
   font: inherit;
