@@ -1,0 +1,17 @@
+[Unit]
+Description=youtube-zero AltBeacon broadcast (hci0)
+# Make sure the Bluetooth stack is up before we program the adapter.
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+# beacon-up.sh sets the advertisement and exits — it's not a daemon.
+Type=oneshot
+RemainAfterExit=yes
+# Give the adapter a moment to settle after bluetooth.target.
+ExecStartPre=/bin/sleep 3
+ExecStart=/home/chris/code/youtube-zero/beacon/beacon-up.sh
+ExecStop=/home/chris/code/youtube-zero/beacon/beacon-down.sh
+
+[Install]
+WantedBy=multi-user.target
