@@ -131,6 +131,16 @@
 (function setupQueueFlickUp() {
   const THRESHOLD = 80;   // px of upward travel to trigger
   let item = null, vid = null, startX = 0, startY = 0, dx = 0, dy = 0, axis = null;
+  let suppressClickUntil = 0;   // swallow the play-from-queue tap right after a flick
+
+  // Capture-phase: if a flick just fired, eat the synthesized click so the
+  // thumbnail's play-from-queue handler doesn't open the embed instead.
+  document.addEventListener('click', (e) => {
+    if (Date.now() < suppressClickUntil && e.target.closest('.q-item')) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
 
   function pick(target) {
     // Start only from the thumbnail, leaving the rest of the row for scroll/drag.
@@ -175,7 +185,11 @@
     el.style.transform = '';
     el.style.opacity = '';
     item = null; vid = null;
-    if (fire && typeof flingToNearest === 'function') flingToNearest(id);
+    if (fire) {
+      suppressClickUntil = Date.now() + 700;   // block the follow-up tap
+      if (typeof status === 'function') { status('Flick ↑ — finding nearest screen…', ''); }
+      if (typeof flingToNearest === 'function') flingToNearest(id);
+    }
   }, { passive: true });
 })();
 
