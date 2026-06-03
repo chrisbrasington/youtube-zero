@@ -2349,7 +2349,8 @@ body.route-admin #settings-panel { display: none; }
 .admin-test { margin-top: 14px; }
 .admin-test #btn-admin-test,
 .admin-test #btn-admin-dump,
-.admin-test #btn-admin-dump-apple { width: 100%; padding: 11px 14px; font-size: 15px; margin-bottom: 6px; }
+.admin-test #btn-admin-dump-apple,
+.admin-test #btn-admin-scan-mine { width: 100%; padding: 11px 14px; font-size: 15px; margin-bottom: 6px; }
 .admin-test-hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .admin-test-hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .admin-diag-bar { display: flex; justify-content: flex-end; margin-top: 8px; }

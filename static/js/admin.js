@@ -69,6 +69,51 @@ function adminCopyLog() {
   }
 }
 
+// Scan filtered to YOUR saved bindings — Chrome only reports beacons you
+// defined, and we report which ones are actually in range + RSSI.
+async function adminScanMine() {
+  adminDiagClear();
+  if (!ble.canScan()) {
+    adminDiag('Cannot scan in this browser. ' + ble.explainError({ kind: 'unsupported' }));
+    return;
+  }
+  if (!adminBeacons.length) {
+    adminDiag('No beacons defined yet — add one below first.');
+    return;
+  }
+  // key "uuid:major:minor" → screen name, for reporting hits.
+  const nameByKey = new Map(adminBeacons.map(b => [`${b.uuid}:${b.major}:${b.minor}`, b.screen_name]));
+  adminDiag(`Scanning for your ${adminBeacons.length} defined beacon(s) for 6s…`);
+  adminBeacons.forEach(b => adminDiag(`  • "${b.screen_name}"  ${b.uuid}:${b.major}:${b.minor}`));
+  const best = new Map();
+  let stop = null;
+  try {
+    stop = await ble.startScanForBindings(
+      adminBeacons.map(b => ({ uuid: b.uuid, major: b.major, minor: b.minor })),
+      (hit) => {
+        const k = `${hit.uuid}:${hit.major}:${hit.minor}`;
+        const prev = best.get(k);
+        if (!prev || hit.rssi > prev.rssi) best.set(k, hit);
+      }
+    );
+  } catch (e) {
+    adminDiag('Scan error: ' + ble.explainError(e));
+    return;
+  }
+  setTimeout(() => {
+    if (stop) stop();
+    adminDiag('— done.');
+    if (!best.size) {
+      adminDiag('✗ None of YOUR beacons are in range / on air. (Broadcasting? Right UUID/major/minor? Not backgrounded?)');
+      return;
+    }
+    [...best.entries()].sort((a, z) => z[1].rssi - a[1].rssi).forEach(([k, hit]) => {
+      adminDiag(`✓ "${nameByKey.get(k) || '?'}"  ${k}  rssi=${hit.rssi}`);
+    });
+    adminDiag('These matched your bindings — Test/flick will fling to the strongest.');
+  }, 6000);
+}
+
 // Dump every UNIQUE BLE advertisement seen in a 6s window (deduped by payload,
 // with a repeat count), so we can eyeball what's actually broadcasting.
 // appleOnly=true scans with an Apple (0x4C) manufacturer-data filter instead of
@@ -96,15 +141,16 @@ async function adminDumpBle(appleOnly) {
     adminDiag(`— done. ${lines.length} unique signal(s):`);
     if (!lines.length) adminDiag('(nothing)');
     lines.forEach(([line, n]) => adminDiag(`(${n}×) ${line}`));
-    const hasApple = lines.some(([l]) => /mfr\[[^\]]*0x4C=/.test(l));
-    if (appleOnly) {
-      adminDiag(hasApple
-        ? '✓ iBeacon received via the Apple filter! "Accept all" was hiding it — Test/flick should work now.'
-        : '✗ Even the Apple-filtered scan saw nothing. Chrome on THIS device isn’t receiving the iBeacon — try a different Chromium browser/device, or confirm with nRF Connect that it’s really on air.');
+    const hasApple   = lines.some(([l]) => /0x4C=/i.test(l));
+    const hasIBeacon = lines.some(([l]) => /0x4C=0215/i.test(l));
+    if (hasIBeacon) {
+      adminDiag('✓ A real iBeacon (0x4C=0215…) is present above. Test/flick should work now.');
+    } else if (hasApple) {
+      adminDiag('~ Apple 0x4C signals are present, but NONE are iBeacons (no 0215 prefix) — those are iPhone/AirPods Continuity/Find My chatter. Your iBeacon is not on air / not reaching this device.');
+    } else if (appleOnly) {
+      adminDiag('✗ Apple-filtered scan saw no 0x4C at all — nothing Apple in range.');
     } else {
-      adminDiag(hasApple
-        ? '✓ An Apple/iBeacon (0x4C) signal is present above.'
-        : '✗ No 0x4C here. If a native app sees the beacon, try the 🍏 iBeacon-only scan — Chrome often needs the manufacturer filter to deliver Apple data.');
+      adminDiag('✗ No 0x4C here. If a native app sees the beacon, try the 🍏 iBeacon-only scan.');
     }
   }, 6000);
 }
@@ -122,6 +168,7 @@ function adminShellHtml() {
         <button type="button" class="btn-ghost" id="btn-admin-test">🧪 Test — fling Rick Roll to nearest screen</button>
         <button type="button" class="btn-ghost" id="btn-admin-dump">🔍 Dump all BLE signals (6s)</button>
         <button type="button" class="btn-ghost" id="btn-admin-dump-apple">🍏 iBeacon-only scan (6s, filtered)</button>
+        <button type="button" class="btn-ghost" id="btn-admin-scan-mine">🎯 Scan my beacons (6s)</button>
         <div class="admin-test-hint">Test runs the fling path. Dump lists every unique advertisement. The 🍏 scan filters on Apple <code>0x4C</code> — use it if Dump shows no <code>mfr[0x4C=0215…]</code> but a native app sees the beacon.</div>
         <div class="admin-diag-bar hidden" id="admin-diag-bar">
           <button type="button" class="btn-ghost admin-mini" id="btn-admin-copy">📋 Copy log</button>
@@ -376,6 +423,7 @@ function adminWire() {
 
   $('btn-admin-dump').addEventListener('click', () => adminDumpBle(false));
   $('btn-admin-dump-apple').addEventListener('click', () => adminDumpBle(true));
+  $('btn-admin-scan-mine').addEventListener('click', adminScanMine);
   $('btn-admin-copy').addEventListener('click', adminCopyLog);
 
   $('btn-admin-screens-refresh').addEventListener('click', adminLoadScreens);
