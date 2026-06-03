@@ -64,11 +64,18 @@ const ble = (() => {
   // Start a scan. onBeacon({ uuid, major, minor, txPower, rssi }) fires for each
   // parseable iBeacon advertisement. Returns a stop() function.
   // MUST be called from a user gesture (click / touch). Throws on unsupported.
-  async function startScan(onBeacon) {
+  // onBeacon(parsedIBeacon) fires only for iBeacon advertisements.
+  // onRaw({ companyIds, rssi, name }) — optional — fires for EVERY advertisement,
+  // for diagnostics (what's actually in the air).
+  async function startScan(onBeacon, onRaw) {
     if (!canScan()) throw Object.assign(new Error('scan-unavailable'), { kind: 'unsupported' });
     // iBeacons expose no GATT services to filter on, so accept everything.
     const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
     const handler = (ev) => {
+      if (onRaw) {
+        const companyIds = ev.manufacturerData ? [...ev.manufacturerData.keys()] : [];
+        onRaw({ companyIds, rssi: ev.rssi, name: ev.device && ev.device.name });
+      }
       const dv = ev.manufacturerData && ev.manufacturerData.get(APPLE_COMPANY_ID);
       const ib = parseIBeacon(dv);
       if (ib) onBeacon({ ...ib, rssi: ev.rssi });
@@ -82,13 +89,14 @@ const ble = (() => {
 
   // One-shot: scan for `ms`, return the list of beacons seen, each with its
   // strongest observed RSSI (keyed by uuid:major:minor). Used by flick-up.
-  async function scanFor(ms = 3000) {
+  // onRaw (optional) is forwarded to startScan for diagnostics.
+  async function scanFor(ms = 3000, onRaw) {
     const best = new Map();
     const stop = await startScan((b) => {
       const k = `${b.uuid}:${b.major}:${b.minor}`;
       const prev = best.get(k);
       if (!prev || b.rssi > prev.rssi) best.set(k, b);
-    });
+    }, onRaw);
     await new Promise(r => setTimeout(r, ms));
     stop();
     return [...best.values()];

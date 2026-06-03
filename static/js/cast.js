@@ -933,46 +933,70 @@ async function castTestNearest() {
   await castRefreshScreens();
   log(`Connected screens: ${castScreens.length ? castScreens.map(s => `"${s.name}"`).join(', ') : '(none)'}`);
   castInvalidateBeaconMap();
+  // Crucially: do NOT fall back to auto-sending. The manual picker auto-selects
+  // the only connected screen, which masks a failed scan as success. For a test
+  // we want an honest "would have fallen back" instead.
+  const onFallback = (reason) => {
+    log(`✗ TEST FAILED at: ${reason}`);
+    log('(Not sending — in real flick-up this would open the manual screen picker.)');
+    status('Test: ' + reason, 'err'); setTimeout(() => status(''), 3500);
+  };
   return flingVideoToNearest({
     video_id: 'dQw4w9WgXcQ', title: 'Test — Never Gonna Give You Up',
     channel_name: 'Test', thumbnail_url: '', duration: '',
-  }, log);
+  }, log, onFallback);
 }
 
-async function flingVideoToNearest(video, log) {
+async function flingVideoToNearest(video, log, onFallback) {
   log = log || ((m) => { try { console.log('[fling]', m); } catch (_) {} });
+  // Default fallback = the real flick-up behavior (open the manual picker).
+  onFallback = onFallback || (() => castSingleVideo(video));
   if (!video) { log('No video to send.'); return; }
 
   const cap = ble.support();
   log(`Bluetooth: secure=${cap.secure} hasScan=${cap.hasScan} browser=${cap.browser} → canScan=${ble.canScan()}`);
   if (!ble.canScan()) {
-    log('Scanning unavailable in this browser → falling back to manual picker.');
-    status('Bluetooth scan not available — pick a screen', '');
-    setTimeout(() => status(''), 1800);
-    return castSingleVideo(video);
+    status('Bluetooth scan not available — pick a screen', ''); setTimeout(() => status(''), 1800);
+    return onFallback('Bluetooth scanning not available in this browser');
   }
 
   const map = _castBeaconMap || await castLoadBeaconMap();
   log(`Bound beacons: ${map.size}` +
       (map.size ? ' [' + [...map.entries()].map(([k, v]) => `"${v}"=${k}`).join(', ') + ']' : ''));
   if (!map.size) {
-    log('No beacons configured → falling back to manual picker.');
-    status('No beacons configured — set them up in /admin', 'err');
-    setTimeout(() => status(''), 2800);
-    return castSingleVideo(video);
+    status('No beacons configured — set them up in /admin', 'err'); setTimeout(() => status(''), 2800);
+    return onFallback('No beacons configured in /admin');
   }
 
-  log('Scanning for beacons (3s)… make sure the beacon is broadcasting nearby.');
+  log('Scanning (4s)… make sure the beacon is broadcasting nearby.');
   status('Finding nearest screen…', '');
-  let beacons;
-  try { beacons = await ble.scanFor(3000); }
-  catch (e) {
+  let beacons, rawTotal = 0;
+  const companyCounts = new Map();
+  try {
+    beacons = await ble.scanFor(4000, (a) => {
+      rawTotal++;
+      a.companyIds.forEach(id => companyCounts.set(id, (companyCounts.get(id) || 0) + 1));
+    });
+  } catch (e) {
     log('Scan error: ' + (e.name || '') + ' — ' + (e.message || ''));
     status(ble.explainError(e), 'err'); setTimeout(() => status(''), 3000);
-    return castSingleVideo(video);
+    return onFallback('Scan error: ' + (e.name || e.message));
   }
-  log(`Beacons seen: ${beacons.length}`);
-  beacons.forEach(b => log(`  • ${b.uuid}:${b.major}/${b.minor} rssi=${b.rssi}`));
+
+  // Raw breakdown: this is what tells us iBeacon-present-but-unparsed vs nothing.
+  log(`Raw advertisements seen: ${rawTotal}`);
+  const cids = [...companyCounts.entries()].sort((a, z) => z[1] - a[1])
+    .map(([id, n]) => `0x${id.toString(16).toUpperCase()}(${n})`).join(', ');
+  log(`Manufacturer IDs: ${cids || '(none had manufacturer data)'}`);
+  log(`Apple/iBeacon ID 0x4C present: ${companyCounts.has(0x004C) ? 'YES' : 'NO — nothing is broadcasting iBeacon'}`);
+  log(`Parsed iBeacons: ${beacons.length}`);
+  beacons.forEach(b => log(`  • ${b.uuid}:${b.major}:${b.minor} rssi=${b.rssi}`));
+
+  if (!beacons.length) {
+    return onFallback(companyCounts.has(0x004C)
+      ? 'Apple ads seen but none parsed as iBeacon (check beacon type/format)'
+      : 'No iBeacon broadcasting nearby (set simulator to iBeacon, not AltBeacon/Eddystone)');
+  }
 
   // Strongest RSSI among beacons we recognise = nearest bound screen.
   const matches = beacons
@@ -980,9 +1004,9 @@ async function flingVideoToNearest(video, log) {
     .sort((a, z) => z.rssi - a.rssi);
   log(`Beacons matching a binding: ${matches.length}`);
   if (!matches.length) {
-    log('None of the beacons seen are bound to a screen → falling back to manual picker.');
+    log('Seen iBeacons are not bound to any screen — compare the keys above to the bindings.');
     status('No known screen nearby', 'err'); setTimeout(() => status(''), 2500);
-    return castSingleVideo(video);
+    return onFallback('Beacon(s) seen, but none match a saved binding');
   }
 
   const screenName = map.get(`${matches[0].uuid}:${matches[0].major}:${matches[0].minor}`);
@@ -992,15 +1016,13 @@ async function flingVideoToNearest(video, log) {
   log(`Connected screens: ${others.length ? others.map(s => `"${s.name}"`).join(', ') : '(none)'}`);
   const live = others.filter(s => (s.name || '').trim().toLowerCase() === want);
   if (!live.length) {
-    log(`"${screenName}" is bound but no connected screen has that name → can't send. ` +
-        `Check the screen's name on /watch matches the binding exactly.`);
     status(`“${screenName}” isn’t connected`, 'err'); setTimeout(() => status(''), 3000);
-    return castSingleVideo(video);
+    return onFallback(`"${screenName}" is bound but no connected screen has that exact name`);
   }
 
-  log(`Sending Rick Roll to "${screenName}" (id ${live[0].id})…`);
+  log(`✓ Sending Rick Roll to "${screenName}" (id ${live[0].id})…`);
   castSendPlay(live[0].id, [video], 'read');
-  log('Play command sent ✓');
+  log('✓ Play command sent.');
 }
 
 
