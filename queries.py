@@ -84,6 +84,30 @@ def upsert_screen_beacon(screen_name, uuid, major, minor, tx_power=None) -> dict
     return dict(row)
 
 
+def update_screen_beacon(beacon_id, screen_name, uuid, major, minor, tx_power=None) -> Optional[dict]:
+    """Update an existing binding in place (by id) — used when editing/renaming.
+
+    Renaming keeps the same row, so it never collides with itself. Raises
+    sqlite3.IntegrityError only if the new name or (uuid,major,minor) clashes
+    with a *different* row. Returns the updated row, or None if id not found.
+    """
+    name = (screen_name or "").strip()
+    uid = _norm_uuid(uuid)
+    now = datetime.now(timezone.utc).isoformat()
+    with db() as c:
+        c.execute(
+            """UPDATE screen_beacons
+               SET screen_name=?, uuid=?, major=?, minor=?, tx_power=?, updated_at=?
+               WHERE id=?""",
+            (name, uid, int(major), int(minor), tx_power, now, int(beacon_id)),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM screen_beacons WHERE id=?", (int(beacon_id),)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def delete_screen_beacon(beacon_id: int) -> None:
     with db() as c:
         c.execute("DELETE FROM screen_beacons WHERE id=?", (beacon_id,))

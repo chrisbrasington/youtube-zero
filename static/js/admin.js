@@ -387,13 +387,12 @@ async function adminSave(e) {
     tx_power: f.tx_power.value === '' ? null : Number(f.tx_power.value),
   };
   if (!body.screen_name) { status('Screen name required', 'err'); setTimeout(() => status(''), 2000); return; }
-  const wasEditing = adminEditingId;
   try {
-    const row = await api.post('/api/screen-beacons', body);
-    // Renamed while editing → upsert created a NEW row (keyed on name); remove
-    // the old one so it's a rename, not a duplicate.
-    if (wasEditing && row && row.id && row.id !== wasEditing) {
-      try { await api.del('/api/screen-beacons/' + wasEditing); } catch (_) {}
+    if (adminEditingId) {
+      // Update the existing row in place (rename-safe — no self-collision).
+      await api.put('/api/screen-beacons/' + adminEditingId, body);
+    } else {
+      await api.post('/api/screen-beacons', body);
     }
     status('Saved ✓', 'ok'); setTimeout(() => status(''), 1500);
     adminResetForm();

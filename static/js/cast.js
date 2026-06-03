@@ -629,13 +629,12 @@ function castSyncHereTransfer() {
   if (!(local && castAvailable())) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
   const nearestBtn = ble.canScan()
     ? `<button class="watch-transfer-btn watch-transfer-nearest" data-action="watch-transfer-nearest"
-               title="Transfer to the nearest screen (Bluetooth)">📡 Nearest</button>`
+               title="Transfer to the nearest screen (Bluetooth)">📡</button>`
     : '';
   bar.innerHTML = `<span class="watch-transfer-label">Transfer to</span>` +
     castOtherScreens().map(s => `
-      <button class="watch-transfer-btn" data-action="watch-transfer" data-screen-id="${escAttr(s.id)}">
-        📺 ${esc(s.name || 'Screen')}
-      </button>`).join('') +
+      <button class="watch-transfer-btn" data-action="watch-transfer" data-screen-id="${escAttr(s.id)}"
+              title="${escAttr(s.name || 'Screen')}">${esc(s.name || 'Screen')}</button>`).join('') +
     nearestBtn;
   bar.classList.remove('hidden');
 }

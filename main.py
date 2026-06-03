@@ -63,6 +63,7 @@ from queries import (
     session_quota_units,
     set_setting,
     unwatched_queue_video_ids,
+    update_screen_beacon,
     upsert_screen_beacon,
 )
 
@@ -1089,6 +1090,22 @@ def screen_beacons_upsert(req: ScreenBeaconReq, background_tasks: BackgroundTask
         )
     except sqlite3.IntegrityError:
         raise HTTPException(409, "That beacon (UUID+Major+Minor) is already bound to another screen")
+    background_tasks.add_task(_broadcast, "refreshed")
+    return row
+
+
+@app.put("/api/screen-beacons/{beacon_id}")
+def screen_beacons_update(beacon_id: int, req: ScreenBeaconReq, background_tasks: BackgroundTasks):
+    if not req.screen_name.strip():
+        raise HTTPException(400, "screen name required")
+    try:
+        row = update_screen_beacon(
+            beacon_id, req.screen_name, req.uuid, req.major, req.minor, req.tx_power
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Another screen already uses that name or beacon")
+    if not row:
+        raise HTTPException(404, "screen beacon not found")
     background_tasks.add_task(_broadcast, "refreshed")
     return row
 
