@@ -988,14 +988,14 @@ async function flingVideoToNearest(video, log, onFallback) {
   const cids = [...companyCounts.entries()].sort((a, z) => z[1] - a[1])
     .map(([id, n]) => `0x${id.toString(16).toUpperCase()}(${n})`).join(', ');
   log(`Manufacturer IDs: ${cids || '(none had manufacturer data)'}`);
-  log(`Apple/iBeacon ID 0x4C present: ${companyCounts.has(0x004C) ? 'YES' : 'NO — nothing is broadcasting iBeacon'}`);
-  log(`Parsed iBeacons: ${beacons.length}`);
+  log(`AltBeacon ID 0xFFFF present: ${companyCounts.has(0xFFFF) ? 'YES' : 'NO'}`);
+  log(`Parsed beacons: ${beacons.length}`);
   beacons.forEach(b => log(`  • ${b.uuid}:${b.major}:${b.minor} rssi=${b.rssi}`));
 
   if (!beacons.length) {
-    return onFallback(companyCounts.has(0x004C)
-      ? 'Apple ads seen but none parsed as iBeacon (check beacon type/format)'
-      : 'No iBeacon broadcasting nearby (set simulator to iBeacon, not AltBeacon/Eddystone)');
+    return onFallback(companyCounts.has(0xFFFF)
+      ? 'AltBeacon ads seen but none parsed (check format)'
+      : 'No beacon broadcasting nearby (run beacon-up.sh — it now broadcasts AltBeacon)');
   }
 
   // Strongest RSSI among beacons we recognise = nearest bound screen.

@@ -15,7 +15,8 @@
  */
 
 const ble = (() => {
-  const APPLE_COMPANY_ID = 0x004C;   // iBeacons advertise under Apple's company id
+  const APPLE_COMPANY_ID = 0x004C;   // iBeacons — INVISIBLE to Android Web Bluetooth
+  const ALTBEACON_COMPANY_ID = 0xFFFF;  // AltBeacon — what Android Web Bluetooth CAN read
 
   // Coarse browser bucket from the UA string — only used to pick the right
   // "why can't I scan" message, never for feature gating (that's canScan()).
@@ -61,6 +62,28 @@ const ble = (() => {
     };
   }
 
+  // Parse an AltBeacon payload from the manufacturerData DataView keyed by
+  // company id 0xFFFF. Layout after company id:
+  //   [0..1]   BE AC         (AltBeacon code)
+  //   [2..17]  beacon UUID (16) — we keep the same UUID/major/minor scheme as iBeacon
+  //   [18..19] major (uint16, big-endian)
+  //   [20..21] minor (uint16, big-endian)
+  //   [22]     reference RSSI (int8)
+  // Returns { uuid, major, minor, txPower } or null. This is the format Android
+  // Web Bluetooth actually surfaces (iBeacon's 0x4C is dropped by the platform).
+  function parseAltBeacon(dv) {
+    if (!dv || dv.byteLength < 23) return null;
+    if (dv.getUint8(0) !== 0xBE || dv.getUint8(1) !== 0xAC) return null;
+    let uuid = '';
+    for (let i = 2; i < 18; i++) uuid += dv.getUint8(i).toString(16).padStart(2, '0');
+    return {
+      uuid,
+      major: dv.getUint16(18, false),
+      minor: dv.getUint16(20, false),
+      txPower: dv.getInt8(22),
+    };
+  }
+
   // Start a scan. onBeacon({ uuid, major, minor, txPower, rssi }) fires for each
   // parseable iBeacon advertisement. Returns a stop() function.
   // MUST be called from a user gesture (click / touch). Throws on unsupported.
@@ -78,9 +101,11 @@ const ble = (() => {
         const companyIds = ev.manufacturerData ? [...ev.manufacturerData.keys()] : [];
         onRaw({ companyIds, rssi: ev.rssi, name: ev.device && ev.device.name });
       }
-      const dv = ev.manufacturerData && ev.manufacturerData.get(APPLE_COMPANY_ID);
-      const ib = parseIBeacon(dv);
-      if (ib) onBeacon({ ...ib, rssi: ev.rssi });
+      const m = ev.manufacturerData;
+      // AltBeacon (0xFFFF) is what Android Web Bluetooth surfaces; fall back to
+      // iBeacon (0x4C) for platforms that do deliver it.
+      const b = m && (parseAltBeacon(m.get(ALTBEACON_COMPANY_ID)) || parseIBeacon(m.get(APPLE_COMPANY_ID)));
+      if (b) onBeacon({ ...b, rssi: ev.rssi });
     };
     navigator.bluetooth.addEventListener('advertisementreceived', handler);
     return function stop() {
@@ -149,36 +174,6 @@ const ble = (() => {
     };
   }
 
-  // Build a requestLEScan manufacturerData filter matching ONE specific iBeacon
-  // (Apple company id + the exact 02 15 / UUID / major / minor prefix bytes).
-  function _iBeaconFilter(uuid, major, minor) {
-    const u = (uuid || '').replace(/-/g, '').toLowerCase();
-    const bytes = [0x02, 0x15];
-    for (let i = 0; i < 32; i += 2) bytes.push(parseInt(u.substr(i, 2), 16));
-    bytes.push((major >> 8) & 0xFF, major & 0xFF, (minor >> 8) & 0xFF, minor & 0xFF);
-    return { companyIdentifier: APPLE_COMPANY_ID, dataPrefix: new Uint8Array(bytes) };
-  }
-
-  // Scan filtered to a specific set of bindings [{uuid, major, minor}] so Chrome
-  // only reports YOUR defined beacons. onBeacon({uuid,major,minor,txPower,rssi})
-  // fires per matching advertisement. Returns stop(). Throws if no bindings.
-  async function startScanForBindings(bindings, onBeacon) {
-    if (!canScan()) throw Object.assign(new Error('scan-unavailable'), { kind: 'unsupported' });
-    if (!bindings || !bindings.length) throw new Error('no bindings to scan for');
-    const filters = bindings.map(b => ({ manufacturerData: [_iBeaconFilter(b.uuid, b.major, b.minor)] }));
-    const scan = await navigator.bluetooth.requestLEScan({ filters, keepRepeatedDevices: true });
-    const handler = (ev) => {
-      const dv = ev.manufacturerData && ev.manufacturerData.get(APPLE_COMPANY_ID);
-      const ib = parseIBeacon(dv);
-      if (ib) onBeacon({ ...ib, rssi: ev.rssi });
-    };
-    navigator.bluetooth.addEventListener('advertisementreceived', handler);
-    return function stop() {
-      try { scan.stop(); } catch (_) {}
-      navigator.bluetooth.removeEventListener('advertisementreceived', handler);
-    };
-  }
-
   // Human-readable explanation for a scan failure, for toasts / admin results.
   function explainError(e) {
     if (!e) return 'Bluetooth scan failed.';
@@ -196,5 +191,5 @@ const ble = (() => {
     return 'Bluetooth scan failed: ' + (msg || 'unknown error');
   }
 
-  return { support, canScan, parseIBeacon, startScan, startScanDump, startScanForBindings, scanFor, explainError };
+  return { support, canScan, parseIBeacon, parseAltBeacon, startScan, startScanDump, scanFor, explainError };
 })();

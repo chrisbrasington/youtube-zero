@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Start broadcasting an iBeacon (verbose). Edit the values below.
+# Start broadcasting an AltBeacon (verbose). Edit the values below.
+#
+# NOTE: this broadcasts ALTBEACON (company 0xFFFF), NOT Apple iBeacon. Android
+# Chrome/Edge Web Bluetooth silently drops iBeacon (0x4C) advertisements but
+# reads AltBeacon fine — proven by beacon-bruteforce.sh. Same UUID/Major/Minor
+# scheme, so your /admin bindings are unchanged.
 set -euo pipefail
 
 # ---- Settings ----------------------------------------------------------
@@ -14,6 +19,11 @@ ADAPTER="hci0"
 #   03 = ADV_NONCONN_IND  classic iBeacon, non-connectable. Native apps see it,
 #                         but Chrome Web Bluetooth often ignores it.
 ADV_TYPE="00"
+# Include a Flags AD (02 01 06) at the front of the packet?
+#   1 = standard iBeacon WITH flags. This is what native scanners reliably see.
+#   0 = omit flags. (Tested: this made the beacon invisible to the native
+#       scanner too, and did NOT help Chrome — so leave it at 1.)
+INCLUDE_FLAGS=1
 # ------------------------------------------------------------------------
 
 say() { printf '%s\n' "$*"; }
@@ -55,13 +65,25 @@ uuid_hex=$(echo "$UUID" | tr -d '-' | tr 'A-F' 'a-f' | sed 's/../& /g')
 major_hex=$(printf '%02X %02X' $(( (MAJOR >> 8) & 0xFF )) $(( MAJOR & 0xFF )))
 minor_hex=$(printf '%02X %02X' $(( (MINOR >> 8) & 0xFF )) $(( MINOR & 0xFF )))
 tx_hex=$(printf '%02X' $(( TXPOWER & 0xFF )))   # signed -> two's complement
-payload="02 01 06 1A FF 4C 00 02 15 ${uuid_hex}${major_hex} ${minor_hex} ${tx_hex} 00"
+
+# AltBeacon Manufacturer-Specific Data AD (company 0xFFFF):
+#   len(1B=27) FF  FF FF (company)  BE AC  <uuid16> <major2> <minor2> <refrssi1> <reserved1>
+mfr="1B FF FF FF BE AC ${uuid_hex}${major_hex} ${minor_hex} ${tx_hex} 00"
+if [ "$INCLUDE_FLAGS" = "1" ]; then
+  # 02 01 06 (flags) + 28-byte AltBeacon AD = 31 significant octets, no padding.
+  adlen="1F"; payload="02 01 06 ${mfr}"; flags_desc="with flags"
+else
+  # 28-byte AltBeacon AD only = 28 significant octets, pad 3 to reach 31.
+  adlen="1C"; payload="${mfr} 00 00 00"; flags_desc="no flags"
+fi
 if [ "$ADV_TYPE" = "00" ]; then adv_desc="ADV_IND (connectable)"; else adv_desc="ADV_NONCONN_IND"; fi
 say "  UUID    : ${UUID}"
 say "  Major   : ${MAJOR}    Minor: ${MINOR}    TxPower: ${TXPOWER} dBm"
 say "  Adv type: 0x${ADV_TYPE} (${adv_desc})"
-say "  Adv data: ${payload}"
-say "  A scanner should show mfr[0x4C=0215${uuid_hex// /}...] — the 0215 marks iBeacon."
+say "  Flags   : ${flags_desc}"
+say "  Format  : AltBeacon (company 0xFFFF) — readable by Android Web Bluetooth"
+say "  Adv data: ${adlen} ${payload}"
+say "  A scanner should show mfr[0xFFFF=beac${uuid_hex// /}...] — beac marks AltBeacon."
 
 say
 say "== Bring up adapter =="
@@ -71,7 +93,7 @@ say "  ok"
 
 say
 say "== Program advertisement =="
-run "set advertising data (0x0008)"        cmd 0x08 0x0008 1E $payload
+run "set advertising data (0x0008)"        cmd 0x08 0x0008 $adlen $payload
 run "set advertising params (0x0006)"      cmd 0x08 0x0006 A0 00 A0 00 "$ADV_TYPE" 00 00 00 00 00 00 00 00 07 00
 run "enable advertising (0x000a)"          cmd 0x08 0x000a 01
 

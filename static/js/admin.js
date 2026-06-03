@@ -83,19 +83,61 @@ async function adminScanMine() {
   }
   // key "uuid:major:minor" → screen name, for reporting hits.
   const nameByKey = new Map(adminBeacons.map(b => [`${b.uuid}:${b.major}:${b.minor}`, b.screen_name]));
-  adminDiag(`Scanning for your ${adminBeacons.length} defined beacon(s) for 6s…`);
+  adminDiag(`Scanning 6s for your ${adminBeacons.length} defined beacon(s)…`);
   adminBeacons.forEach(b => adminDiag(`  • "${b.screen_name}"  ${b.uuid}:${b.major}:${b.minor}`));
-  const best = new Map();
+  let beacons;
+  try {
+    beacons = await ble.scanFor(6000);   // acceptAll + AltBeacon parse (proven path)
+  } catch (e) {
+    adminDiag('Scan error: ' + ble.explainError(e));
+    return;
+  }
+  adminDiag('— done.');
+  const hits = beacons
+    .filter(b => nameByKey.has(`${b.uuid}:${b.major}:${b.minor}`))
+    .sort((a, z) => z.rssi - a.rssi);
+  if (!hits.length) {
+    adminDiag(`✗ None of YOUR beacons matched. (Saw ${beacons.length} beacon(s) total.)`);
+    if (beacons.length) beacons.forEach(b => adminDiag(`  saw ${b.uuid}:${b.major}:${b.minor} rssi=${b.rssi}`));
+    return;
+  }
+  hits.forEach(h => adminDiag(`✓ "${nameByKey.get(`${h.uuid}:${h.major}:${h.minor}`)}"  ${h.uuid}:${h.major}:${h.minor}  rssi=${h.rssi}`));
+  adminDiag('These matched your bindings — Test/flick flings to the strongest.');
+}
+
+// Hunt for YOUR UUID(s) in ANY advertisement format — manufacturer data,
+// service data, or a 128-bit service UUID. Reports every advertisement that
+// carries the UUID, so we learn which broadcast format Chrome can actually read.
+// Pair with beacon-bruteforce.sh on the laptop.
+async function adminHunt() {
+  adminDiagClear();
+  if (!ble.canScan()) {
+    adminDiag('Cannot scan in this browser. ' + ble.explainError({ kind: 'unsupported' }));
+    return;
+  }
+  // Targets: every bound UUID (no-dash + dashed), or fall back to the test UUID.
+  const src = adminBeacons.length ? adminBeacons : [{ uuid: 'e20a39f473f54bc4a12f17d1ad07a961' }];
+  const targets = new Set();
+  src.forEach(b => {
+    const nod = (b.uuid || '').replace(/-/g, '').toLowerCase();
+    if (nod.length === 32) {
+      targets.add(nod);
+      targets.add(nod.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'));
+      // 128-bit service UUIDs come through byte-reversed (little-endian):
+      const rev = nod.match(/../g).reverse().join('');
+      targets.add(rev);
+    }
+  });
+  const list = [...targets];
+  adminDiag('Hunting 30s for your UUID in ANY format (mfr data / service data / service UUID).');
+  adminDiag('▶ Start beacon-bruteforce.sh on the laptop NOW.');
+  const hits = new Map();
   let stop = null;
   try {
-    stop = await ble.startScanForBindings(
-      adminBeacons.map(b => ({ uuid: b.uuid, major: b.major, minor: b.minor })),
-      (hit) => {
-        const k = `${hit.uuid}:${hit.major}:${hit.minor}`;
-        const prev = best.get(k);
-        if (!prev || hit.rssi > prev.rssi) best.set(k, hit);
-      }
-    );
+    stop = await ble.startScanDump((line) => {
+      const L = line.toLowerCase();
+      if (list.some(t => L.includes(t))) hits.set(line, (hits.get(line) || 0) + 1);
+    });
   } catch (e) {
     adminDiag('Scan error: ' + ble.explainError(e));
     return;
@@ -103,15 +145,13 @@ async function adminScanMine() {
   setTimeout(() => {
     if (stop) stop();
     adminDiag('— done.');
-    if (!best.size) {
-      adminDiag('✗ None of YOUR beacons are in range / on air. (Broadcasting? Right UUID/major/minor? Not backgrounded?)');
+    if (!hits.size) {
+      adminDiag('✗ Nothing carrying your UUID came through, in ANY format. Chrome on this device cannot see it however it is broadcast.');
       return;
     }
-    [...best.entries()].sort((a, z) => z[1].rssi - a[1].rssi).forEach(([k, hit]) => {
-      adminDiag(`✓ "${nameByKey.get(k) || '?'}"  ${k}  rssi=${hit.rssi}`);
-    });
-    adminDiag('These matched your bindings — Test/flick will fling to the strongest.');
-  }, 6000);
+    [...hits.entries()].sort((a, z) => z[1] - a[1]).forEach(([line, n]) => adminDiag(`✓ (${n}×) ${line}`));
+    adminDiag('↑ THESE formats worked. Note whether the UUID showed in mfr[…], svc[…], or uuids[…] — that is the broadcast format to use.');
+  }, 30000);
 }
 
 // Dump every UNIQUE BLE advertisement seen in a 6s window (deduped by payload,
@@ -169,6 +209,7 @@ function adminShellHtml() {
         <button type="button" class="btn-ghost" id="btn-admin-dump">🔍 Dump all BLE signals (6s)</button>
         <button type="button" class="btn-ghost" id="btn-admin-dump-apple">🍏 iBeacon-only scan (6s, filtered)</button>
         <button type="button" class="btn-ghost" id="btn-admin-scan-mine">🎯 Scan my beacons (6s)</button>
+        <button type="button" class="btn-ghost" id="btn-admin-hunt">🔦 Hunt my UUID — any format (30s)</button>
         <div class="admin-test-hint">Test runs the fling path. Dump lists every unique advertisement. The 🍏 scan filters on Apple <code>0x4C</code> — use it if Dump shows no <code>mfr[0x4C=0215…]</code> but a native app sees the beacon.</div>
         <div class="admin-diag-bar hidden" id="admin-diag-bar">
           <button type="button" class="btn-ghost admin-mini" id="btn-admin-copy">📋 Copy log</button>
@@ -424,6 +465,7 @@ function adminWire() {
   $('btn-admin-dump').addEventListener('click', () => adminDumpBle(false));
   $('btn-admin-dump-apple').addEventListener('click', () => adminDumpBle(true));
   $('btn-admin-scan-mine').addEventListener('click', adminScanMine);
+  $('btn-admin-hunt').addEventListener('click', adminHunt);
   $('btn-admin-copy').addEventListener('click', adminCopyLog);
 
   $('btn-admin-screens-refresh').addEventListener('click', adminLoadScreens);
