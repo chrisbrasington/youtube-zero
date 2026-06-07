@@ -1126,17 +1126,18 @@ async function castOrWatchQueue() {
 }
 
 
-async function castOrWatchFolder(folderId) {
+async function castOrWatchFolder(folderId, reverse = false) {
   const folder = findFolder(folderId);
   if (!folder) return;
   const vids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
+  if (reverse) vids.reverse();   // shift-click → oldest first
   if (!vids.length) { status('Folder has no videos to watch', 'err'); setTimeout(() => status(''), 2000); return; }
-  if (!castAvailable()) { watchStartFolder(folderId); return; }
+  if (!castAvailable()) { watchStartFolder(folderId, reverse); return; }
   const dest = await castShowPick(`Play 📁 ${folder.name}`, [
     { label: '▶ Play Here', value: 'here' },
     { label: '📺 Play on Screen', value: 'screen' },
   ]);
-  if (dest === 'here') { watchStartFolder(folderId); return; }
+  if (dest === 'here') { watchStartFolder(folderId, reverse); return; }
   if (dest === 'screen') {
     const sid = await castPickScreen();
     if (!sid) return;

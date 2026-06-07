@@ -46,7 +46,8 @@ document.addEventListener('click', e => {
   if (wfBtn) {
     e.stopPropagation();
     const fid = parseInt(wfBtn.dataset.folderId, 10);
-    castIsTv() ? watchStartFolder(fid) : castOrWatchFolder(fid);   // /tv always plays here
+    const reverse = e.shiftKey;   // shift-click → oldest first
+    castIsTv() ? watchStartFolder(fid, reverse) : castOrWatchFolder(fid, reverse);   // /tv always plays here
     return;
   }
 
