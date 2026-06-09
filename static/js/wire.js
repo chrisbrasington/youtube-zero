@@ -45,18 +45,8 @@ $('btn-sort').addEventListener('click', () => {
   state.sortMode = state.sortMode === 'manual' ? 'newest' : 'manual';
   render();
 });
-$('btn-queue').addEventListener('click', () => {
-  state.queueOpen = !state.queueOpen;
-  localStorage.setItem('queueOpen', state.queueOpen ? '1' : '0');
-  $('queue-pane').classList.toggle('hidden', !state.queueOpen);
-  renderQueueBadge();
-});
-$('btn-close-queue').addEventListener('click', () => {
-  state.queueOpen = false;
-  localStorage.setItem('queueOpen', '0');
-  $('queue-pane').classList.add('hidden');
-  renderQueueBadge();
-});
+$('btn-queue').addEventListener('click', toggleQueuePane);
+$('btn-close-queue').addEventListener('click', closeQueuePane);
 $('btn-settings').addEventListener('click', () => {
   $('settings-panel').classList.toggle('hidden');
 });

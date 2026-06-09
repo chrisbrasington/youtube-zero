@@ -355,6 +355,7 @@ function watchEnter(config) {
   };
   document.body.classList.add('route-watch');
   $('watch-layout').classList.remove('hidden');
+  reconcileBackGuard();   // arm the mobile back-gesture guard for in-page overlays
 
   // On /tv every play starts fullscreen ("cover"), so the TV-remote overlay nav
   // (seek / reveal queue) applies just like a cast — see castKey() in cast.js.
@@ -412,6 +413,7 @@ function watchExit() {
   } else {
     location.href = '/';
   }
+  reconcileBackGuard();   // overlay gone — drop or hand the guard to the queue pane
   // Apply any hourly content refresh that arrived while we were bingeing on /tv.
   if (typeof tvFlushPendingRefresh === 'function') tvFlushPendingRefresh();
 }

@@ -93,22 +93,14 @@ document.addEventListener('keydown', e => {
       return;
     }
     const pick = combined[Math.floor(Math.random() * combined.length)];
-    if (pick.source === 'queue' && !state.queueOpen) {
-      state.queueOpen = true;
-      localStorage.setItem('queueOpen', '1');
-      $('queue-pane').classList.remove('hidden');
-      renderQueueBadge();
-    }
+    if (pick.source === 'queue' && !state.queueOpen) openQueuePane();
     openPlayer(pick.video_id, pick.title, pick.queue_id || null);
     return;
   }
 
   // Global: Escape closes queue when no player open
   if (!mod && !uiPlayerActive() && e.key === 'Escape' && state.queueOpen) {
-    state.queueOpen = false;
-    localStorage.setItem('queueOpen', '0');
-    $('queue-pane').classList.add('hidden');
-    renderQueueBadge();
+    closeQueuePane();
     return;
   }
 
@@ -120,12 +112,7 @@ document.addEventListener('keydown', e => {
       setTimeout(() => status(''), 2000);
       return;
     }
-    if (!state.queueOpen) {
-      state.queueOpen = true;
-      localStorage.setItem('queueOpen', '1');
-      $('queue-pane').classList.remove('hidden');
-      renderQueueBadge();
-    }
+    if (!state.queueOpen) openQueuePane();
     const first = shallow[0];
     openPlayer(first.video_id, first.title, first.video_id);
     return;
@@ -139,10 +126,7 @@ document.addEventListener('keydown', e => {
 
   // Global: q → toggle queue visibility
   if (!mod && !uiPlayerActive() && e.key === 'q') {
-    state.queueOpen = !state.queueOpen;
-    localStorage.setItem('queueOpen', state.queueOpen ? '1' : '0');
-    $('queue-pane').classList.toggle('hidden', !state.queueOpen);
-    renderQueueBadge();
+    toggleQueuePane();
     return;
   }
 
@@ -160,12 +144,7 @@ document.addEventListener('keydown', e => {
       setTimeout(() => status(''), 2500);
       return;
     }
-    if (!state.queueOpen) {
-      state.queueOpen = true;
-      localStorage.setItem('queueOpen', '1');
-      $('queue-pane').classList.remove('hidden');
-      renderQueueBadge();
-    }
+    if (!state.queueOpen) openQueuePane();
     const item = shallow[n - 1];
     openPlayer(item.video_id, item.title, item.video_id);
     return;
