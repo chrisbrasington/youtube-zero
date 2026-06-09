@@ -400,6 +400,7 @@ function castBack() {
   if (castRemoteOpen()) { castCloseRemote(); return true; }   // close the remote panel
   if (castScrub.active) { castScrubCancel(); return true; }   // cancel a pending seek
   if (state.watch?.active) { watchExit(); return true; }
+  if (castIsTv() && state.queueOpen) { closeQueuePane(); return true; }  // /tv browse: BACK closes the queue, not the app
   return false;
 }
 
