@@ -314,7 +314,10 @@ function watchBindDom() {
     if (e.key === 'N') { watchAdvance({ fromEnd: true }); return; }
     if (e.key === 'w') { watchExit(); return; }
     if (e.key === 't' || e.key === 'T') {
-      $('watch-layout').classList.toggle('theater');
+      const on = $('watch-layout').classList.toggle('theater');
+      // Remember theater for the rest of the browser session so it survives
+      // the queue closing and a fresh video opening (re-applied in watchEnter).
+      sessionStorage.setItem('theaterPref', on ? '1' : '0');
       return;
     }
     if (!watchPlayer) return;
@@ -355,6 +358,9 @@ function watchEnter(config) {
   };
   document.body.classList.add('route-watch');
   $('watch-layout').classList.remove('hidden');
+  // Restore session theater preference — watchExit() always strips the class,
+  // so re-apply it here when a new video/queue opens.
+  $('watch-layout').classList.toggle('theater', sessionStorage.getItem('theaterPref') === '1');
   reconcileBackGuard();   // arm the mobile back-gesture guard for in-page overlays
 
   // On /tv every play starts fullscreen ("cover"), so the TV-remote overlay nav
