@@ -402,7 +402,21 @@ function watchExit() {
   $('watch-layout').classList.add('hidden');
   $('watch-layout').classList.remove('theater');
   $('watch-unmute').classList.add('hidden');
+  // Tear the YT player fully down and swap in a fresh blank iframe. Reusing a
+  // player after stopVideo() leaves the iframe off youtube.com, so the next
+  // loadVideoById postMessage hits our own origin and silently fails to play.
+  // A clean iframe forces watchPlay's create-from-scratch path on re-entry.
+  const oldFrame = $('watch-frame');
+  const freshFrame = oldFrame ? oldFrame.cloneNode(false) : null;
+  if (freshFrame) freshFrame.removeAttribute('src');
+  try { watchPlayer?.destroy?.(); } catch {}
   try { watchPlayer?.stopVideo?.(); } catch {}
+  watchPlayer = null;
+  if (freshFrame) {
+    const cur = $('watch-frame');                  // destroy() usually removes it
+    if (cur) cur.replaceWith(freshFrame);
+    else $('watch-frame-wrap')?.insertBefore(freshFrame, $('watch-frame-wrap').firstChild);
+  }
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch {}
   }
