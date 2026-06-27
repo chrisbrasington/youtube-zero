@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(0xFF000000);
         setContentView(root);
 
-        web = new WebView(this);
+        web = new MediaWebView(this);   // keeps audio alive when backgrounded/locked
         web.setBackgroundColor(0xFF000000);
         root.addView(web, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -129,12 +129,13 @@ public class MainActivity extends Activity {
     // bridge). Methods run on a binder thread; starting a service is thread-safe.
     private class MediaBridge {
         @JavascriptInterface
-        public void report(boolean playing, String title, String artist) {
+        public void report(boolean playing, String title, String artist, String videoId) {
             Intent i = new Intent(MainActivity.this, PlaybackService.class)
                     .setAction(PlaybackService.ACTION_UPDATE)
                     .putExtra(PlaybackService.EXTRA_PLAYING, playing)
                     .putExtra(PlaybackService.EXTRA_TITLE, title == null ? "" : title)
-                    .putExtra(PlaybackService.EXTRA_ARTIST, artist == null ? "" : artist);
+                    .putExtra(PlaybackService.EXTRA_ARTIST, artist == null ? "" : artist)
+                    .putExtra(PlaybackService.EXTRA_VIDEO_ID, videoId == null ? "" : videoId);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
             else startService(i);
         }

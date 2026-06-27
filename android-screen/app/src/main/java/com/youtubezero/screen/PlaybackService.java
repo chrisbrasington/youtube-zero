@@ -7,11 +7,19 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
  * Foreground service that makes the WebView behave like a real media app:
@@ -32,9 +40,10 @@ public class PlaybackService extends Service {
     static final String ACTION_TOGGLE = "com.youtubezero.screen.TOGGLE";
     static final String ACTION_NEXT   = "com.youtubezero.screen.NEXT";
     static final String ACTION_PREV   = "com.youtubezero.screen.PREV";
-    static final String EXTRA_PLAYING = "playing";
-    static final String EXTRA_TITLE   = "title";
-    static final String EXTRA_ARTIST  = "artist";
+    static final String EXTRA_PLAYING  = "playing";
+    static final String EXTRA_TITLE    = "title";
+    static final String EXTRA_ARTIST   = "artist";
+    static final String EXTRA_VIDEO_ID = "videoId";
 
     private static final String CHANNEL_ID = "playback";
     private static final int NOTIF_ID = 1001;
@@ -43,6 +52,9 @@ public class PlaybackService extends Service {
     private boolean playing = false;
     private String title = "";
     private String artist = "";
+    private String videoId = "";
+    private Bitmap art;                                       // current thumbnail, or null
+    private final Handler main = new Handler(Looper.getMainLooper());
 
     @Override
     public void onCreate() {
@@ -81,25 +93,69 @@ public class PlaybackService extends Service {
             playing = intent.getBooleanExtra(EXTRA_PLAYING, playing);
             String t = intent.getStringExtra(EXTRA_TITLE);
             String a = intent.getStringExtra(EXTRA_ARTIST);
+            String v = intent.getStringExtra(EXTRA_VIDEO_ID);
             if (t != null) title = t;
             if (a != null) artist = a;
+            if (v != null && !v.equals(videoId)) {
+                videoId = v;
+                art = null;          // drop stale thumbnail; fetch the new one
+                fetchArt(v);
+            }
         }
-        updateSession();
+        refresh();
+        return START_STICKY;
+    }
 
+    /** Push current state to the MediaSession and (re)post the foreground notification. */
+    private void refresh() {
+        updateSession();
         Notification n = buildNotification();
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         } else {
             startForeground(NOTIF_ID, n);
         }
-        return START_STICKY;
+    }
+
+    /** Download the YouTube thumbnail off the main thread, then refresh if still current. */
+    private void fetchArt(final String vid) {
+        if (vid.isEmpty()) return;
+        new Thread(() -> {
+            Bitmap bmp = null;
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(
+                        "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg").openConnection();
+                c.setConnectTimeout(5000);
+                c.setReadTimeout(5000);
+                InputStream in = c.getInputStream();
+                bmp = BitmapFactory.decodeStream(in);
+                in.close();
+            } catch (Exception e) {
+                return;
+            } finally {
+                if (c != null) c.disconnect();
+            }
+            final Bitmap result = bmp;
+            if (result == null) return;
+            main.post(() -> {
+                if (vid.equals(videoId)) {   // ignore if the video moved on while loading
+                    art = result;
+                    refresh();
+                }
+            });
+        }).start();
     }
 
     private void updateSession() {
-        session.setMetadata(new MediaMetadata.Builder()
+        MediaMetadata.Builder md = new MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
-                .build());
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, artist);
+        if (art != null) {
+            md.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art);
+            md.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, art);
+        }
+        session.setMetadata(md.build());
         int state = playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
         session.setPlaybackState(new PlaybackState.Builder()
                 .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
@@ -117,6 +173,7 @@ public class PlaybackService extends Service {
         b.setContentTitle(title.isEmpty() ? "YT Zero" : title);
         b.setContentText(artist);
         b.setSmallIcon(R.mipmap.ic_launcher);
+        if (art != null) b.setLargeIcon(art);
         b.setVisibility(Notification.VISIBILITY_PUBLIC);
         b.setOngoing(playing);
         b.setContentIntent(launchIntent());

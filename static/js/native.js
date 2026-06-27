@@ -5,9 +5,10 @@
  * MainActivity injects `window.AndroidMedia`. In a normal browser (Chrome,
  * Brave) this whole module is a no-op: the browser already gives us background
  * playback and the OS media notification for free. A bare WebView does not, so
- * here we poll the active YouTube player and report its state to native, which
- * runs a foreground service + MediaSession so audio keeps playing when the
- * phone is locked/minimized and shows up in the system media controls.
+ * here we poll the active YouTube player and report its state (playing, title,
+ * author, video id) to native, which runs a foreground service + MediaSession so
+ * audio keeps playing when the phone is locked/minimized and shows up in the
+ * system media controls (with the video thumbnail as artwork).
  *
  * Classic script (shared scope) — references ytPlayer (keys.js) and
  * watchPlayer / watchAdvance / watchPrev (watch.js) by name. Loaded after them.
@@ -44,22 +45,22 @@
   let last = '';
   setInterval(function () {
     const p = activePlayer();
-    let st = -1, title = '', artist = '';
+    let st = -1, title = '', artist = '', videoId = '';
     if (p) {
       try {
         st = p.getPlayerState();
         const d = p.getVideoData ? p.getVideoData() : null;
-        if (d) { title = d.title || ''; artist = d.author || ''; }
+        if (d) { title = d.title || ''; artist = d.author || ''; videoId = d.video_id || ''; }
       } catch (e) {}
     }
     // YT states: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
     const playing = (st === 1 || st === 3);
     const active  = (st === 1 || st === 2 || st === 3);
-    const sig = st + '|' + title;
+    const sig = st + '|' + title + '|' + videoId;
     if (sig === last) return;
     last = sig;
     try {
-      if (active) AndroidMedia.report(playing, title, artist);
+      if (active) AndroidMedia.report(playing, title, artist, videoId);
       else        AndroidMedia.stopped();
     } catch (e) {}
   }, 1000);
