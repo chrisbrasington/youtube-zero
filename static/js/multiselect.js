@@ -166,6 +166,15 @@ function msCancelTouch(e) {
 document.addEventListener('pointerup', msCancelTouch);
 document.addEventListener('pointercancel', msCancelTouch);
 
+// Kill the browser's own long-press (context menu / "open image in new tab")
+// on cards so it can't hijack or cancel our long-press. Touch only.
+document.addEventListener('contextmenu', e => {
+  if (e.target.closest('.video-tile, .video-row')) e.preventDefault();
+});
+document.addEventListener('dragstart', e => {
+  if (e.target.closest('.video-tile, .video-row')) e.preventDefault();
+});
+
 
 // ── Intercept card taps while selecting (capture phase, before events.js) ─────
 
