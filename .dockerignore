@@ -5,3 +5,7 @@ __pycache__/
 *.db
 .git/
 .gitignore
+signal-data/
+signal-data
+adb-data/
+data/

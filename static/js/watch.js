@@ -17,6 +17,30 @@
 let watchPlayer = null;
 let watchDomBound = false;
 
+// Background-playback state. YouTube's embed honors the Page Visibility API and
+// self-pauses when the tab/app is backgrounded — we can't edit YT's iframe code
+// cross-origin. But Firefox Android permits background playback for a minimized
+// app, so when YT auto-pauses (and the user didn't ask for it) we just re-issue
+// playVideo(). watchUserPaused tells an intentional pause from a background one.
+let watchUserPaused = false;
+let watchBgResumeTries = 0;
+const WATCH_BG_RESUME_MAX = 6;   // cap so an unwinnable pause/play fight can't loop forever
+let watchVisBound = false;
+
+function watchResume() {
+  watchUserPaused = false;
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.playbackState = 'playing'; } catch {}
+  }
+  // A lone play postMessage to a backgrounded iframe is often dropped; nudge a few times.
+  let n = 0;
+  const kick = () => {
+    try { watchPlayer?.playVideo(); } catch {}
+    if (++n < 3) setTimeout(kick, 300);
+  };
+  kick();
+}
+
 
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
@@ -122,9 +146,17 @@ function watchSetupYT() {
       },
       onStateChange: (e) => {
         if (e.data === YT.PlayerState.ENDED) watchAdvance({ fromEnd: true });
-        if ('mediaSession' in navigator) {
-          if (e.data === YT.PlayerState.PLAYING) navigator.mediaSession.playbackState = 'playing';
-          else if (e.data === YT.PlayerState.PAUSED) navigator.mediaSession.playbackState = 'paused';
+        if (e.data === YT.PlayerState.PLAYING) {
+          watchBgResumeTries = 0;   // back to playing — clear the resume budget
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+        } else if (e.data === YT.PlayerState.PAUSED) {
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+          // Paused while backgrounded and the user didn't ask for it = YT's
+          // visibility auto-pause. Firefox allows bg playback, so resume.
+          if (!watchUserPaused && document.hidden && watchBgResumeTries < WATCH_BG_RESUME_MAX) {
+            watchBgResumeTries++;
+            setTimeout(() => { try { watchPlayer?.playVideo(); } catch {} }, 250);
+          }
         }
       },
     },
@@ -162,8 +194,8 @@ function watchBindMediaSession() {
   watchMsBound = true;
   const ms = navigator.mediaSession;
   const safe = (name, fn) => { try { ms.setActionHandler(name, fn); } catch {} };
-  safe('play',          () => { try { watchPlayer?.playVideo();  } catch {} });
-  safe('pause',         () => { try { watchPlayer?.pauseVideo(); } catch {} });
+  safe('play',          () => { watchBgResumeTries = 0; watchResume(); });
+  safe('pause',         () => { watchUserPaused = true; try { watchPlayer?.pauseVideo(); } catch {} });
   safe('nexttrack',     () => watchAdvance({ fromEnd: true }));
   safe('previoustrack', () => watchPrev());
   safe('seekbackward',  (d) => { try { watchPlayer?.seekTo((watchPlayer.getCurrentTime?.() || 0) - (d?.seekOffset || 10), true); } catch {} });
@@ -195,7 +227,26 @@ function watchArmUnmute() {
 }
 
 
+function watchBindVisibility() {
+  if (watchVisBound) return;
+  watchVisBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (!state.watch?.active || !watchPlayer) return;
+    if (document.hidden) return;            // returning to foreground
+    watchBgResumeTries = 0;                 // refill the resume budget for next bg
+    // YT may have left us paused on the way out — re-assert play unless the user paused.
+    if (watchUserPaused) return;
+    try {
+      if (watchPlayer.getPlayerState?.() === YT.PlayerState.PAUSED) watchPlayer.playVideo();
+    } catch {}
+  });
+}
+
+
 function watchPlay(videoId, startSeconds = 0) {
+  watchUserPaused = false;        // a fresh play is always intent-to-play
+  watchBgResumeTries = 0;
+  watchBindVisibility();
   state.watch.currentVideoId = videoId;
   const item = (state.watch.list || []).find(v => v.video_id === videoId);
   // Record "started watching" so the video lands in history even if never finished.
@@ -331,7 +382,8 @@ function watchBindDom() {
       }
       if (e.key === ' ' || e.key === 'k') {
         const st = watchPlayer.getPlayerState?.();
-        if (st === 1) watchPlayer.pauseVideo(); else watchPlayer.playVideo();
+        if (st === 1) { watchUserPaused = true; watchPlayer.pauseVideo(); }
+        else { watchResume(); }
         e.preventDefault();
         return;
       }
