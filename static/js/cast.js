@@ -195,7 +195,7 @@ function castOnPlayCommand(payload) {
   }));
   if (!list.length) return;
   $('cast-idle').classList.add('hidden');
-  document.body.classList.add('cast-cover');   // start filling the screen
+  if (!castIsPhone()) document.body.classList.add('cast-cover');   // start filling the screen (not on /phone)
   castNavReset();                              // fresh play → no leftover focus cursor
   watchEnter({
     mode: 'cast',
@@ -326,6 +326,12 @@ function castIsReceiver() {
 // /tv is the cast receiver fused with the browse feed (see tv.js).
 function castIsTv() {
   return document.body.classList.contains('route-tv');
+}
+
+// /phone is the handset flavor of /tv: it never auto-jumps to fullscreen
+// "cover" on play, so the video sits above the queue instead.
+function castIsPhone() {
+  return document.body.classList.contains('route-phone');
 }
 
 // Whether the player overlay D-pad nav should drive playback. True for a pure

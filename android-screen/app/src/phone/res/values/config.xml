@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- phone flavor → /tv on a handheld. Unlike tv/watch it is portrait-capable and
-     runs in a normal (non-fullscreen) window; see src/phone/AndroidManifest.xml for
-     the orientation/theme overrides and immersive=false below to keep the status bar.
+<!-- phone flavor → /phone on a handheld: the /tv browse+receiver UI, but playback
+     stays in the video+queue layout (no auto-fullscreen). Unlike tv/watch it is
+     portrait-capable and runs in a normal (non-fullscreen) window; see
+     src/phone/AndroidManifest.xml for the orientation/theme overrides and
+     immersive=false below to keep the status bar.
      Output: dist/yt-zero-screen-phone.apk -->
 <resources>
-    <string name="server_url" translatable="false">https://youtube.home.chrisincode.com/</string>
+    <string name="server_url" translatable="false">https://youtube.home.chrisincode.com/phone</string>
     <!-- Phone is its own screen; overrides the shared "Living Room TV" name. -->
-    <string name="screen_name" translatable="false">cb-pixel</string>
+    <string name="screen_name" translatable="false">cb-pixel-app</string>
     <bool name="immersive">false</bool>
 </resources>

@@ -26,8 +26,12 @@
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
-async function tvEnter() {
+async function tvEnter(variant) {
   document.body.classList.add('route-tv');
+  // The phone flavor (/phone) is /tv on a handset: same locked-down browse +
+  // receiver, but playback stays in the video+queue layout instead of jumping
+  // to fullscreen "cover" (see watchEnter / castOnPlayCommand).
+  if (variant === 'phone') document.body.classList.add('route-phone');
 
   // Act as a screen, exactly like the /watch receiver does.
   castScreenId = castGetScreenId();

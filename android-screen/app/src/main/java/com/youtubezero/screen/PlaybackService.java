@@ -16,6 +16,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.util.Log;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -55,10 +57,16 @@ public class PlaybackService extends Service {
     private String videoId = "";
     private Bitmap art;                                       // current thumbnail, or null
     private final Handler main = new Handler(Looper.getMainLooper());
+    private PowerManager.WakeLock wakeLock;                   // keeps CPU alive for decode
 
     @Override
     public void onCreate() {
         super.onCreate();
+        PowerManager pm = getSystemService(PowerManager.class);
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ytzero:playback");
+            wakeLock.setReferenceCounted(false);
+        }
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (Build.VERSION.SDK_INT >= 26 && nm != null
                 && nm.getNotificationChannel(CHANNEL_ID) == null) {
@@ -82,6 +90,7 @@ public class PlaybackService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
+        Log.i(MediaWebView.TAG, "PlaybackService onStartCommand action=" + action);
 
         if (ACTION_STOP.equals(action)) { stopPlayback(); return START_NOT_STICKY; }
         if (ACTION_TOGGLE.equals(action)) { MainActivity.evalJs("nativeTogglePlay()"); return START_STICKY; }
@@ -108,6 +117,10 @@ public class PlaybackService extends Service {
 
     /** Push current state to the MediaSession and (re)post the foreground notification. */
     private void refresh() {
+        if (wakeLock != null) {
+            if (playing && !wakeLock.isHeld()) wakeLock.acquire();
+            else if (!playing && wakeLock.isHeld()) wakeLock.release();
+        }
         updateSession();
         Notification n = buildNotification();
         if (Build.VERSION.SDK_INT >= 29) {
@@ -207,6 +220,7 @@ public class PlaybackService extends Service {
     }
 
     private void stopPlayback() {
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         if (Build.VERSION.SDK_INT >= 24) stopForeground(Service.STOP_FOREGROUND_REMOVE);
         else stopForeground(true);
         stopSelf();
@@ -217,6 +231,7 @@ public class PlaybackService extends Service {
 
     @Override
     public void onDestroy() {
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         if (session != null) {
             session.setActive(false);
             session.release();

@@ -41,10 +41,21 @@ public class MainActivity extends Activity {
 
     static void evalJs(final String js) {
         MainActivity a = sInstance != null ? sInstance.get() : null;
+        android.util.Log.i(MediaWebView.TAG, "evalJs hasInstance=" + (a != null)
+                + " hasWeb=" + (a != null && a.web != null) + " js=" + js);
         if (a != null && a.web != null) {
             a.runOnUiThread(() -> { if (a.web != null) a.web.evaluateJavascript(js, null); });
         }
     }
+
+    // Force document.hidden=false / visibilityState='visible' and swallow
+    // visibilitychange before page scripts can react to a background event.
+    private static final String VISIBILITY_SPOOF =
+            "(function(){try{"
+          + "Object.defineProperty(document,'hidden',{configurable:true,get:function(){return false;}});"
+          + "Object.defineProperty(document,'visibilityState',{configurable:true,get:function(){return 'visible';}});"
+          + "document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);"
+          + "}catch(e){}})();";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -86,6 +97,14 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new MediaBridge(), "AndroidMedia");
 
         web.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                // Tell the top page it's always visible so any Page-Visibility-based
+                // auto-pause never fires. (The cross-origin YouTube iframe can't be
+                // reached this way — the MediaWebView visibility overrides cover that.)
+                view.evaluateJavascript(VISIBILITY_SPOOF, null);
+            }
+
             @Override
             public void onReceivedError(WebView view, int errorCode,
                                         String description, String failingUrl) {

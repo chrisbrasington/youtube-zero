@@ -24,4 +24,4 @@ cp app/build/outputs/apk/phone/debug/app-phone-debug.apk dist/yt-zero-screen-pho
 echo "==> Done:"
 echo "    dist/yt-zero-screen.apk             (/tv)"
 echo "    dist/yt-zero-screen-watch-only.apk  (/watch)"
-echo "    dist/yt-zero-screen-phone.apk       (/, phone: portrait + non-fullscreen)"
+echo "    dist/yt-zero-screen-phone.apk       (/phone: portrait + non-fullscreen)"

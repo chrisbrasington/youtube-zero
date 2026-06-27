@@ -21,6 +21,7 @@ let watchDomBound = false;
 function watchRouteFor(path) {
   const p = path.replace(/\/+$/, '') || '/';
   if (p === '/tv')           return { mode: 'tv' };             // browse feed + cast receiver
+  if (p === '/phone')        return { mode: 'phone' };          // /tv for a handset: no auto-fullscreen, queue-below-video
   if (p === '/watch')        return { mode: 'cast-receiver' };  // idle screen, waits for casts
   if (p === '/watch/queue')  return { mode: 'queue' };          // local binge of the queue
   if (p === '/watch/test')   return { mode: 'queue-test' };
@@ -365,7 +366,9 @@ function watchEnter(config) {
 
   // On /tv every play starts fullscreen ("cover"), so the TV-remote overlay nav
   // (seek / reveal queue) applies just like a cast — see castKey() in cast.js.
-  if (castIsTv()) {
+  // /phone is the exception: it stays in the video+queue layout (queue below the
+  // video on a narrow screen) instead of covering.
+  if (castIsTv() && !castIsPhone()) {
     document.body.classList.add('cast-cover');
     watchRequestFullscreen();
   }
