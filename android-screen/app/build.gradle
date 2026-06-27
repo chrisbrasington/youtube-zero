@@ -14,15 +14,18 @@ android {
         versionName '1.0'
     }
 
-    // Two flavors that differ ONLY in which page the WebView opens (server_url,
-    // set per-flavor in src/<flavor>/res/values/config.xml). Same applicationId,
-    // so only one can be installed at a time — that's intended.
-    //   tv    → /tv    (browse + play + receiver)  → dist/yt-zero-screen.apk
-    //   watch → /watch (idle cast receiver only)   → dist/yt-zero-screen-watch-only.apk
+    // Flavors that differ in which page the WebView opens (server_url, set per-flavor
+    // in src/<flavor>/res/values/config.xml). Same applicationId, so only one can be
+    // installed at a time — that's intended.
+    //   tv    → /tv    (browse + play + receiver)        → dist/yt-zero-screen.apk
+    //   watch → /watch (idle cast receiver only)         → dist/yt-zero-screen-watch-only.apk
+    //   phone → /    on a handheld: portrait-capable and  → dist/yt-zero-screen-phone.apk
+    //           non-fullscreen (see src/phone manifest + immersive=false)
     flavorDimensions = ['mode']
     productFlavors {
         tv    { dimension 'mode' }
         watch { dimension 'mode' }
+        phone { dimension 'mode' }
     }
 
     // Stable, checked-in signing key so every rebuild (on any machine) signs

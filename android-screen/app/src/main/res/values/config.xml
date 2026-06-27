@@ -4,4 +4,7 @@
      Edit these, then rebuild with ./build.sh (produces both APKs). -->
 <resources>
     <string name="screen_name" translatable="false">Living Room TV</string>
+    <!-- Hide the system bars and lock to landscape (the tv/watch appliance look).
+         The phone flavor overrides this to false; see src/phone/res/values/config.xml. -->
+    <bool name="immersive">true</bool>
 </resources>

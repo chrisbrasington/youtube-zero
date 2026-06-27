@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- watch flavor → /watch (idle cast receiver only). Output: dist/yt-zero-screen-watch-only.apk -->
 <resources>
-    <string name="server_url" translatable="false">http://valhalla:8000/watch</string>
+    <string name="server_url" translatable="false">https://youtube.home.chrisincode.com/watch</string>
 </resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- phone flavor overrides only. The shared manifest (src/main) forces landscape and a
+     fullscreen theme for the tv/watch appliance; on a handheld we want a normal app:
+       - orientation "unspecified" → follows the device, so portrait is allowed
+       - Theme.Black.NoTitleBar    → keeps the status bar (not fullscreen)
+     immersive=false (src/phone/res/values/config.xml) stops MainActivity re-hiding the bars. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:theme="@android:style/Theme.Black.NoTitleBar"
+        tools:replace="android:theme">
+
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="unspecified"
+            tools:replace="android:screenOrientation" />
+    </application>
+</manifest>

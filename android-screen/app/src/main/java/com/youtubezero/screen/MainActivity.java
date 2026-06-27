@@ -26,11 +26,13 @@ public class MainActivity extends Activity {
     private WebView web;
     private View customView;                                  // YouTube/page fullscreen view
     private WebChromeClient.CustomViewCallback customCallback;
+    private boolean immersive = true;                         // false for the phone flavor
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        immersive = getResources().getBoolean(R.bool.immersive);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         root = new FrameLayout(this);
@@ -90,7 +92,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        hideSystemUi();
+        if (immersive) hideSystemUi();
         web.loadUrl(buildUrl());
     }
 
@@ -117,7 +119,7 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemUi();
+        if (hasFocus && immersive) hideSystemUi();
     }
 
     // Intercept the remote's center/OK at dispatch — BEFORE the focused WebView can
