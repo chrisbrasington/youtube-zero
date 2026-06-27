@@ -25,8 +25,6 @@ const state = {
   folderExpand:     new Set(),
   signalConfigured: false,
   tvConfigured:     false,
-  multiSelect:      new Set(),   // mobile long-press selection, in tap order
-  multiSelectActive: false,
 };
 
 const player = {

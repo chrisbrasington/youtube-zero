@@ -501,7 +501,6 @@ function render() {
   renderQueueBadge();
   renderSortBtn();
   renderPlayer();
-  if (typeof msSyncCards === 'function') msSyncCards();
 }
 
 
