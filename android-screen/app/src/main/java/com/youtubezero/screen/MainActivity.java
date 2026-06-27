@@ -1,16 +1,23 @@
 package com.youtubezero.screen;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+
+import java.lang.ref.WeakReference;
 
 /**
  * Fullscreen WebView wrapper for youtube-zero's /watch screen.
@@ -28,12 +35,29 @@ public class MainActivity extends Activity {
     private WebChromeClient.CustomViewCallback customCallback;
     private boolean immersive = true;                         // false for the phone flavor
 
+    // Lets PlaybackService run JS in this WebView (notification/lock-screen
+    // transport controls → drive the page's YouTube player).
+    private static WeakReference<MainActivity> sInstance;
+
+    static void evalJs(final String js) {
+        MainActivity a = sInstance != null ? sInstance.get() : null;
+        if (a != null && a.web != null) {
+            a.runOnUiThread(() -> { if (a.web != null) a.web.evaluateJavascript(js, null); });
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        sInstance = new WeakReference<>(this);
         immersive = getResources().getBoolean(R.bool.immersive);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
 
         root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
@@ -55,6 +79,11 @@ public class MainActivity extends Activity {
         // player, which ignores the caption-toggle API and single-click play/pause).
         ws.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                 + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+
+        // Bridge the page (native.js) to the media foreground service. The page
+        // polls its YouTube player and reports state here; we keep a MediaSession
+        // notification in sync so playback continues + shows in system controls.
+        web.addJavascriptInterface(new MediaBridge(), "AndroidMedia");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -94,6 +123,27 @@ public class MainActivity extends Activity {
 
         if (immersive) hideSystemUi();
         web.loadUrl(buildUrl());
+    }
+
+    // JS → native. Called from native.js (only present when the page detects this
+    // bridge). Methods run on a binder thread; starting a service is thread-safe.
+    private class MediaBridge {
+        @JavascriptInterface
+        public void report(boolean playing, String title, String artist) {
+            Intent i = new Intent(MainActivity.this, PlaybackService.class)
+                    .setAction(PlaybackService.ACTION_UPDATE)
+                    .putExtra(PlaybackService.EXTRA_PLAYING, playing)
+                    .putExtra(PlaybackService.EXTRA_TITLE, title == null ? "" : title)
+                    .putExtra(PlaybackService.EXTRA_ARTIST, artist == null ? "" : artist);
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
+            else startService(i);
+        }
+
+        @JavascriptInterface
+        public void stopped() {
+            startService(new Intent(MainActivity.this, PlaybackService.class)
+                    .setAction(PlaybackService.ACTION_STOP));
+        }
     }
 
     private String buildUrl() {
@@ -190,10 +240,12 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
 
+    // Deliberately NO web.onPause() here: that pauses the WebView's media when the
+    // app is backgrounded/locked. We want audio to keep playing — PlaybackService
+    // keeps the process alive and surfaces the media controls.
     @Override
     protected void onPause() {
         super.onPause();
-        if (web != null) web.onPause();
     }
 
     @Override
@@ -204,6 +256,8 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (sInstance != null && sInstance.get() == this) sInstance = null;
+        startService(new Intent(this, PlaybackService.class).setAction(PlaybackService.ACTION_STOP));
         if (web != null) {
             root.removeView(web);
             web.destroy();
