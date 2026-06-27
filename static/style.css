@@ -2524,20 +2524,12 @@ body.route-admin #settings-panel { display: none; }
 
 .video-tile, .video-row { position: relative; }
 
-/* Block the native long-press gesture (text selection, image context menu,
- * image drag) on touch devices so our JS long-press can own it. */
-@media (pointer: coarse) {
-  .video-tile, .video-row,
-  .video-tile img, .video-row img {
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-user-drag: none;
-  }
-}
-
+/* Suppress hover/tap affordances that fight the selection UI while active. */
 body.multiselect-on .video-tile, body.multiselect-on .video-row {
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .ms-selected { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
