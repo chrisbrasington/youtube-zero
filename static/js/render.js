@@ -482,7 +482,7 @@ function renderPlayer() {
     }
   } else {
     const origin = encodeURIComponent(location.origin);
-    const src = `https://www.youtube.com/embed/${player.videoId}?autoplay=1&rel=0&enablejsapi=1&origin=${origin}`;
+    const src = `${window.YT_EMBED_HOST}/embed/${player.videoId}?autoplay=1&rel=0&enablejsapi=1&origin=${origin}`;
     if (frame.src !== src) {
       frame.src = src;
       frame.addEventListener('load', () => setupYTPlayer(), { once: true });

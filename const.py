@@ -15,6 +15,15 @@ YT_API = "https://www.googleapis.com/youtube/v3"
 SIGNAL_API_URL = os.environ.get("SIGNAL_API_URL", "http://signal-api:8080")
 ADB_API_URL = os.environ.get("ADB_API_URL", "http://adb-api:8080")
 
+# Embed/player host. With nocookie (the default) the in-app player and its
+# control API are served from youtube-nocookie.com, so the player keeps working
+# even when www.youtube.com (the website) is blocked at the DNS level — the two
+# share no hostname. Set USE_NOCOOKIE=0 to fall back to www.youtube.com (e.g. if
+# youtube-nocookie is unreachable). "Watch on YouTube" links intentionally point
+# at www.youtube.com regardless, so they break under a site block — as intended.
+USE_NOCOOKIE = os.environ.get("USE_NOCOOKIE", "1") == "1"
+YT_EMBED_HOST = "https://www.youtube-nocookie.com" if USE_NOCOOKIE else "https://www.youtube.com"
+
 
 # ── Background refresh ───────────────────────────────────────────────────────
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))

@@ -29,8 +29,10 @@ from const import (
     SIGNAL_API_URL,
     SIGNAL_RECONNECT_PAUSE,
     TZ_NAME,
+    USE_NOCOOKIE,
     YT_API,
     YT_CHUNK_SIZE,
+    YT_EMBED_HOST,
 )
 from helpers import (
     duration_seconds as _duration_seconds,
@@ -1597,6 +1599,65 @@ def history_list(search: str = "", limit: int = 50, offset: int = 0, folder_id: 
         "offset": offset,
         "limit": limit,
     }
+
+
+# ── Frontend runtime config ────────────────────────────────────────────────────
+
+# The in-app player needs the IFrame control API. Its bootstrap loader only
+# exists on www.youtube.com (404 on nocookie), so in nocookie mode we load the
+# underlying widgetapi.js straight from nocookie instead. That URL is versioned
+# (/s/player/<ver>/...); we scrape the current <ver> from a nocookie embed page
+# and cache it. youtube.com mode keeps the stock /iframe_api loader (see keys.js).
+_PLAYER_VER_RE = re.compile(r"/s/player/([0-9a-z]+)/")
+_widget_api_cache: dict = {"url": None, "ts": None}
+_WIDGET_API_TTL = timedelta(hours=6)
+
+
+async def _nocookie_widget_api_url() -> Optional[str]:
+    """Current youtube-nocookie widgetapi.js URL, cached for _WIDGET_API_TTL.
+
+    Returns None (or the last good value) if the player version can't be
+    discovered; keys.js then falls back to the stock youtube.com loader.
+    """
+    now = datetime.now(timezone.utc)
+    cached = _widget_api_cache
+    if cached["url"] and cached["ts"] and now - cached["ts"] < _WIDGET_API_TTL:
+        return cached["url"]
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
+            r = await client.get(
+                f"{YT_EMBED_HOST}/embed/dQw4w9WgXcQ",
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+        m = _PLAYER_VER_RE.search(r.text)
+        if not m:
+            return cached["url"]
+        ver = m.group(1)
+        url = f"{YT_EMBED_HOST}/s/player/{ver}/www-widgetapi.vflset/www-widgetapi.js"
+        cached["url"], cached["ts"] = url, now
+        return url
+    except httpx.HTTPError:
+        return cached["url"]
+
+
+@app.get("/config.js")
+async def config_js():
+    """Synchronous frontend config, loaded before any other script.
+
+    Exposes the embed host + control-API URL so the player can be pointed at
+    youtube-nocookie.com (default) with no www.youtube.com dependency.
+    """
+    widget_api = await _nocookie_widget_api_url() if USE_NOCOOKIE else None
+    body = (
+        f"window.YT_EMBED_HOST = {json.dumps(YT_EMBED_HOST)};\n"
+        f"window.YT_WIDGET_API = {json.dumps(widget_api)};\n"
+        f"window.YT_USE_NOCOOKIE = {json.dumps(USE_NOCOOKIE)};\n"
+    )
+    return Response(
+        content=body,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # ── Static / SPA ──────────────────────────────────────────────────────────────

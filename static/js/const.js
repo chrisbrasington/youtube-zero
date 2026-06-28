@@ -10,6 +10,10 @@
 // Video classification
 const SHORTS_MAX_SECONDS    = 180;   // videos shorter than this are "Shorts"
 
+// Embed/player host — normally set by /config.js (loaded just before this file)
+// from the server's USE_NOCOOKIE flag. Fall back to nocookie if that didn't run.
+window.YT_EMBED_HOST = window.YT_EMBED_HOST || 'https://www.youtube-nocookie.com';
+
 // Responsive breakpoints (kept in sync with style.css @media rules)
 const MOBILE_MAX_WIDTH      = 600;
 const NARROW_MAX_WIDTH      = 900;

@@ -214,7 +214,7 @@ function watchPlay(videoId, startSeconds = 0) {
     const mute   = state.watch.mutedStart ? '&mute=1' : '';
     const start  = startSeconds > 0 ? `&start=${Math.floor(startSeconds)}` : '';
     const frame  = $('watch-frame');
-    frame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}${start}`;
+    frame.src = `${window.YT_EMBED_HOST}/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}${start}`;
     frame.addEventListener('load', () => {
       watchSetupYT();
       if (state.watch?.mutedStart) watchArmUnmute();

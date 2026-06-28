@@ -28,9 +28,30 @@ let ytApiReady = false;
 let ytLoadedId = null;
 window.onYouTubeIframeAPIReady = () => { ytApiReady = true; };
 (function loadYTApi() {
-  if (document.querySelector('script[src*="youtube.com/iframe_api"]')) return;
+  if (window.YT && window.YT.Player) return;
+  if (document.querySelector('script[data-yt-api]')) return;
+  // nocookie mode: the stock /iframe_api loader lives only on www.youtube.com, so
+  // when the site is DNS-blocked we load the underlying widgetapi straight from
+  // nocookie (URL from /config.js) after replicating the loader's bootstrap shim.
+  if (window.YT_WIDGET_API) {
+    if (!window.YT) window.YT = { loading: 0, loaded: 0 };
+    if (!window.YTConfig) window.YTConfig = { host: window.YT_EMBED_HOST };
+    if (!window.YT.loading) {
+      window.YT.loading = 1;
+      const pending = [];
+      window.YT.ready = (f) => { if (window.YT.loaded) f(); else pending.push(f); };
+      window.onYTReady = () => {
+        window.YT.loaded = 1;
+        for (const f of pending) { try { f(); } catch {} }
+      };
+      window.YT.setConfig = (c) => {
+        for (const k in c) if (Object.prototype.hasOwnProperty.call(c, k)) window.YTConfig[k] = c[k];
+      };
+    }
+  }
   const s = document.createElement('script');
-  s.src = 'https://www.youtube.com/iframe_api';
+  s.src = window.YT_WIDGET_API || 'https://www.youtube.com/iframe_api';
+  s.dataset.ytApi = '1';
   document.head.appendChild(s);
 })();
 
