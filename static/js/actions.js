@@ -46,6 +46,28 @@ async function addChannel() {
   }
 }
 
+// Play button next to the add-bar input: if the input is a video URL/id,
+// open the "where to play" action sheet — no subscribe, no queue add.
+function playFromInput() {
+  const raw = $('channel-input').value.trim();
+  if (!raw) return;
+  const m = raw.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/) ||
+            (/^[A-Za-z0-9_-]{11}$/.test(raw) ? [null, raw] : null);
+  if (!m) {
+    status('Not a video — paste a YouTube video link to play', 'err');
+    setTimeout(() => status(''), 3000);
+    return;
+  }
+  openActionSheet({
+    videoId: m[1],
+    title: '',
+    channelName: '',
+    thumbnailUrl: '',
+    isRead: false,
+    inQueue: false,
+  });
+}
+
 async function subscribeFromQueue(channelId) {
   status('Adding…', 'loading');
   try {

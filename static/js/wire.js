@@ -28,6 +28,7 @@ $('btn-player-watched').addEventListener('click', playerMarkWatched);
 // ── Header: add / refresh / queue / clear / sort / settings ──────────────────
 
 $('btn-add-channel').addEventListener('click', addChannel);
+$('btn-play-input').addEventListener('click', playFromInput);
 $('channel-input').addEventListener('keydown', e => { if (e.key === 'Enter') addChannel(); });
 $('channel-input').addEventListener('paste', e => {
   const text = e.clipboardData.getData('text');
