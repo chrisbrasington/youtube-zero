@@ -126,13 +126,15 @@ async function clearBrowserCache() {
       await Promise.all(regs.map(r => r.unregister()));
     }
   } catch {}
-  try {
-    await Promise.all([
-      fetch('/',                  { cache: 'reload' }),
-      fetch('/static/js/boot.js', { cache: 'reload' }),
-      fetch('/static/style.css',  { cache: 'reload' }),
-    ]);
-  } catch {}
+  // Force-refetch the page plus every same-origin script/stylesheet it
+  // loaded; {cache:'reload'} bypasses the HTTP cache AND replaces the cached
+  // entry, so the reload below picks up fresh copies of all of them.
+  const urls = new Set([location.pathname]);
+  document.querySelectorAll('script[src], link[rel="stylesheet"]').forEach(el => {
+    const u = el.src || el.href;
+    if (u && new URL(u, location.href).origin === location.origin) urls.add(u);
+  });
+  await Promise.all([...urls].map(u => fetch(u, { cache: 'reload' }).catch(() => {})));
   const u = new URL(location.href);
   u.searchParams.set('_cb', Date.now());
   location.replace(u.toString());

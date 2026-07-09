@@ -48,7 +48,7 @@ async function addChannel() {
 
 // Play button next to the add-bar input: if the input is a video URL/id,
 // open the "where to play" action sheet — no subscribe, no queue add.
-function playFromInput() {
+async function playFromInput() {
   const raw = $('channel-input').value.trim();
   if (!raw) return;
   const m = raw.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/) ||
@@ -58,14 +58,23 @@ function playFromInput() {
     setTimeout(() => status(''), 3000);
     return;
   }
-  openActionSheet({
-    videoId: m[1],
-    title: '',
-    channelName: '',
-    thumbnailUrl: '',
-    isRead: false,
-    inQueue: false,
-  });
+  const vid = m[1];
+  const existing = videoMeta.get(vid);
+  if (!existing || !existing.title) {
+    $('btn-play-input').disabled = true;
+    status('Looking up video…', 'loading');
+    try {
+      const meta = await api.get(`/api/video-info/${vid}`);
+      videoMeta.set(vid, meta);
+      status('');
+    } catch {
+      // No API key / offline / not found — sheet still works with just the id.
+      status('');
+    } finally {
+      $('btn-play-input').disabled = false;
+    }
+  }
+  openActionSheet(buildSheetCtx(vid));
 }
 
 async function subscribeFromQueue(channelId) {

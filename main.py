@@ -1283,6 +1283,42 @@ async def channels_add(req: AddChannelReq, background_tasks: BackgroundTasks):
     }
 
 
+@app.get("/api/video-info/{video_id}")
+async def video_info(video_id: str):
+    """Look up snippet metadata for a single video (used by the add-bar Play
+    button so the action sheet / queue get a real title without subscribing)."""
+    if not _parse_yt_video_id(video_id):
+        raise HTTPException(400, "invalid video id")
+    api_key = get_api_key()
+    if not api_key:
+        raise HTTPException(400, "No YouTube API key. Add one in settings (⚙).")
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SHORT) as client:
+        r = await client.get(f"{YT_API}/videos", params={
+            "part": "snippet,contentDetails",
+            "id": video_id,
+            "key": api_key,
+        })
+    if r.status_code != 200:
+        raise HTTPException(502, f"YouTube API error {r.status_code}")
+    add_quota(1)
+    items = r.json().get("items", [])
+    if not items:
+        raise HTTPException(404, "video not found or private")
+    sn = items[0]["snippet"]
+    cd = items[0].get("contentDetails", {}) or {}
+    thumbnails = sn.get("thumbnails", {})
+    picked = thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}
+    return {
+        "video_id": video_id,
+        "title": sn.get("title", ""),
+        "channel_id": sn.get("channelId", ""),
+        "channel_name": sn.get("channelTitle", ""),
+        "thumbnail_url": picked.get("url", ""),
+        "published_at": sn.get("publishedAt", ""),
+        "duration": parse_duration(cd.get("duration", "")),
+    }
+
+
 @app.delete("/api/channels/{channel_id}")
 def channels_delete(channel_id: str, background_tasks: BackgroundTasks):
     with db() as c:
@@ -1662,9 +1698,23 @@ async def config_js():
 
 # ── Static / SPA ──────────────────────────────────────────────────────────────
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+class NoCacheStaticFiles(StaticFiles):
+    """Static files with Cache-Control: no-cache so browsers always revalidate.
+
+    Without an explicit Cache-Control, mobile browsers heuristically cache JS
+    for long stretches and keep running stale code after a deploy. no-cache
+    still allows ETag/Last-Modified 304s, so unchanged files stay cheap.
+    """
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", NoCacheStaticFiles(directory="static"), name="static")
 
 
 @app.get("/{full_path:path}")
 def spa(full_path: str):
-    return FileResponse("static/index.html")
+    return FileResponse("static/index.html", headers={"Cache-Control": "no-cache"})
