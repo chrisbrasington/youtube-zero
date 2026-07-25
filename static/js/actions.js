@@ -46,10 +46,13 @@ async function addChannel() {
   }
 }
 
-// Play button next to the add-bar input: if the input is a video URL/id,
-// open the "where to play" action sheet — no subscribe, no queue add.
+// "Play URL": if the text is a video URL/id, open the "where to play" action
+// sheet — no subscribe, no queue add. The add-bar input is Manage-only, so in
+// browse mode this asks for the link directly.
 async function playFromInput() {
-  const raw = $('channel-input').value.trim();
+  const input = $('channel-input');
+  let raw = state.manageMode ? input.value.trim() : '';
+  if (!raw) raw = (prompt('Paste a YouTube link to play:') || '').trim();
   if (!raw) return;
   const m = raw.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/) ||
             (/^[A-Za-z0-9_-]{11}$/.test(raw) ? [null, raw] : null);
@@ -501,6 +504,7 @@ function toggleVideoInQuickQueue(videoId) {
 
 function renderQuickQueuePanel() {
   const panel = $('quick-queue-panel');
+  $('btn-quick-queue').classList.toggle('active', state.quickQueueMode);
   if (!state.quickQueueMode) {
     panel.classList.add('hidden');
     return;

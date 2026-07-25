@@ -11,14 +11,17 @@
 
   <header class="header">
     <div class="header-left">
-      <h1><a class="logo" href="./">▶ YouTube Zero</a></h1>
+      <h1><a class="logo" href="./"><span class="logo-mark">▶</span>YouTube Zero</a></h1>
       <span id="all-clear-badge" class="all-clear-badge hidden">✓ all caught up</span>
     </div>
     <div class="header-right">
-      <span id="last-checked" class="last-checked" title="Last refresh time"></span>
-      <div class="quota-pill" id="quota-display" title="YouTube API quota">
-        <span class="quota-label">api</span>
-        <span id="quota-today" class="quota-ok">—</span>
+      <!-- Status is reference, not action: one quiet line, out of the way. -->
+      <div class="header-status">
+        <span id="last-checked" class="last-checked" title="Last refresh time"></span>
+        <div class="quota-pill" id="quota-display" title="YouTube API quota">
+          <span class="quota-label">api</span>
+          <span id="quota-today" class="quota-ok">—</span>
+        </div>
       </div>
       <div class="auto-refresh" title="Auto-refresh interval" style="display:none">
         <input type="checkbox" id="auto-refresh-check">
@@ -33,18 +36,26 @@
         <span id="auto-refresh-interval" class="auto-refresh-interval">30m</span>
         <span id="auto-refresh-countdown" class="auto-refresh-countdown"></span>
       </div>
-      <button class="btn-ghost" id="btn-refresh-all" title="Refresh all channels">
-        <span id="refresh-spinner" class="spinner hidden">↻</span>
-        <span id="refresh-label">↻<span class="btn-label"> Refresh All</span></span>
-      </button>
-      <button class="btn-ghost" id="btn-random" title="Random play (r)">🎲</button>
+
+      <!-- Playing and queueing are the two things done most often, so they get
+           their own cluster and everything else stays a quiet icon. -->
+      <div class="action-cluster">
+        <button class="cluster-btn" id="btn-play-input" title="Play a video URL without subscribing">▶<span class="btn-label"> Play URL</span></button>
+        <button class="cluster-btn" id="btn-random" title="Random play (r)">🎲<span class="btn-label"> Random</span></button>
+        <button class="cluster-btn" id="btn-quick-queue" title="Quick queue selection mode (Shift+Q)">⚡<span class="btn-label"> Quick</span></button>
+        <button class="cluster-btn cluster-queue" id="btn-queue" title="Open the watch queue (q)">
+          <span class="btn-label">Queue </span><span class="queue-badge" id="queue-badge">0</span>
+        </button>
+      </div>
+
       <button class="btn-ghost hidden" id="btn-cast" title="Control a watching screen">📺<span class="btn-label"> Screen</span></button>
-      <button class="btn-queue" id="btn-queue">
-        <span class="btn-label">Queue </span><span class="queue-badge" id="queue-badge">0</span>
+      <button class="btn-icon" id="btn-refresh-all" title="Refresh all channels (Shift+R)">
+        <span id="refresh-spinner" class="spinner hidden">↻</span>
+        <span id="refresh-label">↻</span>
       </button>
-      <button class="btn-ghost" id="btn-quick-queue" title="Quick queue selection mode">⚡</button>
-      <button class="btn-danger" id="btn-clear-all" title="Mark everything as read">☢<span class="btn-label"> Clear All</span></button>
+      <button class="btn-danger manage-only" id="btn-clear-all" title="Mark everything as read">☢<span class="btn-label"> Clear All</span></button>
       <button class="btn-icon" id="btn-settings" title="Settings">⚙</button>
+      <button class="btn-icon btn-manage" id="btn-manage" title="Manage channels and folders" aria-pressed="false">✎</button>
       <div id="tv-ready" class="tv-ready">
         📺 <span id="tv-ready-name" class="text-accent"></span>
         <span class="text-muted">· ready to watch</span>
@@ -136,17 +147,16 @@
   <div class="main-layout" id="main-layout">
 
     <div class="channels-pane" id="channels-pane">
-      <div class="add-bar">
+      <div class="add-bar manage-only">
         <input type="text" id="channel-input"
                placeholder="Add channel: youtube.com/@handle, @RetroGameCorps, or channel name"
                autocomplete="off">
         <button class="btn-primary" id="btn-add-channel">Add</button>
-        <button class="btn-ghost" id="btn-play-input" title="Play a video URL without subscribing">▶ Play</button>
         <button class="btn-ghost" id="btn-new-folder" title="Create a new folder">📁 New Folder</button>
       </div>
       <div class="toolbar">
         <div id="status-msg" class="status-msg"></div>
-        <button class="btn-sort" id="btn-sort" title="Toggle sort order">↕ Manual order</button>
+        <button class="btn-sort manage-only" id="btn-sort" title="Toggle sort order">↕ Manual order</button>
       </div>
       <div id="channels-list"></div>
     </div>

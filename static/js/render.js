@@ -102,7 +102,9 @@ function renderFolder(folder) {
   const mode    = folderViewMode(folder);
   const unread  = folderUnreadCount(folder);
   const fid     = escAttr(String(folder.id));
-  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
+  // Reordering is a Manage-mode activity — don't let a browse-mode drag
+  // silently rearrange the feed.
+  const draggable = (state.sortMode === 'manual' && state.manageMode) ? 'draggable="true"' : '';
 
   let bodyHtml = '';
   if (mode === 'compact') {
@@ -122,7 +124,7 @@ function renderFolder(folder) {
     (folder.channels || []).every(ch => countUnread(ch) === 0);
 
   return `
-    <div class="folder-card" id="fl-${fid}" data-folder-id="${fid}" ${draggable}>
+    <div class="folder-card ${unread > 0 ? 'has-new' : ''}" id="fl-${fid}" data-folder-id="${fid}" ${draggable}>
       <div class="folder-header" data-action="toggle-folder" data-folder-id="${fid}">
         <div class="ch-check ${allDone ? 'done' : ''}"
              data-action="mark-folder-read"
@@ -155,7 +157,9 @@ function renderChannel(ch, nested) {
   const allDone = ch.videos.length > 0 && unread === 0;
   const cid     = escAttr(ch.channel_id);
   const refreshed = ch.last_refreshed ? timeAgo(ch.last_refreshed) : 'never';
-  const draggable = state.sortMode === 'manual' ? 'draggable="true"' : '';
+  // Reordering is a Manage-mode activity — don't let a browse-mode drag
+  // silently rearrange the feed.
+  const draggable = (state.sortMode === 'manual' && state.manageMode) ? 'draggable="true"' : '';
 
   // Folder select options
   const folderOptions = [
@@ -239,44 +243,46 @@ function renderVideoTile(video, channel, showChannel) {
   const vid     = escAttr(video.video_id);
   const inQueue = video.in_queue;
   const inQuickQueue = state.quickQueueVideos.includes(video.video_id);
+  const qpos    = queuePositionOf(video.video_id);
 
   return `
-    <div class="video-tile ${inQuickQueue ? 'quick-queue-selected' : ''}"
+    <div class="video-tile ${inQuickQueue ? 'quick-queue-selected' : ''} ${inQueue ? 'is-queued' : ''}"
          data-action="open-player"
          data-video-id="${vid}"
          data-title="${escAttr(video.title)}"
+         tabindex="0"
          title="${escAttr(video.title)}">
       <div class="tile-thumb-wrap">
         <img class="tile-thumb" src="${escAttr(video.thumbnail_url || '')}" alt=""
              onerror="this.style.display='none'">
         ${video.duration ? `<span class="tile-dur">${esc(video.duration)}</span>` : ''}
+        ${qpos ? `<span class="tile-qpos ${qpos.deep ? 'deep' : ''}"
+                        title="${qpos.deep ? 'Deep queue' : 'Queue position ' + qpos.n}"
+                  >${qpos.deep ? '⤓' : qpos.n}</span>` : ''}
         ${inQuickQueue ? `<span class="tile-qqueue-check">✓</span>` : ''}
-        <button class="tile-q-btn ${inQueue ? 'queued' : ''}"
-                data-action="toggle-queue"
-                data-video-id="${vid}"
-                data-in-queue="${inQueue ? '1' : '0'}"
-                title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
-          ${inQueue ? '✓' : '+'}
-        </button>
-        <button class="tile-read-btn"
-                data-action="video-read"
-                data-video-id="${vid}"
-                title="Mark as read">●</button>
-        ${state.signalConfigured ? `<button class="tile-signal-btn"
-                data-action="signal-send"
-                data-video-id="${vid}"
-                data-title="${escAttr(video.title)}"
-                data-channel-name="${escAttr(channel.name)}"
-                data-thumbnail-url="${escAttr(video.thumbnail_url || '')}"
-                title="Send to Signal Notes to Self">✉</button>` : ''}
-        ${state.tvConfigured ? `<button class="tile-tv-btn"
-                data-action="tv-send"
-                data-video-id="${vid}"
-                title="Play on TV">📺</button>` : ''}
+        <span class="tile-scrim"></span>
+        <span class="tile-play">▶</span>
+        <div class="tile-rail">
+          <button class="rail-btn rail-queue ${inQueue ? 'queued' : ''}"
+                  data-action="toggle-queue"
+                  data-video-id="${vid}"
+                  data-in-queue="${inQueue ? '1' : '0'}"
+                  title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
+            ${inQueue ? '✓ Queued' : '+ Queue'}
+          </button>
+          <button class="rail-btn rail-done"
+                  data-action="video-read"
+                  data-video-id="${vid}"
+                  title="Mark as read">✓ Done</button>
+          <button class="rail-btn rail-more"
+                  data-action="more-actions"
+                  data-video-id="${vid}"
+                  title="More — send to TV, Signal, share (or right-click)">⋯</button>
+        </div>
       </div>
       <div class="tile-info">
         <div class="tile-title">${esc(video.title)}</div>
-        ${showChannel ? `<div class="tile-age" style="color:var(--accent);font-size:10px">${esc(channel.name)}</div>` : ''}
+        ${showChannel ? `<div class="tile-chan">${esc(channel.name)}</div>` : ''}
         <div class="tile-age">${timeAgo(video.published_at)}</div>
       </div>
     </div>`;
@@ -331,17 +337,10 @@ function renderVideoRow(video, channel) {
               title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
         ${inQueue ? '✓' : '+'}
       </button>
-      ${state.signalConfigured ? `<button class="v-signal-btn"
-              data-action="signal-send"
+      <button class="v-more-btn"
+              data-action="more-actions"
               data-video-id="${vid}"
-              data-title="${escAttr(video.title)}"
-              data-channel-name="${escAttr(channel.name)}"
-              data-thumbnail-url="${escAttr(video.thumbnail_url || '')}"
-              title="Send to Signal Notes to Self">✉</button>` : ''}
-      ${state.tvConfigured ? `<button class="v-tv-btn"
-              data-action="tv-send"
-              data-video-id="${vid}"
-              title="Play on TV">📺</button>` : ''}
+              title="More — send to TV, Signal, share (or right-click)">⋯</button>
     </div>`;
 }
 
@@ -351,12 +350,20 @@ function renderVideoRow(video, channel) {
 function shallowQueue() { return state.queue.filter(q => !q.is_deep); }
 function deepQueue()    { return state.queue.filter(q =>  q.is_deep); }
 
+// Where a video sits in the watch order, so a card can show it without the
+// queue pane being open. Returns null when the video isn't queued at all.
+function queuePositionOf(videoId) {
+  const i = shallowQueue().findIndex(q => q.video_id === videoId);
+  if (i !== -1) return { n: i + 1, deep: false };
+  return deepQueue().some(q => q.video_id === videoId) ? { n: 0, deep: true } : null;
+}
+
 function renderQueueBadge() {
   const n = shallowQueue().length;
   const badge = $('queue-badge');
   badge.textContent = n;
   badge.className = 'queue-badge' + (n === 0 ? ' empty' : '');
-  $('btn-queue').className = 'btn-queue' + (state.queueOpen ? ' active' : '');
+  $('btn-queue').classList.toggle('active', state.queueOpen);
 }
 
 function qItemHtml(item, subscribedIds, group) {

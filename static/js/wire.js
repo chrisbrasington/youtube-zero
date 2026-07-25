@@ -91,6 +91,25 @@ $('wrap-strip-check').addEventListener('change', () => {
   applyWrapStrip();
 });
 
+// ── Browse ⇄ Manage ──────────────────────────────────────────────────────────
+// Browse shows only what browsing needs. Manage brings back add, rename,
+// delete, mute, move-to-folder, reorder and Clear All. Same body-class
+// mechanism /tv uses to strip its UI (see body.route-tv in style.css).
+function syncManageUI() {
+  document.body.classList.toggle('manage', state.manageMode);
+  const btn = $('btn-manage');
+  btn.classList.toggle('on', state.manageMode);
+  btn.setAttribute('aria-pressed', state.manageMode ? 'true' : 'false');
+  btn.title = state.manageMode ? 'Done managing' : 'Manage channels and folders';
+}
+syncManageUI();
+$('btn-manage').addEventListener('click', () => {
+  state.manageMode = !state.manageMode;
+  localStorage.setItem('manageMode', state.manageMode ? '1' : '0');
+  syncManageUI();
+  render();   // draggable state is baked into the markup
+});
+
 $('force-mobile-check').checked = state.forceMobile;
 syncMobileUI();
 matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).addEventListener('change', syncMobileUI);

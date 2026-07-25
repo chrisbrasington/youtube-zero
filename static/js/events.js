@@ -11,6 +11,28 @@
  * time via shared script scope.
  */
 
+// Open the action sheet for a video id, filling in a title from the card when
+// videoMeta doesn't have one yet.
+function openSheetForVideo(videoId, fallbackTitle) {
+  const ctx = buildSheetCtx(videoId);
+  if (!ctx.title) ctx.title = fallbackTitle || '';
+  openActionSheet(ctx);
+}
+
+// Right-click a card on desktop for the full set — Play here, TV, Screen,
+// nearest, Signal, Share, Clipboard. Mobile gets the same sheet on tap, and
+// Ctrl/Cmd-click still works. /tv has no pointer, so it opts out.
+document.addEventListener('contextmenu', e => {
+  if (document.body.classList.contains('route-tv')) return;
+  const card = e.target.closest('.video-tile, .video-row, .q-item');
+  if (!card) return;
+  const el = card.querySelector('[data-video-id]') || card;
+  const videoId = card.dataset.videoId || el.dataset.videoId;
+  if (!videoId) return;
+  e.preventDefault();
+  openSheetForVideo(videoId, card.dataset.title || el.dataset.title);
+});
+
 document.addEventListener('click', e => {
   // Player backdrop
   if (e.target.closest('[data-action="close-player-backdrop"]') &&
@@ -114,9 +136,18 @@ document.addEventListener('click', e => {
     return;
   }
 
+  // More — the desktop card no longer carries Signal/TV buttons of its own, so
+  // this (and right-click, below) is how a mouse reaches them.
+  const moreBtn = e.target.closest('[data-action="more-actions"]');
+  if (moreBtn) {
+    e.stopPropagation();
+    openSheetForVideo(moreBtn.dataset.videoId);
+    return;
+  }
+
   // Open player (tile or row thumb) — or toggle quick queue if in selection mode
   const openEl = e.target.closest('[data-action="open-player"]');
-  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
+  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="more-actions"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
     if (state.quickQueueMode) {
       toggleVideoInQuickQueue(openEl.dataset.videoId);
       return;

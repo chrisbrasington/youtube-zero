@@ -21,6 +21,9 @@ const state = {
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
   wrapStrip:        (localStorage.getItem('wrapStrip') ?? '1') === '1',
   forceMobile:      localStorage.getItem('forceMobile') === '1',
+  // Browse is the default. Manage reveals add/rename/delete/mute/reorder —
+  // a client preference, so localStorage owns it (no server round-trip).
+  manageMode:       localStorage.getItem('manageMode') === '1',
   manualExpand:     new Set(),
   folderExpand:     new Set(),
   signalConfigured: false,
