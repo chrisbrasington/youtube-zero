@@ -136,12 +136,16 @@ function renderFolder(folder) {
                 title="Change icon">${esc(folder.icon || '📁')}</button>
         <span class="folder-name">${esc(folder.name)}</span>
         <div class="folder-right">
-          ${unread > 0 ? `<span class="badge-new">${unread} new</span>` : ''}
+          ${unread > 0
+            ? `<span class="badge-new">${unread} new</span>`
+            : `<span class="badge-quiet">${(folder.channels || []).length} ch</span>`}
           ${unread > 0 ? `<button class="ch-btn watch-folder" data-action="watch-folder" data-folder-id="${fid}" title="Watch all visible videos in this folder">▶</button>` : ''}
           <button class="ch-btn refresh" data-action="refresh-folder" data-folder-id="${fid}" title="Refresh all channels">↻</button>
           <button class="ch-btn" data-action="rename-folder" data-folder-id="${fid}" title="Rename">✏</button>
           <button class="ch-btn delete" data-action="delete-folder" data-folder-id="${fid}" title="Delete folder">✕</button>
-          <span class="ch-caret ${mode === 'expanded' ? 'open' : ''}">▼</span>
+          <button class="ch-btn ch-caret ${mode === 'expanded' ? 'open' : ''}"
+                  data-action="expand-folder" data-folder-id="${fid}"
+                  title="${mode === 'expanded' ? 'Back to the video strip' : 'Show channels in this folder'}">▼</button>
         </div>
       </div>
       ${bodyHtml}

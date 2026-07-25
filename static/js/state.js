@@ -25,7 +25,9 @@ const state = {
   // a client preference, so localStorage owns it (no server round-trip).
   manageMode:       localStorage.getItem('manageMode') === '1',
   manualExpand:     new Set(),
-  folderExpand:     new Set(),
+  // Explicit per-folder view choice, overriding the unread-based default.
+  // 'collapsed' (title row only) | 'compact' (video strip) | 'expanded' (per channel)
+  folderView:       new Map(),
   signalConfigured: false,
   tvConfigured:     false,
   quickQueueMode:   false,
@@ -92,8 +94,12 @@ function channelViewMode(channel) {
 
 
 function folderViewMode(folder) {
-  const id = folder.id;
-  if (state.folderExpand.has(id)) return 'expanded';
+  const chosen = state.folderView.get(folder.id);
+  if (chosen) return chosen;
+  // On a phone one folder's video strip is most of the screen, so folders
+  // start as one-line rows — tap the one you actually want. /tv is excluded:
+  // its D-pad grid navigates tiles, so it needs the strips open.
+  if (isMobile() && !document.body.classList.contains('route-tv')) return 'collapsed';
   const hasUnread = (folder.channels || []).some(ch =>
     (ch.videos || []).some(v => !v.is_read && !isShort(v, ch))
   );

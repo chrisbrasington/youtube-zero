@@ -110,15 +110,22 @@ $('btn-manage').addEventListener('click', () => {
   render();   // draggable state is baked into the markup
 });
 
+// Crossing the mobile breakpoint changes the default folder view (collapsed on
+// a phone), which is baked into the markup — so re-render, don't just reclass.
+function syncMobileAndRender() {
+  syncMobileUI();
+  render();
+}
+
 $('force-mobile-check').checked = state.forceMobile;
 syncMobileUI();
-matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).addEventListener('change', syncMobileUI);
-matchMedia('(max-width: 900px)').addEventListener('change', syncMobileUI);
-matchMedia('(orientation: landscape)').addEventListener('change', syncMobileUI);
+matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).addEventListener('change', syncMobileAndRender);
+matchMedia('(max-width: 900px)').addEventListener('change', syncMobileAndRender);
+matchMedia('(orientation: landscape)').addEventListener('change', syncMobileAndRender);
 $('force-mobile-check').addEventListener('change', () => {
   state.forceMobile = $('force-mobile-check').checked;
   localStorage.setItem('forceMobile', state.forceMobile ? '1' : '0');
-  syncMobileUI();
+  syncMobileAndRender();
 });
 
 // Per-device screen name (shared with /watch + /tv via localStorage). 'change'

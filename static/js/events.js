@@ -47,6 +47,10 @@ document.addEventListener('click', e => {
     toggleFolder(parseInt(fHeader.dataset.folderId, 10)); return;
   }
 
+  // Folder: show the channels inside (the caret, not the row)
+  const efBtn = e.target.closest('[data-action="expand-folder"]');
+  if (efBtn) { e.stopPropagation(); expandFolder(parseInt(efBtn.dataset.folderId, 10)); return; }
+
   // Icon picker: open
   const iconBtn = e.target.closest('[data-action="open-icon-picker"]');
   if (iconBtn) { e.stopPropagation(); showIconPicker(parseInt(iconBtn.dataset.folderId, 10), iconBtn); return; }

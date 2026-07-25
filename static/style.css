@@ -76,9 +76,9 @@
   --r:        8px;
   --r-sm:     4px;
 
-  /* Card geometry — single source of truth; mobile overrides these two. */
+  /* Card width — the only geometry a layout sets; the thumb follows by
+     aspect-ratio. Mobile switches to a 2-column grid instead. */
   --tile-w:   200px;
-  --tile-h:   112px;
 
   /* Spacing scale */
   --space-xs: 4px;
@@ -657,6 +657,18 @@ input::placeholder { color: var(--dim); }
   white-space: nowrap;
 }
 
+/* Same slot as .badge-new, for folders with nothing unread — keeps the row
+   from looking empty once a category is cleared. */
+.badge-quiet {
+  color: var(--dim);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: 1px solid var(--border-l);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
 .ch-btn {
   background: transparent;
   color: var(--dim);
@@ -1191,10 +1203,12 @@ body.wrap-strip .video-strip {
 }
 .video-tile:hover { background: var(--bg4); }
 
+/* Thumb follows the tile's width via aspect-ratio, so the tile width is the
+   only thing a layout has to set. */
 .tile-thumb-wrap {
   position: relative;
-  width: var(--tile-w);
-  height: var(--tile-h);
+  width: 100%;
+  aspect-ratio: 16 / 9;
   background: var(--bg4);
   flex-shrink: 0;
   overflow: hidden;
@@ -1373,42 +1387,6 @@ body.wrap-strip .video-strip {
   box-shadow: inset 3px 0 0 var(--pending);
 }
 
-.v-tv-btn {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border-l);
-  background: transparent;
-  color: var(--muted);
-  font-size: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all .15s;
-  line-height: 1;
-}
-.v-tv-btn:hover { color: var(--tv); border-color: var(--tv); }
-
-.v-signal-btn {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border-l);
-  background: transparent;
-  color: var(--muted);
-  font-size: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all .15s;
-  line-height: 1;
-}
-.v-signal-btn:hover { color: var(--signal); border-color: var(--signal); }
-
 .v-more-btn {
   flex-shrink: 0;
   width: 32px;
@@ -1548,8 +1526,12 @@ body.wrap-strip .video-strip {
   background: #000;
   border-radius: var(--r);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "title  actions"
+    "frame  frame";
   width: min(700px, 96vw);
   max-height: 96vh;
   max-height: 96dvh;
@@ -1561,15 +1543,17 @@ body.wrap-strip .video-strip {
   width: 92vw;
   height: 92vh;
   height: 92dvh;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .player-header {
+  grid-area: title;
   background: var(--bg2);
   padding: 8px 10px;
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .player-title {
@@ -1583,6 +1567,17 @@ body.wrap-strip .video-strip {
   margin-right: 4px;
 }
 
+/* Desktop: controls sit on the title line. Mobile moves them below the video
+   (see body.mobile-ui) — hence the named areas rather than source order. */
+.player-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg2);
+  padding: 8px 10px 8px 0;
+  grid-area: actions;
+}
+
 .player-btn {
   font-size: 19px;
   padding: 4px 8px;
@@ -1592,13 +1587,21 @@ body.wrap-strip .video-strip {
 .player-btn:hover { background: var(--bg4); }
 
 #btn-player-watched {
-  color: var(--green);
+  color: var(--clear);
   border: 1px solid rgba(74,222,128,.3);
   background: rgba(74,222,128,.08);
 }
 #btn-player-watched:hover { background: rgba(74,222,128,.18); }
 
+.watch-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .player-frame {
+  grid-area: frame;
   width: 100%;
   aspect-ratio: 16 / 9;
   border: none;
@@ -1607,8 +1610,7 @@ body.wrap-strip .video-strip {
 }
 
 .player-box.theater .player-frame {
-  flex: 1;
-  height: 0; /* flex expands it */
+  height: 100%;
   aspect-ratio: unset;
 }
 
@@ -1900,13 +1902,20 @@ body.mobile-ui {
   /* Channels pane padding */
   .channels-pane { padding: 10px 12px; }
 
-  /* Video tile smaller — sized for 3-up on ~412px viewport (Pixel 9) */
-  --tile-w: 115px;
-  --tile-h: 65px;
-  .video-tile       { border-radius: 7px; }
-  .tile-info        { padding: 5px 6px 6px; }
-  .video-strip      { padding: 10px 12px 12px 22px; gap: 6px; }
-  .channel-card.nested .video-strip { padding-left: 24px; }
+  /* Two-up, filling the width. Three-up left thumbnails too small to judge a
+     video from, which is the whole job of a thumbnail. A grid measures the
+     strip itself, so this holds on any phone and under Force mobile UI on a
+     desktop viewport — a vw calculation gets the latter badly wrong. */
+  .video-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    overflow-x: visible;
+    padding: 10px 12px 12px;
+  }
+  .video-tile       { width: auto; border-radius: 8px; }
+  .tile-info        { padding: 6px 7px 8px; }
+  .channel-card.nested .video-strip { padding-left: 12px; }
 
   /* Add bar stacks */
   .add-bar { flex-wrap: wrap; }
@@ -1936,6 +1945,57 @@ body.mobile-ui {
   .v-q-btn, .v-read-btn, .v-more-btn {
     display: none !important;
   }
+
+  /* ── Player: title on top, controls at the bottom ──────────────────────────
+     Cramming five 19px icons next to a truncated title put every control at
+     the top of the screen, at the smallest size, furthest from the thumb.
+     The title gets the whole first row; the controls get a full-width bar
+     under the video at thumb size. */
+  .player-box {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "title" "frame" "actions";
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .player-box.theater { width: 100vw; height: 100dvh; }
+  /* Video floats in the middle; controls stay pinned to the bottom edge. */
+  .player-frame { align-self: center; }
+
+  .player-title {
+    white-space: normal;
+    font-size: 17px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .player-actions,
+  .watch-actions {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    gap: 8px;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+  }
+  .player-actions .player-btn,
+  .watch-actions .player-btn {
+    flex: 1;
+    min-height: 52px;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r);
+    background: var(--bg3);
+  }
+  .player-actions .player-btn:active,
+  .watch-actions .player-btn:active { background: var(--bg4); }
+  /* "✓ Watched" is the one to hit on purpose — give it the room. */
+  #btn-player-watched { flex: 2; }
 }
 
 /* Mobile: revert font/thumb bumps — real-viewport only, NOT for force-mobile */
@@ -1999,14 +2059,11 @@ input[type="password"] { font-size: 13px; }
   .q-title { font-size: 12px; }
   .q-channel { font-size: 11px; }
   .tile-dur { font-size: 10px; }
-  /* Queue badge — always visible in top-right of tile thumb */
-.tile-q-btn { font-size: 15px; }
-  .tile-q-btn.queued { font-size: 12px; }
-  .tile-read-btn { font-size: 10px; }
-  .tile-signal-btn { font-size: 11px; }
-  .v-signal-btn { font-size: 15px; }
-  .tile-title { font-size: 11px; }
-  .tile-age { font-size: 10px; }
+  .tile-qpos { font-size: 11px; }
+  /* Tiles are two-up on mobile now, so the title has real room. */
+  .tile-title { font-size: 14px; }
+  .tile-chan { font-size: 10px; }
+  .tile-age { font-size: 11px; }
   /* ── Per-video read toggle (in expanded list) ────────────────────────────── */
 
 .v-read-btn { font-size: 10px; }
@@ -2061,23 +2118,41 @@ input[type="password"] { font-size: 13px; }
   background: var(--bg);
 }
 
+/* Named areas rather than source order: on a narrow screen the controls move
+   below the video, where a thumb can reach them. */
 .watch-video-pane {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "title    actions"
+    "transfer transfer"
+    "frame    frame";
   background: #000;
 }
 
 .watch-header {
+  grid-area: title;
   background: var(--bg2);
   padding: 8px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
 }
+
+.watch-actions {
+  grid-area: actions;
+  background: var(--bg2);
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.watch-transfer-bar  { grid-area: transfer; }
+.watch-frame-wrap    { grid-area: frame; }
 
 .watch-title {
   flex: 1;
@@ -2329,8 +2404,41 @@ body.cast-cover .watch-queue-pane { display: none; }
 body.narrow-ui {
   .watch-layout { flex-direction: column; }
   .watch-video-pane { flex: 0 0 auto; }
+
+  /* Title gets its own full-width row; the controls drop below the video. */
+  .watch-video-pane {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "title" "frame" "actions";
+  }
+  .watch-title {
+    white-space: normal;
+    font-size: 17px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .watch-actions {
+    padding: 8px 10px;
+    gap: 8px;
+    border-bottom: none;
+    border-top: 1px solid var(--border);
+  }
+  .watch-actions .player-btn {
+    flex: 1;
+    min-height: 52px;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r);
+    background: var(--bg3);
+  }
+  .watch-actions .player-btn:active { background: var(--bg4); }
+
   .watch-frame-wrap {
-    flex: 0 0 auto;
     aspect-ratio: 16 / 9;
     width: 100%;
     min-height: 0;

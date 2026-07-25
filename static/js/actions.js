@@ -264,7 +264,7 @@ async function clearAll() {
     await api.post('/api/clear-all');
     state.feed = await api.get('/api/feed');
     state.manualExpand.clear();
-    state.folderExpand.clear();
+    state.folderView.clear();
     render();
     status('All cleared', 'ok');
     setTimeout(() => status(''), 3000);
@@ -324,7 +324,7 @@ async function deleteFolder(folderId) {
   try {
     await api.del(`/api/folders/${folderId}`);
     state.feed = await api.get('/api/feed');
-    state.folderExpand.delete(folderId);
+    state.folderView.delete(folderId);
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -345,14 +345,24 @@ async function renameFolder(folderId) {
   }
 }
 
+// Tapping the folder row collapses it to a single line, so a category you
+// don't want right now takes one row instead of a screenful. Getting at the
+// individual channels is the caret's job (expandFolder) — that's the rarer
+// thing to want.
 function toggleFolder(folderId) {
   const folder = findFolder(folderId);
   if (!folder) return;
-  if (folderViewMode(folder) === 'expanded') {
-    state.folderExpand.delete(folderId);
-  } else {
-    state.folderExpand.add(folderId);
-  }
+  const mode = folderViewMode(folder);
+  state.folderView.set(folderId, mode === 'collapsed' ? 'compact' : 'collapsed');
+  render();
+}
+
+// The ▼ caret: per-channel list ⇄ video strip.
+function expandFolder(folderId) {
+  const folder = findFolder(folderId);
+  if (!folder) return;
+  const mode = folderViewMode(folder);
+  state.folderView.set(folderId, mode === 'expanded' ? 'compact' : 'expanded');
   render();
 }
 
@@ -366,7 +376,7 @@ async function markFolderRead(folderId) {
         ch.videos.forEach(v => { v.is_read = true; });
       });
     }
-    state.folderExpand.delete(folderId);
+    state.folderView.delete(folderId);
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');

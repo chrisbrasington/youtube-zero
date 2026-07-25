@@ -243,6 +243,9 @@
       <div class="watch-header">
         <span id="watch-title" class="watch-title"></span>
         <span id="watch-mode-badge" class="watch-mode-badge hidden">TEST</span>
+      </div>
+      <!-- On a narrow screen this row moves below the video and grows. -->
+      <div class="watch-actions">
         <button class="btn-icon player-btn" id="btn-watch-skip" title="Skip to next (n)">⏭</button>
         <button class="btn-icon player-btn" id="btn-watch-skip-mark" title="Mark watched and skip (Shift+N)">✓⏭</button>
         <a id="watch-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
@@ -296,7 +299,10 @@
     <div id="player-box" class="player-box" onclick="event.stopPropagation()">
       <div class="player-header">
         <span id="player-title" class="player-title"></span>
-        <button class="btn-icon player-btn" id="btn-player-watched" title="Mark watched &amp; close">✓ Watched</button>
+      </div>
+      <!-- On mobile this row moves below the video and grows to thumb size. -->
+      <div class="player-actions">
+        <button class="btn-icon player-btn" id="btn-player-watched" title="Mark watched &amp; close">✓<span class="btn-label"> Watched</span></button>
         <a id="player-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
         <button class="btn-icon player-btn" id="btn-player-theater" title="Toggle theater mode">⬜</button>
         <button class="btn-icon player-btn" id="btn-player-fullscreen" title="Fullscreen">⛶</button>
