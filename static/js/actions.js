@@ -386,6 +386,12 @@ function expandFolder(folderId) {
 }
 
 async function markFolderRead(folderId) {
+  // With a channel filter on, ✓ clears what you can see — not the videos the
+  // filter is hiding. markChannelRead ends with a render(), and pruneFolderFilters
+  // drops the now-empty filter from there.
+  const filtered = state.folderChannelFilter.get(folderId);
+  if (filtered) { await markChannelRead(filtered); return; }
+
   try {
     const res = await api.post(`/api/folders/${folderId}/mark-read`);
     const folder = findFolder(folderId);

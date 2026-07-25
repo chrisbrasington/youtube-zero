@@ -522,7 +522,20 @@ function renderPlayer() {
 
 // ── Master render entry point ────────────────────────────────────────────────
 
+// Drop channel filters that have nothing left to show — watching out a
+// filtered channel would otherwise leave an empty folder sitting behind a chip
+// the user has to spot and clear by hand. Every read-state change routes
+// through render(), so this is the one place that catches all of them.
+function pruneFolderFilters() {
+  for (const [folderId, channelId] of state.folderChannelFilter) {
+    const folder = findFolder(folderId);
+    const ch = folder && (folder.channels || []).find(c => c.channel_id === channelId);
+    if (!ch || countUnread(ch) === 0) state.folderChannelFilter.delete(folderId);
+  }
+}
+
 function render() {
+  pruneFolderFilters();
   renderFeed();
   renderQueue();
   renderQueueBadge();
