@@ -125,6 +125,12 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // Global: Escape closes quick queue selection mode
+  if (!mod && !uiPlayerActive() && e.key === 'Escape' && state.quickQueueMode) {
+    closeQuickQueueMode();
+    return;
+  }
+
   // Global: shift+Q → open queue + play first shallow item
   if (!uiPlayerActive() && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Q') {
     const shallow = shallowQueue();

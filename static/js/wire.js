@@ -48,6 +48,9 @@ $('btn-sort').addEventListener('click', () => {
 });
 $('btn-queue').addEventListener('click', toggleQueuePane);
 $('btn-close-queue').addEventListener('click', closeQueuePane);
+$('btn-quick-queue').addEventListener('click', toggleQuickQueueMode);
+$('btn-quick-queue-close').addEventListener('click', closeQuickQueueMode);
+$('btn-quick-queue-play').addEventListener('click', playQuickQueue);
 $('btn-settings').addEventListener('click', () => {
   $('settings-panel').classList.toggle('hidden');
 });

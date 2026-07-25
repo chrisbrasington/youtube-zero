@@ -472,6 +472,59 @@ async function watchOnYouTube(videoId) {
 }
 
 
+// ── Quick Queue (session playlist) ──────────────────────────────────────────
+
+function toggleQuickQueueMode() {
+  state.quickQueueMode = !state.quickQueueMode;
+  if (!state.quickQueueMode) state.quickQueueVideos = [];
+  renderQuickQueuePanel();
+  render();
+}
+
+function closeQuickQueueMode() {
+  state.quickQueueMode = false;
+  state.quickQueueVideos = [];
+  renderQuickQueuePanel();
+  render();
+}
+
+function toggleVideoInQuickQueue(videoId) {
+  const idx = state.quickQueueVideos.indexOf(videoId);
+  if (idx >= 0) {
+    state.quickQueueVideos.splice(idx, 1);
+  } else {
+    state.quickQueueVideos.push(videoId);
+  }
+  renderQuickQueuePanel();
+  render();
+}
+
+function renderQuickQueuePanel() {
+  const panel = $('quick-queue-panel');
+  if (!state.quickQueueMode) {
+    panel.classList.add('hidden');
+    return;
+  }
+  panel.classList.remove('hidden');
+
+  const playBtn = $('btn-quick-queue-play');
+  playBtn.disabled = state.quickQueueVideos.length === 0;
+  playBtn.textContent = `Play (${state.quickQueueVideos.length})`;
+}
+
+function playQuickQueue() {
+  const videoIds = state.quickQueueVideos.slice();
+  if (!videoIds.length) return;
+
+  state.quickQueueMode = false;
+  state.quickQueueVideos = [];
+  renderQuickQueuePanel();
+  render();
+
+  watchStartQueueWith(videoIds);
+}
+
+
 // ── Sort + persist feed order ────────────────────────────────────────────────
 
 async function persistFeedOrder() {

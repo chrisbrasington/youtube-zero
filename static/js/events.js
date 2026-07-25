@@ -114,9 +114,13 @@ document.addEventListener('click', e => {
     return;
   }
 
-  // Open player (tile or row thumb)
+  // Open player (tile or row thumb) — or toggle quick queue if in selection mode
   const openEl = e.target.closest('[data-action="open-player"]');
   if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
+    if (state.quickQueueMode) {
+      toggleVideoInQuickQueue(openEl.dataset.videoId);
+      return;
+    }
     if (e.ctrlKey || e.metaKey) {
       // Desktop shortcut to the "where to play" sheet (Play Here / TV / Screen / Clipboard…).
       const ctx = buildSheetCtx(openEl.dataset.videoId);

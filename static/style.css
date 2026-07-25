@@ -1082,6 +1082,24 @@ body.wrap-strip .video-strip {
   pointer-events: none;
 }
 
+.tile-qqueue-check {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(74,222,128,.9);
+  color: #000;
+  font-size: 32px;
+  font-weight: 700;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 /* Queue badge — always visible in top-right of tile thumb */
 .tile-q-btn {
   position: absolute;
@@ -1103,6 +1121,20 @@ body.wrap-strip .video-strip {
 }
 .tile-q-btn:hover:not(.queued) { background: var(--accent); border-color: var(--accent); }
 .tile-q-btn.queued { background: rgba(74,222,128,.7); border-color: var(--green); font-size: 18px; }
+
+/* Quick queue selection highlight */
+.video-tile.quick-queue-selected {
+  outline: 3px solid var(--accent);
+  background: var(--bg4);
+}
+.video-row.quick-queue-selected {
+  background: var(--accent);
+  color: var(--text);
+}
+.video-row.quick-queue-selected .v-read-btn,
+.video-row.quick-queue-selected .v-q-btn {
+  color: var(--text);
+}
 .tile-q-btn.queued:hover { background: rgba(255,68,68,.7); border-color: var(--accent); }
 
 .tile-read-btn {
@@ -1437,6 +1469,44 @@ body.wrap-strip .video-strip {
 .sheet-signal { color: #3a76f0; border-color: #3a76f0; }
 .sheet-share  { color: #60a5fa; border-color: #60a5fa; }
 .sheet-cancel { background: transparent; color: var(--muted); }
+
+/* Quick Queue floating panel */
+.quick-queue-panel {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border-l);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+}
+.quick-queue-panel.hidden { display: none; }
+.quick-queue-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.quick-queue-label {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.quick-queue-panel .btn-primary {
+  white-space: nowrap;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.quick-queue-close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 2px;
+}
 
 .icon-picker {
   position: fixed;

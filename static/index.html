@@ -42,6 +42,7 @@
       <button class="btn-queue" id="btn-queue">
         <span class="btn-label">Queue </span><span class="queue-badge" id="queue-badge">0</span>
       </button>
+      <button class="btn-ghost" id="btn-quick-queue" title="Quick queue selection mode">⚡</button>
       <button class="btn-danger" id="btn-clear-all" title="Mark everything as read">☢<span class="btn-label"> Clear All</span></button>
       <button class="btn-icon" id="btn-settings" title="Settings">⚙</button>
       <div id="tv-ready" class="tv-ready">
@@ -209,6 +210,15 @@
         <button class="sheet-btn sheet-cancel" data-action="sheet-cancel">Cancel</button>
       </div>
     </div>
+  </div>
+
+  <!-- Quick queue floating panel -->
+  <div id="quick-queue-panel" class="quick-queue-panel hidden">
+    <div class="quick-queue-content">
+      <span class="quick-queue-label">⚡ Quick Queue</span>
+      <button class="btn-primary" id="btn-quick-queue-play" disabled>Play (0)</button>
+    </div>
+    <button class="btn-icon quick-queue-close" id="btn-quick-queue-close" title="Exit selection mode">✕</button>
   </div>
 
   <!-- Icon picker popup -->

@@ -53,6 +53,20 @@ function watchStartQueue() {
   });
 }
 
+function watchStartQueueWith(videoIds) {
+  const list = videoIds.map(vid => videoMeta.get(vid)).filter(Boolean);
+  if (!list.length) {
+    status('No videos selected', 'err'); setTimeout(() => status(''), 2000);
+    return;
+  }
+  // No `mark` — a quick queue is a throwaway playlist, so finishing a video
+  // must not touch the real queue or read state.
+  watchEnter({
+    mode: 'queue', inPage: true, mutedStart: false, badgeLabel: '⚡ Quick Queue',
+    list,
+  });
+}
+
 
 function watchStartFolder(folderId, reverse = false) {
   const folder = findFolder(folderId);

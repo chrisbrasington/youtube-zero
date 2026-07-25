@@ -25,6 +25,8 @@ const state = {
   folderExpand:     new Set(),
   signalConfigured: false,
   tvConfigured:     false,
+  quickQueueMode:   false,
+  quickQueueVideos: [],
 };
 
 const player = {

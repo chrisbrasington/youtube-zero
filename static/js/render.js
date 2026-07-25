@@ -233,13 +233,15 @@ function renderVideoTile(video, channel, showChannel) {
     title:         video.title,
     thumbnail_url: video.thumbnail_url || '',
     published_at:  video.published_at,
+    duration:      video.duration,
   });
 
   const vid     = escAttr(video.video_id);
   const inQueue = video.in_queue;
+  const inQuickQueue = state.quickQueueVideos.includes(video.video_id);
 
   return `
-    <div class="video-tile"
+    <div class="video-tile ${inQuickQueue ? 'quick-queue-selected' : ''}"
          data-action="open-player"
          data-video-id="${vid}"
          data-title="${escAttr(video.title)}"
@@ -248,6 +250,7 @@ function renderVideoTile(video, channel, showChannel) {
         <img class="tile-thumb" src="${escAttr(video.thumbnail_url || '')}" alt=""
              onerror="this.style.display='none'">
         ${video.duration ? `<span class="tile-dur">${esc(video.duration)}</span>` : ''}
+        ${inQuickQueue ? `<span class="tile-qqueue-check">✓</span>` : ''}
         <button class="tile-q-btn ${inQueue ? 'queued' : ''}"
                 data-action="toggle-queue"
                 data-video-id="${vid}"
@@ -290,14 +293,16 @@ function renderVideoRow(video, channel) {
     title:         video.title,
     thumbnail_url: video.thumbnail_url || '',
     published_at:  video.published_at,
+    duration:      video.duration,
   });
 
   const vid     = escAttr(video.video_id);
   const inQueue = video.in_queue;
   const isRead  = video.is_read;
+  const inQuickQueue = state.quickQueueVideos.includes(video.video_id);
 
   return `
-    <div class="video-row ${isRead ? 'read' : ''}">
+    <div class="video-row ${isRead ? 'read' : ''} ${inQuickQueue ? 'quick-queue-selected' : ''}">
       <div class="v-thumb-wrap"
            data-action="open-player"
            data-video-id="${vid}"
