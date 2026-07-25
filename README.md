@@ -33,35 +33,30 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 
 <img src="./.img/app2.png" align="right" width="200" style="margin-right: 16px;" />
 
-### User Interface
+### Browsing
 
-* Add YouTube channels via URL, `@handle`, or name
-* Compact strip view showing unread videos as tiles under each channel
-* Folder-based organization of channels
-* Collapsible folders with mixed tile strip display
-* Drag-and-drop channel reordering
-* Sort channels by newest video
+* Add channels via URL, `@handle`, or name
+* Folders that collapse to a single row, or open to a mixed strip of everything unread
+* Filter a folder down to one channel straight from a card
+* **Browse / Manage modes** — add, rename, delete, mute and reorder stay out of the way until you ask for them
 * Dark theme, no framework, no build step
-* Real-time multi-client synchronization across tabs and devices
+* Real-time sync across tabs and devices
 
 ### Queuing
 
-* One-click queueing via **+** badge on video tiles
-* Persistent queue state until manually removed or marked watched
-* Queue remains unaffected by bulk clearing actions
-* Per-video read/unread state toggles in tile and list views
-* Channel-level read state toggle with collapse support
-* Global “Clear All” action (non-destructive to queue)
+* Queue from a card's hover rail; a queued card shows its position in the watch order
+* **Quick Queue** — click through cards to build a session playlist, then play it
+* Queue survives bulk clearing; it only empties when you say so
+* Per-video, per-channel and per-folder read toggles
 
 ### Playback (local & external)
 
 * <b>Send to TV via Android developer bridge container</b>
 * <b>Play on Screen — cast to a `/watch` display and drive it from your phone</b>
-* Embedded video player with normal, theater, and fullscreen modes
-* Keyboard shortcuts for navigation and playback control
-* Auto-refresh of feeds at configurable intervals (5 minutes to 24 hours)
-* Shorts filtering (removes videos under 1m 40s from all views)
-* Signal integration for sending individual videos or full queue to “Notes to Self”
+* Embedded player with normal, theater and fullscreen modes
+* Keyboard shortcuts throughout
+* Shorts filtering (hides videos under 3 minutes)
+* Signal integration for sending a video or the whole queue to "Notes to Self"
 
 <div style="clear: both;"></div>
 
@@ -93,12 +88,6 @@ Create `.env` next to `compose.yaml` so the API key loads automatically:
 YOUTUBE_API_KEY=AIza...
 ```
 
-Or use the provided `deploy.sh` helper (pulls latest, rebuilds, tails logs):
-
-```bash
-./deploy.sh
-```
-
 The database is saved to `./data/youtube_zero.db` on the host. The API key can also be set via the UI.
 
 ### Signal setup (optional)
@@ -108,7 +97,7 @@ The `compose.yaml` includes a `signal-api` sidecar ([signal-cli-rest-api](https:
 1. Start the stack: `docker compose up --build`
 2. Open **⚙ Settings**, enter your phone number, click **Link Device**
 3. Scan the QR code in Signal → Settings → Linked Devices → Link New Device
-4. Signal button appears on video tiles and in the queue
+4. **✉ Signal** appears in the queue, in every card's action menu (right-click or **⋯**), and in the mobile action sheet
 
 #### Signal commands (Note-to-Self)
 
@@ -135,7 +124,7 @@ The `compose.yaml` includes an `adb-api` sidecar that wraps `adb` for Android TV
 1. On the TV: enable Developer Options → ADB debugging
 2. In the app: **⚙ Settings** → enter TV LAN IP → **Save** → **Connect**
 3. TV shows "Allow USB debugging from this computer?" — accept (key is stored)
-4. **📺** button appears next to **✉ Signal** on every video — tap to launch on TV
+4. **📺 Send to TV** appears in every card's action menu (right-click or **⋯**) and in the mobile action sheet
 5. **Use SmartTube** (default on) routes via [SmartTube](https://github.com/yuliskov/SmartTube) (`com.liskovsoft.smarttubetv.beta`); off lets the TV's default YouTube app handle it
 
 ADB keys persist via `./adb-data:/root/.android` so the trust prompt only shows once.
@@ -179,75 +168,87 @@ Cost: adding a channel ≈ 3 units, refreshing a channel ≈ 2 units.
 
 ## Usage
 
-### Folders
+### Browse mode (the default)
+
+The header carries the things you reach for constantly; everything that edits the
+library lives behind **✎**.
+
+| Control | Does |
+|---------|------|
+| **▶ Play URL** | Play a YouTube link without subscribing to the channel |
+| **🎲** | Play a random unwatched video (**r**) |
+| **⚡ Quick** | Selection mode — click cards to build a playlist, then play it (**Shift+Q**) |
+| **Queue *n*** | Open the watch queue (**q**) |
+| **↻** | Refresh all channels (**Shift+R**) |
+| **⚙** | Settings — API key, Signal, TV, watch history |
+| **✎** | Switch between Browse and Manage |
+
+### Folders and channels
 
 | Action | How |
 |--------|-----|
-| Create folder | **📁 New Folder** button → enter name |
-| Rename folder | Click **✏** on folder header |
-| Delete folder | Click **✕** on folder header (channels move to root) |
-| Move channel into folder | Use the folder **select dropdown** on the channel header |
-| Move channel to root | Select **No folder** in the dropdown |
-| Expand folder (show channels) | Click anywhere on folder header |
-| Collapsed folder view | Mixed tile strip of all unread videos, newest first |
-| Mark folder read | Click **✓ Mark Read** on folder header |
+| Collapse / reopen a folder | Click the folder row |
+| Show the channels inside a folder | **▼** on the folder row |
+| Filter a folder to one channel | Click the channel name at the bottom of any card; click again to clear |
+| Play a folder | **▶** on the folder row — oldest first, and only what's visible if a filter is on |
+| Mark a folder read | **✓** on the folder row (respects an active filter) |
+| Play a video | Click the thumbnail |
+| Queue a video | Hover a card → **+ Queue**. Queued cards show their queue position |
+| Mark a video read | Hover a card → **✓ Done** |
+| Send to TV, a screen, Signal or the clipboard | Right-click a card, or **⋯** on the hover rail |
+| Show a channel's full list, reads included | **▼** on the channel row |
+| Mark a channel read | **✓** left of the channel avatar |
 
-### Channels
+With a screen online, **▶** asks where and in what order — play here or on the
+screen, oldest first or newest first. With no screen it just plays here, oldest
+first; hold **Shift** for newest first.
 
-| Action | How |
-|--------|-----|
-| Add channel | Type URL / `@handle` / name → **Add** |
-| Queue a video | Click **+** badge on any tile |
-| Unqueue | Click **✓** (green) on a queued tile or row |
-| Expand full list | Click **▼** on channel header |
-| Mark channel read | Click the circle ◎ left of the channel avatar |
-| Mark channel unread | Click **↺** in the channel header |
-| Mark video read (tile) | Click **✓** read button on tile |
-| Refresh videos | **↻** per-channel or **↻ Refresh All** |
-| Reorder channels/folders | Drag and drop (in manual order mode) |
-| Sort by newest | Click **↕ Manual order** to toggle **↕ Newest first** |
-| Nuclear clear | **☢ Clear All** — marks every channel read |
-| Send to Signal | Click **✉** on any tile or video row |
-
-### Expanded list view (click ▼)
+### Manage mode (**✎**)
 
 | Action | How |
 |--------|-----|
-| Mark video read | Click ◉ (filled circle) next to the video |
-| Mark video unread | Click ● (dim circle) on a read video |
-| Play in app | Click the video thumbnail |
-| Send to Signal | Click **✉** button on the video row |
+| Add a channel | Type URL / `@handle` / name → **Add** |
+| Create, rename or delete a folder | **📁 New Folder**, or **✏** / **✕** on a folder row |
+| Move a channel between folders | Folder dropdown on the channel row |
+| Mute a channel | **🔊** on the channel row — hides its videos, auto-reads new ones |
+| Mark a channel unread | **↺** on the channel row |
+| Refresh one channel or folder | **↻** on its row |
+| Reorder channels and folders | Drag the rows |
+| Clear everything | **☢ Clear All** — marks every channel read, queue untouched |
 
-### Queue
-
-| Action | How |
-|--------|-----|
-| Play in app | **▶ Play** — opens the in-app player |
-| Open in YouTube | **↗ YouTube** — opens new tab, marks watched |
-| Remove | **Remove** — drops from queue without watching |
-| Send to Signal | **✉ Signal** in queue header — sends all items one by one with previews |
-
-### Player
+### Queue and player
 
 | Action | How |
 |--------|-----|
-| Theater mode | **⬜ Theater** button or press **t** |
-| Fullscreen | **⛶** button or press **f** |
-| Open in YouTube | **↗** button or press **y** (closes player) |
-| Send to Signal | Press **s** (closes player, sends with preview) |
-| Mark watched & close | **✓ Watched** (only when playing from queue) |
-| Close | **✕**, click backdrop, or press **Escape** |
+| Play a queued video | **▶ Play** |
+| Open in YouTube | **↗** or press **y** — marks watched |
+| Remove from queue | **Remove** |
+| Send the whole queue to Signal | **✉ Signal** in the queue header |
+| Theater mode | **⬜** or press **t** |
+| Fullscreen | **⛶** or press **f** |
+| Send to Signal | Press **s** |
+| Mark watched and close | **✓ Watched** (when playing from the queue) |
+| Close the player | **✕**, click the backdrop, or press **Escape** |
 
-### Auto-refresh
+### On a phone
 
-The header slider sets how often all channels refresh automatically:
+Cards are two-up, folders start collapsed, and tapping a card opens an action
+sheet instead of a hover rail — play here, send to TV or a screen, queue, mark
+read, share. In the player the title takes the top of the screen and the
+controls sit in a full-width bar at the bottom.
 
-| Setting | Interval |
-|---------|----------|
-| Off | Disabled |
-| 5m – 24h | Configurable via slider |
+### Other pages
 
-Uncheck **Auto** to pause without changing the interval.
+| Path | What it is |
+|------|------------|
+| `/watch` | Idle screen — waits to be cast to. See *Play on Screen* above |
+| `/watch/queue` | Play straight through the queue on this device |
+| `/tv` | Locked-down browse for a TV: D-pad navigable, no editing controls |
+| `/phone` | `/tv` for a handset — no auto-fullscreen, queue below the video |
+| `/history` | Everything you've started watching, searchable by title, channel or folder |
+
+Channels also refresh on their own in the background — see
+`REFRESH_INTERVAL_SECONDS` below.
 
 ## Environment variables
 
