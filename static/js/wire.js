@@ -42,10 +42,6 @@ $('btn-new-folder').addEventListener('click', createFolder);
 $('btn-refresh-all').addEventListener('click', refreshAll);
 $('btn-random').addEventListener('click', randomPlay);
 $('btn-clear-all').addEventListener('click', clearAll);
-$('btn-sort').addEventListener('click', () => {
-  state.sortMode = state.sortMode === 'manual' ? 'newest' : 'manual';
-  render();
-});
 $('btn-queue').addEventListener('click', toggleQueuePane);
 $('btn-close-queue').addEventListener('click', closeQueuePane);
 $('btn-quick-queue').addEventListener('click', toggleQuickQueueMode);

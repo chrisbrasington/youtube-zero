@@ -43,8 +43,22 @@ document.addEventListener('click', e => {
   // Folder: toggle
   const fHeader = e.target.closest('.folder-header');
   if (fHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check') &&
-      !e.target.closest('.folder-icon-btn')) {
+      !e.target.closest('.folder-icon-btn') && !e.target.closest('.folder-filter')) {
     toggleFolder(parseInt(fHeader.dataset.folderId, 10)); return;
+  }
+
+  // Folder: narrow to one channel (a card's channel name), or widen back out
+  const ffBtn = e.target.closest('[data-action="filter-folder-channel"]');
+  if (ffBtn) {
+    e.stopPropagation();
+    toggleFolderChannelFilter(parseInt(ffBtn.dataset.folderId, 10), ffBtn.dataset.channelId);
+    return;
+  }
+  const cffBtn = e.target.closest('[data-action="clear-folder-filter"]');
+  if (cffBtn) {
+    e.stopPropagation();
+    clearFolderChannelFilter(parseInt(cffBtn.dataset.folderId, 10));
+    return;
   }
 
   // Folder: show the channels inside (the caret, not the row)
@@ -72,8 +86,8 @@ document.addEventListener('click', e => {
   if (wfBtn) {
     e.stopPropagation();
     const fid = parseInt(wfBtn.dataset.folderId, 10);
-    const reverse = e.shiftKey;   // shift-click → oldest first
-    castIsTv() ? watchStartFolder(fid, reverse) : castOrWatchFolder(fid, reverse);   // /tv always plays here
+    const order = e.shiftKey ? 'newest' : 'oldest';   // shift-click → newest first
+    castIsTv() ? watchStartFolder(fid, order) : castOrWatchFolder(fid, order);   // /tv always plays here
     return;
   }
 
@@ -151,7 +165,7 @@ document.addEventListener('click', e => {
 
   // Open player (tile or row thumb) — or toggle quick queue if in selection mode
   const openEl = e.target.closest('[data-action="open-player"]');
-  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="more-actions"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
+  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="more-actions"]') && !e.target.closest('[data-action="filter-folder-channel"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
     if (state.quickQueueMode) {
       toggleVideoInQuickQueue(openEl.dataset.videoId);
       return;

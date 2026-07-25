@@ -17,34 +17,12 @@
 
 // ── Sort ─────────────────────────────────────────────────────────────────────
 
-function mostRecentUnread(item) {
-  // Works for both folders and standalone channels
-  const vids = item.channels
-    ? item.channels.flatMap(ch => ch.videos || [])
-    : (item.videos || []);
-  const unread = vids.filter(v => !v.is_read);
-  return unread.length ? unread.reduce(
-    (best, v) => v.published_at > best ? v.published_at : best, ''
-  ) : '';
-}
-
+// Always the manual order — the drag order set in Manage mode.
 function topLevelItems() {
-  const items = [
+  return [
     ...state.feed.folders.map(f  => ({ type: 'folder',  item: f,  sort_order: f.sort_order  ?? f.id })),
     ...state.feed.channels.map(c => ({ type: 'channel', item: c,  sort_order: c.sort_order  ?? 0   })),
-  ];
-  if (state.sortMode === 'newest') {
-    items.sort((a, b) => mostRecentUnread(b.item).localeCompare(mostRecentUnread(a.item)));
-  } else {
-    items.sort((a, b) => a.sort_order - b.sort_order);
-  }
-  return items;
-}
-
-function renderSortBtn() {
-  const btn = $('btn-sort');
-  btn.textContent  = state.sortMode === 'newest' ? '↕ Newest first' : '↕ Manual order';
-  btn.className    = 'btn-sort' + (state.sortMode === 'newest' ? ' active' : '');
+  ].sort((a, b) => a.sort_order - b.sort_order);
 }
 
 
@@ -87,9 +65,16 @@ function renderFeed() {
 
 // ── Folder ───────────────────────────────────────────────────────────────────
 
+// All unread videos across a folder's channels, newest first. Honours the
+// per-folder channel filter, so narrowing the strip narrows what ▶ plays too —
+// the visible cards and the play list are the same list.
 function folderMixedStrip(folder) {
-  // All unread videos across channels, sorted newest first
-  const vids = folder.channels.flatMap(ch =>
+  const only = state.folderChannelFilter.get(folder.id);
+  const narrowed = only ? folder.channels.filter(ch => ch.channel_id === only) : null;
+  // A filtered channel that's since been deleted or moved out would otherwise
+  // hide the whole folder with no visible cause.
+  const channels = narrowed && narrowed.length ? narrowed : folder.channels;
+  const vids = channels.flatMap(ch =>
     ch.videos
       .filter(v => !v.is_read)
       .map(v => ({ ...v, _channel: ch }))
@@ -104,14 +89,21 @@ function renderFolder(folder) {
   const fid     = escAttr(String(folder.id));
   // Reordering is a Manage-mode activity — don't let a browse-mode drag
   // silently rearrange the feed.
-  const draggable = (state.sortMode === 'manual' && state.manageMode) ? 'draggable="true"' : '';
+  const draggable = state.manageMode ? 'draggable="true"' : '';
+
+  // Active channel filter, if any — narrows the strip and what ▶ plays.
+  const filterId  = state.folderChannelFilter.get(folder.id);
+  const filterChan = filterId
+    ? (folder.channels || []).find(ch => ch.channel_id === filterId)
+    : null;
+  const filterVisible = filterChan ? countUnread(filterChan) : 0;
 
   let bodyHtml = '';
   if (mode === 'compact') {
     const mixedVids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
     bodyHtml = `
       <div class="video-strip">
-        ${mixedVids.map(v => renderVideoTile(v, v._channel, true)).join('')}
+        ${mixedVids.map(v => renderVideoTile(v, v._channel, true, folder.id)).join('')}
       </div>`;
   } else if (mode === 'expanded') {
     bodyHtml = `
@@ -135,9 +127,15 @@ function renderFolder(folder) {
                 data-folder-id="${fid}"
                 title="Change icon">${esc(folder.icon || '📁')}</button>
         <span class="folder-name">${esc(folder.name)}</span>
+        ${filterChan ? `
+          <button class="folder-filter"
+                  data-action="clear-folder-filter" data-folder-id="${fid}"
+                  title="Show the whole folder again">
+            ${esc(filterChan.name)} <span class="folder-filter-x">✕</span>
+          </button>` : ''}
         <div class="folder-right">
           ${unread > 0
-            ? `<span class="badge-new">${unread} new</span>`
+            ? `<span class="badge-new">${filterChan ? filterVisible + ' of ' + unread : unread + ' new'}</span>`
             : `<span class="badge-quiet">${(folder.channels || []).length} ch</span>`}
           ${unread > 0 ? `<button class="ch-btn watch-folder" data-action="watch-folder" data-folder-id="${fid}" title="Watch all visible videos in this folder">▶</button>` : ''}
           <button class="ch-btn refresh" data-action="refresh-folder" data-folder-id="${fid}" title="Refresh all channels">↻</button>
@@ -163,7 +161,7 @@ function renderChannel(ch, nested) {
   const refreshed = ch.last_refreshed ? timeAgo(ch.last_refreshed) : 'never';
   // Reordering is a Manage-mode activity — don't let a browse-mode drag
   // silently rearrange the feed.
-  const draggable = (state.sortMode === 'manual' && state.manageMode) ? 'draggable="true"' : '';
+  const draggable = state.manageMode ? 'draggable="true"' : '';
 
   // Folder select options
   const folderOptions = [
@@ -233,7 +231,7 @@ function renderChannel(ch, nested) {
 
 // ── Video tile (compact strip) ───────────────────────────────────────────────
 
-function renderVideoTile(video, channel, showChannel) {
+function renderVideoTile(video, channel, showChannel, folderId = null) {
   videoMeta.set(video.video_id, {
     video_id:      video.video_id,
     channel_id:    channel.channel_id,
@@ -248,6 +246,8 @@ function renderVideoTile(video, channel, showChannel) {
   const inQueue = video.in_queue;
   const inQuickQueue = state.quickQueueVideos.includes(video.video_id);
   const qpos    = queuePositionOf(video.video_id);
+  const isFiltered = folderId != null &&
+    state.folderChannelFilter.get(folderId) === channel.channel_id;
 
   return `
     <div class="video-tile ${inQuickQueue ? 'quick-queue-selected' : ''} ${inQueue ? 'is-queued' : ''}"
@@ -286,8 +286,19 @@ function renderVideoTile(video, channel, showChannel) {
       </div>
       <div class="tile-info">
         <div class="tile-title">${esc(video.title)}</div>
-        ${showChannel ? `<div class="tile-chan">${esc(channel.name)}</div>` : ''}
-        <div class="tile-age">${timeAgo(video.published_at)}</div>
+        ${showChannel && folderId != null
+          ? `<button class="tile-meta tile-meta-btn ${isFiltered ? 'on' : ''}"
+                     data-action="filter-folder-channel"
+                     data-folder-id="${escAttr(String(folderId))}"
+                     data-channel-id="${escAttr(channel.channel_id)}"
+                     title="${isFiltered ? 'Show the whole folder again' : 'Show only ' + channel.name}">
+               <span class="tile-chan">${esc(channel.name)}</span>
+               <span class="tile-age">${timeAgo(video.published_at)}</span>
+             </button>`
+          : `<div class="tile-meta">
+               ${showChannel ? `<span class="tile-chan">${esc(channel.name)}</span>` : ''}
+               <span class="tile-age">${timeAgo(video.published_at)}</span>
+             </div>`}
       </div>
     </div>`;
 }
@@ -515,7 +526,6 @@ function render() {
   renderFeed();
   renderQueue();
   renderQueueBadge();
-  renderSortBtn();
   renderPlayer();
 }
 

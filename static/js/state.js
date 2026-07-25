@@ -17,7 +17,6 @@ const state = {
   queue:            [],
   queueOpen:        localStorage.getItem('queueOpen') === '1',
   deepOpen:         localStorage.getItem('deepOpen') === '1',
-  sortMode:         'manual',
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
   wrapStrip:        (localStorage.getItem('wrapStrip') ?? '1') === '1',
   forceMobile:      localStorage.getItem('forceMobile') === '1',
@@ -28,6 +27,8 @@ const state = {
   // Explicit per-folder view choice, overriding the unread-based default.
   // 'collapsed' (title row only) | 'compact' (video strip) | 'expanded' (per channel)
   folderView:       new Map(),
+  // folderId -> channel_id: narrows a folder's mixed strip to one channel.
+  folderChannelFilter: new Map(),
   signalConfigured: false,
   tvConfigured:     false,
   quickQueueMode:   false,

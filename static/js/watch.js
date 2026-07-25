@@ -68,11 +68,12 @@ function watchStartQueueWith(videoIds) {
 }
 
 
-function watchStartFolder(folderId, reverse = false) {
+// order: 'oldest' (default — work forward through the backlog) | 'newest'.
+function watchStartFolder(folderId, order = 'oldest') {
   const folder = findFolder(folderId);
   if (!folder) return;
   const vids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
-  if (reverse) vids.reverse();   // shift-click → oldest first
+  if (order !== 'newest') vids.reverse();   // strip is newest-first
   if (!vids.length) {
     status('Folder has no videos to watch', 'err'); setTimeout(() => status(''), 2000);
     return;

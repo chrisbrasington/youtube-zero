@@ -265,6 +265,7 @@ async function clearAll() {
     state.feed = await api.get('/api/feed');
     state.manualExpand.clear();
     state.folderView.clear();
+    state.folderChannelFilter.clear();
     render();
     status('All cleared', 'ok');
     setTimeout(() => status(''), 3000);
@@ -325,6 +326,7 @@ async function deleteFolder(folderId) {
     await api.del(`/api/folders/${folderId}`);
     state.feed = await api.get('/api/feed');
     state.folderView.delete(folderId);
+    state.folderChannelFilter.delete(folderId);
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');
@@ -357,6 +359,23 @@ function toggleFolder(folderId) {
   render();
 }
 
+// Tapping a card's channel name narrows the folder to that channel; tapping it
+// again widens back out. folderMixedStrip does the filtering, so ▶ Play plays
+// exactly the cards you can see.
+function toggleFolderChannelFilter(folderId, channelId) {
+  if (state.folderChannelFilter.get(folderId) === channelId) {
+    state.folderChannelFilter.delete(folderId);
+  } else {
+    state.folderChannelFilter.set(folderId, channelId);
+  }
+  render();
+}
+
+function clearFolderChannelFilter(folderId) {
+  state.folderChannelFilter.delete(folderId);
+  render();
+}
+
 // The ▼ caret: per-channel list ⇄ video strip.
 function expandFolder(folderId) {
   const folder = findFolder(folderId);
@@ -377,6 +396,7 @@ async function markFolderRead(folderId) {
       });
     }
     state.folderView.delete(folderId);
+    state.folderChannelFilter.delete(folderId);
     render();
   } catch (e) {
     status('Error: ' + e.message, 'err');

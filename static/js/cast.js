@@ -1133,27 +1133,36 @@ async function castOrWatchQueue() {
 }
 
 
-async function castOrWatchFolder(folderId, reverse = false) {
+// `order` is the default when there's no screen to choose between; with a
+// screen online the picker asks for both destination and order at once, so
+// there's no second dialog to step through.
+async function castOrWatchFolder(folderId, order = 'oldest') {
   const folder = findFolder(folderId);
   if (!folder) return;
-  const vids = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
-  if (reverse) vids.reverse();   // shift-click → oldest first
-  if (!vids.length) { status('Folder has no videos to watch', 'err'); setTimeout(() => status(''), 2000); return; }
-  if (!castAvailable()) { watchStartFolder(folderId, reverse); return; }
-  const dest = await castShowPick(`Play 📁 ${folder.name}`, [
-    { label: '▶ Play Here', value: 'here' },
-    { label: '📺 Play on Screen', value: 'screen' },
+  const strip = folderMixedStrip(folder).filter(v => !isShort(v, v._channel));
+  if (!strip.length) { status('Folder has no videos to watch', 'err'); setTimeout(() => status(''), 2000); return; }
+  if (!castAvailable()) { watchStartFolder(folderId, order); return; }
+
+  const choice = await castShowPick(`Play 📁 ${folder.name}`, [
+    { label: '▶ Play here — oldest first',      value: 'here:oldest'   },
+    { label: '▶ Play here — newest first',      value: 'here:newest'   },
+    { label: '📺 Play on screen — oldest first', value: 'screen:oldest' },
+    { label: '📺 Play on screen — newest first', value: 'screen:newest' },
   ]);
-  if (dest === 'here') { watchStartFolder(folderId, reverse); return; }
-  if (dest === 'screen') {
-    const sid = await castPickScreen();
-    if (!sid) return;
-    const list = vids.map(v => ({
-      video_id: v.video_id, title: v.title,
-      channel_name: v._channel.name, thumbnail_url: v.thumbnail_url, duration: v.duration,
-    }));
-    castSendPlay(sid, list, 'read');
-  }
+  if (!choice) return;
+  const [dest, pickedOrder] = choice.split(':');
+
+  if (dest === 'here') { watchStartFolder(folderId, pickedOrder); return; }
+
+  const sid = await castPickScreen();
+  if (!sid) return;
+  const vids = strip.slice();
+  if (pickedOrder !== 'newest') vids.reverse();   // strip is newest-first
+  const list = vids.map(v => ({
+    video_id: v.video_id, title: v.title,
+    channel_name: v._channel.name, thumbnail_url: v.thumbnail_url, duration: v.duration,
+  }));
+  castSendPlay(sid, list, 'read');
 }
 
 
