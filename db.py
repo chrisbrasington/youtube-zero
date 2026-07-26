@@ -90,6 +90,16 @@ _SCHEMA = """
         published_at  TEXT,
         watched_at    TEXT NOT NULL
     );
+    -- Resolved yt-dlp stream URLs. Persisted rather than kept in memory only:
+    -- the cache used to die with the process, so every restart or image rebuild
+    -- re-resolved everything, and that volume of identical requests from one IP
+    -- is what gets you "Sign in to confirm you're not a bot" from YouTube.
+    -- Rows are disposable — delete the table and it refills.
+    CREATE TABLE IF NOT EXISTS stream_cache (
+        video_id   TEXT PRIMARY KEY,
+        expires_at REAL NOT NULL,          -- unix time; googlevideo URLs last ~6h
+        payload    TEXT NOT NULL           -- JSON: audio, video pair, duration, keyframes
+    );
     CREATE TABLE IF NOT EXISTS screen_beacons (
         id          INTEGER PRIMARY KEY,
         screen_name TEXT NOT NULL,

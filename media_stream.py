@@ -14,6 +14,7 @@ Everything fails soft — a resolution error returns None and the frontend falls
 back to the iframe, so a broken yt-dlp costs background playback, not playback.
 """
 import asyncio
+import json
 import subprocess
 import time
 from typing import Dict, Optional
@@ -25,6 +26,7 @@ from const import (
     KEYFRAME_PROBE_WINDOW,
     SERVER_VIDEO_MAX_HEIGHT,
 )
+from db import db
 
 # video_id -> (expires_at_monotonic, raw yt-dlp info dict)
 _cache: Dict[str, tuple] = {}
@@ -80,8 +82,13 @@ async def info(video_id: str, force: bool = False) -> Optional[dict]:
 
 
 def invalidate(video_id: str) -> None:
-    """Drop a cached lookup — call when upstream rejects a URL as expired."""
+    """Drop a cached lookup — call when upstream rejects a URL as expired.
+
+    Clears both layers; a stale URL left on disk would outlive the process and
+    keep handing out 403s.
+    """
     _cache.pop(video_id, None)
+    _db_forget(video_id)
 
 
 def cache_stats() -> dict:
@@ -183,24 +190,101 @@ def pick_video_pair(data: dict, max_height: int = SERVER_VIDEO_MAX_HEIGHT) -> Op
     }
 
 
-# ── Public resolvers ──────────────────────────────────────────────────────────
+# ── Persistent cache ─────────────────────────────────────────────────────────
+#
+# The in-memory cache above dies with the process, so every restart or image
+# rebuild re-resolved everything — and that volume of identical requests from
+# one IP is what earns a "Sign in to confirm you're not a bot" from YouTube.
+# This survives restarts.
+#
+# Only the *derived* results are stored, not the raw yt-dlp dict: a few hundred
+# bytes per video instead of a hundred-odd KB of format list we never look at
+# again. Everything is disposable — a miss just means one more resolve.
 
-async def resolve_audio(video_id: str, force: bool = False) -> Optional[dict]:
+def _db_read(video_id: str) -> Optional[dict]:
+    try:
+        with db() as c:
+            row = c.execute(
+                "SELECT expires_at, payload FROM stream_cache WHERE video_id=?",
+                (video_id,),
+            ).fetchone()
+        if not row or row["expires_at"] <= time.time():
+            return None
+        return json.loads(row["payload"])
+    except Exception:
+        return None          # cache problems must never break playback
+
+
+def _db_write(video_id: str, payload: dict) -> None:
+    try:
+        with db() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO stream_cache (video_id, expires_at, payload)"
+                " VALUES (?,?,?)",
+                (video_id, time.time() + AUDIO_CACHE_TTL, json.dumps(payload)),
+            )
+            c.commit()
+    except Exception:
+        pass
+
+
+def _db_forget(video_id: str) -> None:
+    try:
+        with db() as c:
+            c.execute("DELETE FROM stream_cache WHERE video_id=?", (video_id,))
+            c.commit()
+    except Exception:
+        pass
+
+
+async def _derived(video_id: str, force: bool = False) -> Optional[dict]:
+    """Audio format + video pair for a video, from whichever cache has it.
+
+    Both are computed from a single yt-dlp lookup and stored together, so
+    resolving for audio also warms video and vice versa.
+    """
+    if not force:
+        hit = _db_read(video_id)
+        if hit:
+            if hit.get("keyframes") and video_id not in _keyframes:
+                _keyframes[video_id] = hit["keyframes"]
+            return hit
+
     data = await info(video_id, force=force)
     if not data:
         return None
+
     fmt = pick_audio(data)
-    if not fmt:
-        return None
-    return {
-        "url": fmt["url"],
-        "mime": _mime_for(fmt),
-        "ext": fmt.get("ext"),
-        "abr": fmt.get("abr"),
-        "filesize": fmt.get("filesize") or fmt.get("filesize_approx"),
+    pair = pick_video_pair(data)
+    payload = {
         "duration": data.get("duration"),
         "title": data.get("title"),
         "uploader": data.get("uploader"),
+        "audio": None if not fmt else {
+            "url": fmt["url"],
+            "mime": _mime_for(fmt),
+            "ext": fmt.get("ext"),
+            "abr": fmt.get("abr"),
+            "filesize": fmt.get("filesize") or fmt.get("filesize_approx"),
+        },
+        "video": pair,
+        "keyframes": _keyframes.get(video_id, []),
+    }
+    _db_write(video_id, payload)
+    return payload
+
+
+# ── Public resolvers ──────────────────────────────────────────────────────────
+
+async def resolve_audio(video_id: str, force: bool = False) -> Optional[dict]:
+    d = await _derived(video_id, force=force)
+    if not d or not d.get("audio"):
+        return None
+    return {
+        **d["audio"],
+        "duration": d.get("duration"),
+        "title": d.get("title"),
+        "uploader": d.get("uploader"),
     }
 
 
@@ -262,6 +346,12 @@ async def keyframe_at_or_before(video_id: str, url: str, t: float) -> float:
     if found:
         merged = sorted(set(known) | set(found))
         _keyframes[video_id] = merged
+        # Fold back into the stored row so the probe isn't repeated after a
+        # restart. Best-effort: a miss only costs one more probe.
+        row = _db_read(video_id)
+        if row is not None:
+            row["keyframes"] = merged
+            _db_write(video_id, row)
         before = [k for k in merged if k <= t + 0.001]
         if before:
             return max(before)
@@ -269,15 +359,12 @@ async def keyframe_at_or_before(video_id: str, url: str, t: float) -> float:
 
 
 async def resolve_video(video_id: str, force: bool = False) -> Optional[dict]:
-    data = await info(video_id, force=force)
-    if not data:
-        return None
-    pair = pick_video_pair(data)
-    if not pair:
+    d = await _derived(video_id, force=force)
+    if not d or not d.get("video"):
         return None
     return {
-        **pair,
-        "duration": data.get("duration"),
-        "title": data.get("title"),
-        "uploader": data.get("uploader"),
+        **d["video"],
+        "duration": d.get("duration"),
+        "title": d.get("title"),
+        "uploader": d.get("uploader"),
     }
