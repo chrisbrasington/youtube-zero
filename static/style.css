@@ -423,11 +423,17 @@ a.logo:active {
 
 /* ── Settings panel ──────────────────────────────────────────────────────── */
 
+/* The panel has grown past a screenful (API key, shorts, server video, wrap,
+   mobile, device name, cache, history, Signal, TV). Cap it and let it scroll
+   instead of pushing the feed off the bottom. */
 .settings-panel {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   padding: 14px 20px;
   flex-shrink: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;   /* don't scroll the feed once it bottoms out */
 }
 
 .settings-inner {
@@ -2265,6 +2271,81 @@ input[type="password"] { font-size: 13px; }
 
 .now-playing { display: none; }
 
+/* ── Server-delivered video ──────────────────────────────────────────────────
+   A same-origin <video> fed by the ffmpeg remux. Replaces the iframe when
+   SERVER_VIDEO is on, and unlike the iframe it keeps playing backgrounded. */
+
+.watch-video { display: none; }
+.watch-layout.server-video .watch-video {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: #000;
+  object-fit: contain;
+}
+.watch-layout.server-video .watch-frame { display: none; }
+
+/* The frame area becomes a column so the chrome can sit under the picture. */
+.watch-layout.server-video .watch-frame-wrap {
+  flex-direction: column;
+  aspect-ratio: auto;
+}
+
+/* Shared transport. Hidden for the iframe, which has YouTube's own controls;
+   shown for both same-origin players, neither of which can use native ones —
+   the remux is a generated stream with no seekable range. */
+.player-chrome { display: none; }
+.watch-layout.audio-mode .player-chrome,
+.watch-layout.server-video .player-chrome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg);
+}
+.watch-layout.server-video .player-chrome { border-top: 1px solid var(--border); }
+
+/* Fullscreen: the picture takes the whole screen and the controls float over
+   the bottom of it, rather than the video sharing space with a toolbar. */
+.watch-frame-wrap:fullscreen { background: #000; }
+.watch-frame-wrap:fullscreen .watch-video { height: 100%; width: 100%; }
+.watch-frame-wrap:fullscreen .player-chrome {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  border-top: none;
+  background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0));
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+  opacity: 0;
+  transition: opacity var(--t-base);
+}
+/* Revealed by recent activity (JS adds .chrome-peek on mousemove or tap) and by
+   keyboard focus. Deliberately not :hover — in fullscreen the wrapper is the
+   whole screen, so the pointer is always over it and the bar would never hide. */
+.watch-frame-wrap:fullscreen.chrome-peek .player-chrome,
+.watch-frame-wrap:fullscreen:focus-within .player-chrome { opacity: 1; }
+
+/* Cursor goes with the controls, the way any video player behaves. */
+.watch-frame-wrap:fullscreen { cursor: none; }
+.watch-frame-wrap:fullscreen.chrome-peek,
+.watch-frame-wrap:fullscreen:focus-within { cursor: default; }
+
+/* How far the remux has actually got — the honest signal for whether a seek
+   has caught up, since a restarted stream buffers from scratch. */
+.np-bar-buffer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--bg4);
+  transition: width .3s linear;
+}
+
 .watch-layout.audio-mode .watch-frame { display: none; }
 
 /* Grid, not flex-with-fixed-children: the artwork row absorbs whatever space is
@@ -2273,7 +2354,7 @@ input[type="password"] { font-size: 13px; }
    underneath it. `overflow: hidden` makes that impossible by construction. */
 .watch-layout.audio-mode .now-playing {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;   /* artwork absorbs, meta stays */
   justify-items: center;
   gap: var(--space-md);
   width: 100%;
@@ -2286,7 +2367,7 @@ input[type="password"] { font-size: 13px; }
 
 /* Audio mode has no 16:9 content, so release the ratio the video needs and let
    the panel take the height it actually wants. */
-.watch-layout.audio-mode .watch-frame-wrap { aspect-ratio: auto; }
+.watch-layout.audio-mode .watch-frame-wrap { aspect-ratio: auto; flex-direction: column; }
 body.narrow-ui .watch-layout.audio-mode .watch-frame-wrap { min-height: 62vh; }
 
 .np-art-wrap {
@@ -2347,15 +2428,18 @@ body.narrow-ui .watch-layout.audio-mode .watch-frame-wrap { min-height: 62vh; }
   flex-shrink: 0;
 }
 .np-bar {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 6px;
   border-radius: 3px;
-  background: var(--bg4);
+  background: var(--bg3);
   cursor: pointer;
   overflow: hidden;
 }
 .np-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
   height: 100%;
   width: 0;
   background: var(--pending);
@@ -2905,6 +2989,9 @@ body.route-tv [data-action="queue-undeep"] { display: none !important; }
   justify-content: center;
 }
 .cast-remote-controls .cast-ctl-cc { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+/* Captions exist only on the YouTube player — a server-delivered stream has no
+   caption track, so the control reads as unavailable rather than broken. */
+.cast-remote-controls .cast-ctl-off { opacity: .35; }
 .cast-remote-controls .cast-ctl-big {
   font-size: 32px;
   color: var(--green);

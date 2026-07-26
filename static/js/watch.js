@@ -222,7 +222,18 @@ function watchArmUnmute() {
 // Only the handful of transport calls differ, so they all route through here.
 
 function watchAudioEl() { return document.getElementById('watch-audio'); }
+function watchVideoEl() { return document.getElementById('watch-video'); }
 function watchIsAudio()  { return !!state.watch?.audio; }
+function watchIsServer() { return !!state.watch?.server; }
+/** Either same-origin element — i.e. not the iframe. */
+function watchMediaEl()  { return watchIsAudio() ? watchAudioEl() : watchIsServer() ? watchVideoEl() : null; }
+
+/* Server video is a stream ffmpeg is generating right now: no total length, no
+ * byte ranges, so the element's own currentTime only counts from wherever the
+ * stream was started. watchServerBase holds that offset and the transport
+ * reports base + currentTime, which keeps one honest timeline for the scrubber,
+ * the cast status poll and transfer-to-screen. */
+let watchServerBase = 0;
 
 /**
  * Destroy the YT player and swap in a fresh blank iframe.
@@ -250,11 +261,15 @@ function watchResetFrame() {
 }
 
 function watchTime() {
-  if (watchIsAudio()) return watchAudioEl()?.currentTime || 0;
+  if (watchIsServer()) return watchServerBase + (watchVideoEl()?.currentTime || 0);
+  if (watchIsAudio())  return watchAudioEl()?.currentTime || 0;
   try { return watchPlayer?.getCurrentTime?.() || 0; } catch { return 0; }
 }
 
 function watchDuration() {
+  // The remuxed stream can't report its own length, so use the duration the
+  // resolver gave us (falling back to the queue item's).
+  if (watchIsServer()) return state.watch?.serverDuration || 0;
   if (watchIsAudio()) {
     const d = watchAudioEl()?.duration;
     return Number.isFinite(d) ? d : 0;
@@ -264,6 +279,11 @@ function watchDuration() {
 
 function watchSeek(t) {
   const target = Math.max(0, t);
+  if (watchIsServer()) {
+    // No seeking within a generated stream — restart ffmpeg at the new offset.
+    watchLoadServerVideo(state.watch.currentVideoId, target);
+    return;
+  }
   if (watchIsAudio()) {
     const a = watchAudioEl();
     if (a) a.currentTime = target;
@@ -273,20 +293,140 @@ function watchSeek(t) {
 }
 
 function watchIsPlaying() {
-  if (watchIsAudio()) { const a = watchAudioEl(); return !!a && !a.paused; }
+  const el = watchMediaEl();
+  if (el) return !el.paused;
   try { return watchPlayer?.getPlayerState?.() === 1; } catch { return false; }
 }
 
 function watchTogglePlay() {
-  if (watchIsAudio()) {
-    const a = watchAudioEl();
-    if (!a) return;
-    if (a.paused) a.play().catch(() => {}); else a.pause();
+  const el = watchMediaEl();
+  if (el) {
+    if (el.paused) el.play().catch(() => {}); else el.pause();
     return;
   }
   try {
     if (watchIsPlaying()) watchPlayer.pauseVideo(); else watchPlayer.playVideo();
   } catch {}
+}
+
+
+// ── Server video ─────────────────────────────────────────────────────────────
+
+let watchVideoBound = false;
+
+function watchBindServerVideo() {
+  if (watchVideoBound) return;
+  const v = watchVideoEl();
+  if (!v) return;
+  watchVideoBound = true;
+
+  v.addEventListener('ended', () => {
+    if (!state.watch?.active || !watchIsServer()) return;
+    // A seek restarts the stream, so "ended" also fires when a segment runs out
+    // at the true end of the video. Only advance if we're actually near it.
+    const dur = watchDuration();
+    if (!dur || watchTime() >= dur - 2) watchAdvance({ fromEnd: true });
+  });
+  v.addEventListener('error', () => {
+    if (!state.watch?.active || !watchIsServer()) return;
+    watchFallbackToEmbed('Server video failed — using the YouTube player');
+  });
+  ['play', 'pause', 'timeupdate', 'progress', 'loadedmetadata'].forEach(evt =>
+    v.addEventListener(evt, watchRenderChrome));
+}
+
+/** Point the <video> at the remux endpoint, starting at `startSeconds`. */
+function watchLoadServerVideo(videoId, startSeconds = 0) {
+  const v = watchVideoEl();
+  if (!v) return;
+  watchBindServerVideo();
+  // A remuxed stream can't report its own length, and without a duration the
+  // scrubber has no scale — no progress, no end time, and clicking it does
+  // nothing. Fall back to asking the resolver when the list item didn't carry
+  // a parseable duration.
+  if (!state.watch.serverDuration) {
+    api.get(`/api/video/${videoId}/info`).then(r => {
+      if (r?.duration && state.watch?.currentVideoId === videoId) {
+        state.watch.serverDuration = r.duration;
+        watchRenderChrome();
+      }
+    }).catch(() => {});
+  }
+  watchServerBase = Math.max(0, startSeconds);
+
+  // Ask where the seek will actually land before loading. The server snaps to a
+  // keyframe (so audio and video start on the same frame); without matching our
+  // timeline to that, the scrubber reads a few seconds off after every seek.
+  const load = () => {
+    const q = watchServerBase > 0 ? `?start=${watchServerBase.toFixed(2)}` : '';
+    v.src = `/api/video/${encodeURIComponent(videoId)}${q}`;
+    v.load();
+    console.log('BGDBG serverVideo load start=' + watchServerBase.toFixed(2));
+    v.addEventListener('loadedmetadata', () => {
+      console.log('BGDBG serverVideo meta dur=' + v.duration + ' t=' + v.currentTime.toFixed(2));
+    }, { once: true });
+    v.play().catch(() => {
+      status('Tap play to start', 'err');
+      setTimeout(() => status(''), 3000);
+    });
+    watchRenderChrome();
+  };
+
+  if (watchServerBase > 0) {
+    api.get(`/api/video/${videoId}/keyframe?t=${watchServerBase.toFixed(2)}`)
+      .then(r => {
+        if (state.watch?.currentVideoId !== videoId) return;   // moved on
+        if (typeof r?.start === 'number') watchServerBase = r.start;
+        load();
+      })
+      .catch(load);
+    return;
+  }
+  load();
+}
+
+/**
+ * Hand playback to <audio> when the app is backgrounded.
+ *
+ * There used to be a watchdog here that re-issued play() to keep the <video>
+ * alive. It was measured on device and abandoned: Chromium re-pauses a
+ * backgrounded <video> roughly every six seconds, indefinitely. Every play()
+ * was accepted and playback did resume — but a one-second hole every six
+ * seconds, forever, is worse than not having the picture at all.
+ *
+ * The pauses are Chromium's own background-media policy, not our MediaSession:
+ * across a 90-second capture, native called into the page zero times. There is
+ * no WebView setting for it; the decision lives in the renderer.
+ *
+ * Audio, on the other hand, Chromium leaves alone indefinitely (PROSPECTS.md).
+ * So: video while you're looking at it, audio while you're not, and
+ * nativeOnForeground puts the video back. One switch instead of a permanent
+ * fight.
+ */
+// (No function here any more — nativeOnBackground just calls watchSetAudioMode.)
+
+/** Give up on server delivery for this session and use the embed instead. */
+function watchFallbackToEmbed(message) {
+  if (!state.watch) return;
+  const at = watchTime();
+  const videoId = state.watch.currentVideoId;
+  const v = watchVideoEl();
+  if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch {} }
+  state.watch.server = false;
+  state.watch.serverUnavailable = true;   // don't retry for the rest of the session
+  $('watch-layout').classList.remove('server-video');
+  if (message) { status(message, 'err'); setTimeout(() => status(''), 4000); }
+  if (videoId) watchPlay(videoId, at);
+}
+
+/** Can the server remux this one? Answered before committing, so a "no" shows
+ *  the embed rather than a broken player. */
+async function watchServerVideoAvailable(videoId) {
+  if (!window.SERVER_VIDEO) return null;
+  try {
+    const r = await api.get(`/api/video/${videoId}/info`);
+    return r && r.ok ? r : null;
+  } catch { return null; }
 }
 
 
@@ -312,7 +452,7 @@ function watchBindAudio() {
     watchSetAudioMode(false);
   });
   ['play', 'pause', 'timeupdate', 'loadedmetadata'].forEach(evt =>
-    a.addEventListener(evt, watchRenderNowPlaying));
+    a.addEventListener(evt, watchRenderChrome));
 }
 
 function watchLoadAudio(videoId, startSeconds = 0) {
@@ -326,7 +466,9 @@ function watchLoadAudio(videoId, startSeconds = 0) {
       try { a.currentTime = startSeconds; } catch {}
     }, { once: true });
   }
-  a.play().catch(() => {
+  a.play().then(() => console.log('BGDBG audio play() ok t=' + a.currentTime.toFixed(1)))
+          .catch(e => {
+    console.log('BGDBG audio play() REJECTED ' + e);
     status('Tap play to start audio', 'err');
     setTimeout(() => status(''), 3000);
   });
@@ -352,9 +494,29 @@ function watchSetAudioMode(on, opts = {}) {
     // Full teardown, not just a blanked src — see watchResetFrame. Leaving the
     // player object alive here is what made the return trip a black screen.
     watchResetFrame();
+    const v = watchVideoEl();
+    if (v && v.src) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch {} }
+    $('watch-layout').classList.remove('server-video');
   } else {
+    // Stop the audio element hard. A half-stopped element playing underneath
+    // the video would sound exactly like an A/V sync fault, so leave nothing
+    // to chance: pause, drop the source, reset, then confirm in the log.
     const a = watchAudioEl();
-    if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
+    if (a) {
+      try {
+        a.pause();
+        a.removeAttribute('src');
+        a.srcObject = null;
+        a.load();
+        a.currentTime = 0;
+      } catch (err) {}
+      setTimeout(() => {
+        console.log('BGDBG audio after teardown paused=' + a.paused
+          + ' t=' + (a.currentTime || 0).toFixed(2)
+          + ' src=' + (a.currentSrc ? 'SET' : 'none')
+          + ' ready=' + a.readyState);
+      }, 500);
+    }
   }
 
   state.watch.audio = !!on;
@@ -386,8 +548,10 @@ function watchPrefetchAudio() {
   for (const id of targets) api.post(`/api/audio/${id}/prefetch`).catch(() => {});
 }
 
-function watchRenderNowPlaying() {
-  if (!state.watch?.active || !watchIsAudio()) return;
+/** Scrubber + transport, shared by audio mode and server video. */
+function watchRenderChrome() {
+  if (!state.watch?.active) return;
+  if (!watchIsAudio() && !watchIsServer()) return;
   const item = (state.watch.list || []).find(v => v.video_id === state.watch.currentVideoId);
   const cur = watchTime(), dur = watchDuration();
   const fmt = (s) => {
@@ -412,8 +576,31 @@ function watchRenderNowPlaying() {
   if (bar) bar.style.width = dur > 0 ? `${Math.min(100, (cur / dur) * 100)}%` : '0%';
   const pp = $('btn-np-play');
   if (pp) pp.textContent = watchIsPlaying() ? '⏸' : '▶';
+
+  // Buffered-ahead marker. Server video only: it shows how far the remux has
+  // got, which is the honest signal for whether a seek has caught up yet.
+  const buf = $('np-bar-buffer');
+  if (buf) {
+    let ahead = 0;
+    const el = watchMediaEl();
+    try {
+      if (el && el.buffered.length) {
+        const end = el.buffered.end(el.buffered.length - 1);
+        ahead = (watchIsServer() ? watchServerBase + end : end);
+      }
+    } catch {}
+    buf.style.width = dur > 0 ? `${Math.min(100, (ahead / dur) * 100)}%` : '0%';
+  }
 }
 
+
+/** "18:40" / "1:12:13" → seconds. The remuxed stream can't report its own
+ *  length, so the scrubber leans on the duration we already store per item. */
+function watchItemSeconds(item) {
+  const parts = String(item?.duration || '').split(':').map(Number);
+  if (!parts.length || parts.some(n => !Number.isFinite(n))) return 0;
+  return parts.reduce((total, n) => total * 60 + n, 0);
+}
 
 let watchLastPlayedId = null;
 
@@ -433,8 +620,21 @@ function watchPlay(videoId, startSeconds = 0) {
   $('watch-title').textContent = item ? item.title : '';
   $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
 
+  // Pick the transport. Server video wins when the server offers it, because
+  // it's the only one that survives backgrounding *and* keeps the picture;
+  // audio mode is an explicit downgrade the user (or a fallback) asked for.
+  const wantServer = !!window.SERVER_VIDEO
+                  && !state.watch.serverUnavailable
+                  && !state.watch.audio;
+  state.watch.server = wantServer;
+  state.watch.serverDuration = watchItemSeconds(item);
+  $('watch-layout').classList.toggle('server-video', wantServer);
+  if (!wantServer) { const v = watchVideoEl(); if (v && v.src) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch {} } }
+
   if (watchIsAudio()) {
     watchLoadAudio(videoId, startSeconds);
+  } else if (wantServer) {
+    watchLoadServerVideo(videoId, startSeconds);
   } else if (watchPlayer && watchPlayer.loadVideoById) {
     watchPlayer.loadVideoById(startSeconds > 0 ? { videoId, startSeconds } : videoId);
   } else {
@@ -450,7 +650,7 @@ function watchPlay(videoId, startSeconds = 0) {
   }
   watchRenderQueue();
   watchUpdateMediaSession();
-  watchRenderNowPlaying();
+  watchRenderChrome();
   watchPrefetchAudio();
 }
 
@@ -490,11 +690,22 @@ watchTeardownOnUnload();
 
 
 async function watchRequestFullscreen() {
-  const frame = $('watch-frame');
-  const wrap = frame?.parentElement;
-  for (const el of [wrap, frame]) {
-    if (!el?.requestFullscreen) continue;
-    try { await el.requestFullscreen(); return; } catch {}
+  const wrap = $('watch-frame-wrap');
+  // Fullscreen the wrapper so our own controls come along — the iframe has
+  // YouTube's controls inside it, but a same-origin <video> would have none.
+  // webkitEnterFullscreen is the iOS escape hatch: Safari won't fullscreen an
+  // arbitrary element on iPhone, only a video.
+  const candidates = watchIsServer()
+    ? [wrap, watchVideoEl()]
+    : [wrap, $('watch-frame')];
+  for (const el of candidates) {
+    if (el?.requestFullscreen) {
+      try { await el.requestFullscreen(); return; } catch {}
+    }
+  }
+  const v = watchVideoEl();
+  if (watchIsServer() && v?.webkitEnterFullscreen) {
+    try { v.webkitEnterFullscreen(); } catch {}
   }
 }
 
@@ -510,9 +721,34 @@ function watchBindDom() {
   $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
 
+  // Fullscreen controls: show on activity, then get out of the way. Driven by
+  // mousemove rather than :hover because in fullscreen the wrapper covers the
+  // screen — the pointer is always "over" it, so a hover rule never hides.
+  let peekTimer = null;
+  const peekChrome = () => {
+    const wrap = $('watch-frame-wrap');
+    if (!wrap || !document.fullscreenElement) return;
+    wrap.classList.add('chrome-peek');
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => wrap.classList.remove('chrome-peek'), 2500);
+  };
+  $('watch-frame-wrap')?.addEventListener('mousemove', peekChrome);
+  $('watch-frame-wrap')?.addEventListener('click', (e) => {
+    if (e.target.closest('.player-chrome')) return;   // using them, not summoning them
+    peekChrome();
+  });
+  // Leaving fullscreen must clear it, or the class lingers and the inline bar
+  // comes back stuck in its revealed state.
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+      clearTimeout(peekTimer);
+      $('watch-frame-wrap')?.classList.remove('chrome-peek');
+    }
+  });
+
   // Audio mode: toggle + the now-playing transport that replaces the video.
   $('btn-watch-audio')?.addEventListener('click', () => watchSetAudioMode(!watchIsAudio()));
-  $('btn-np-play')?.addEventListener('click', () => { watchTogglePlay(); watchRenderNowPlaying(); });
+  $('btn-np-play')?.addEventListener('click', () => { watchTogglePlay(); watchRenderChrome(); });
   $('btn-np-next')?.addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-np-prev')?.addEventListener('click', () => watchPrev());
   // Back to video, resuming at the current position (watchSetAudioMode carries it).
@@ -522,7 +758,7 @@ function watchBindDom() {
     if (!dur) return;
     const r = e.currentTarget.getBoundingClientRect();
     watchSeek(dur * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)));
-    watchRenderNowPlaying();
+    watchRenderChrome();
   });
 
   const landscapeMq = matchMedia('(orientation: landscape)');
@@ -552,13 +788,60 @@ function watchBindDom() {
     if (!state.watch?.active) return;
     if (e.target.matches('input,textarea')) return;
     if (e.key === 'f') {
-      $('watch-frame').requestFullscreen?.().catch(() => {});
+      // Was fullscreening the iframe directly, which is the wrong element (and
+      // invisible) once the video comes from the server.
+      watchRequestFullscreen();
       e.preventDefault();
       return;
     }
     if (e.key === 'n') { watchAdvance({ fromEnd: false }); return; }
     if (e.key === 'N') { watchAdvance({ fromEnd: true }); return; }
     if (e.key === 'w') { watchExit(); return; }
+    // keys.js has an Escape binding but it sits behind `if (!player.videoId)`,
+    // and that overlay is no longer used — openPlayer routes here instead — so
+    // it never fires. In fullscreen the browser consumes Escape to exit, so
+    // only close the overlay when we're already windowed.
+    if (e.key === 'Escape') {
+      if (!document.fullscreenElement) watchExit();
+      return;
+    }
+    if (e.key === 'p') { watchPrev(); return; }
+
+    // Acting on the video that's playing. These were in keys.js behind the dead
+    // player.videoId guard; the watch session is the only player now, so they
+    // belong here.
+    const cur = state.watch.currentVideoId;
+    if (e.key === 'y' && cur) {
+      window.open(`https://www.youtube.com/watch?v=${cur}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (e.key === 'm' && cur) {
+      // Read state lives on the feed, not on the watch list.
+      let isRead = false;
+      for (const ch of allChannels()) {
+        const v = (ch.videos || []).find(x => x.video_id === cur);
+        if (v) { isRead = !!v.is_read; break; }
+      }
+      toggleVideoRead(cur, isRead);
+      return;
+    }
+    if ((e.key === 'q' || e.key === 'Q') && cur) {
+      let inQ = false;
+      for (const ch of allChannels()) {
+        const v = (ch.videos || []).find(x => x.video_id === cur);
+        if (v) { inQ = !!v.in_queue; break; }
+      }
+      const meta = videoMeta.get(cur);
+      if (meta) toggleQueue(meta, inQ);
+      return;
+    }
+    if (e.key === 's' && cur && state.signalConfigured) {
+      const meta = videoMeta.get(cur);
+      if (meta) signalSendVideo(meta.video_id, meta.title, meta.channel_name, meta.thumbnail_url);
+      return;
+    }
+    // Enter is deliberately not bound to "send to TV" here — on /tv it's the
+    // D-pad OK button. Send to TV lives in the action sheet.
     if (e.key === 't' || e.key === 'T') {
       const on = $('watch-layout').classList.toggle('theater');
       // Remember theater for the rest of the browser session so it survives
@@ -567,7 +850,9 @@ function watchBindDom() {
       return;
     }
     if (e.key === 'a' || e.key === 'A') { watchSetAudioMode(!watchIsAudio()); return; }
-    if (!watchPlayer && !watchIsAudio()) return;
+    // Server video has no watchPlayer, so this guard used to swallow space,
+    // j/l, the arrows and the digit seeks entirely.
+    if (!watchPlayer && !watchIsAudio() && !watchIsServer()) return;
     try {
       if (/^[0-9]$/.test(e.key)) {
         const dur = watchDuration();
@@ -659,10 +944,15 @@ function watchExit() {
   $('watch-layout').classList.add('hidden');
   $('watch-layout').classList.remove('theater');
   $('watch-layout').classList.remove('audio-mode');
+  $('watch-layout').classList.remove('server-video');
   $('watch-unmute').classList.add('hidden');
-  // Release the audio stream too, or the proxy keeps feeding a dead session.
-  const audioEl = document.getElementById('watch-audio');
-  if (audioEl) { try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {} }
+  // Release both same-origin streams, or the server keeps remuxing / proxying
+  // for a session nobody is watching.
+  for (const id of ['watch-audio', 'watch-video']) {
+    const el = document.getElementById(id);
+    if (el) { try { el.pause(); el.removeAttribute('src'); el.load(); } catch {} }
+  }
+  watchServerBase = 0;
   // Tear the YT player fully down and swap in a fresh blank iframe. Reusing a
   // player after stopVideo() leaves the iframe off youtube.com, so the next
   // loadVideoById postMessage hits our own origin and silently fails to play.

@@ -78,9 +78,12 @@ public class PlaybackService extends Service {
 
         session = new MediaSession(this, "yt-zero");
         session.setCallback(new MediaSession.Callback() {
-            @Override public void onPlay()           { MainActivity.evalJs("nativeTogglePlay()"); }
-            @Override public void onPause()          { MainActivity.evalJs("nativeTogglePlay()"); }
-            @Override public void onStop()           { MainActivity.evalJs("nativeTogglePlay()"); }
+            // Explicit, not toggles. When these all toggled, a pause command
+            // from the system flipped us back to playing whenever the page and
+            // the session disagreed — audible as play/pause oscillation.
+            @Override public void onPlay()           { MainActivity.evalJs("window.nativePlay ? nativePlay() : nativeTogglePlay()"); }
+            @Override public void onPause()          { MainActivity.evalJs("window.nativePause ? nativePause() : nativeTogglePlay()"); }
+            @Override public void onStop()           { MainActivity.evalJs("window.nativePause ? nativePause() : nativeTogglePlay()"); }
             @Override public void onSkipToNext()     { MainActivity.evalJs("nativeNext()"); }
             @Override public void onSkipToPrevious() { MainActivity.evalJs("nativePrev()"); }
         });

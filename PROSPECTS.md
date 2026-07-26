@@ -94,6 +94,69 @@ on its own; production additionally has the FGS.
   `www.youtube.com`, which yt-dlp needs. It's a DNS block, not a firewall. Either drop the
   server from that client list or keep the `dns:` override in `compose.yaml`.
 
+### Follow-on: server-delivered video (built 2026-07-25)
+
+Same reasoning extended to video. `SERVER_VIDEO=1` (default) plays a same-origin
+`<video>` fed by `GET /api/video/{id}`, where ffmpeg remuxes YouTube's separate
+DASH streams with `-c copy`. Backgrounding then works for video too, so the
+audio switchover never fires.
+
+Measured while building:
+
+* **Muxed formats are effectively gone.** Only itag 18 (360p) came back as
+  progressive on the videos checked — the old 720p itag 22 was absent. So a
+  plain `<video src>` pointed at YouTube caps at 360p, which is why remuxing is
+  required rather than optional.
+* **avc1 1080p + mp4a is reliably available**, and `-c copy` into fragmented MP4
+  produces a valid h264+aac stream. Verified end to end: 8.4 MB in 12s, faster
+  than real-time.
+* **`default_base_is_moof` is rejected** by ffmpeg 7.1's mp4 muxer;
+  `frag_keyframe+empty_moov` is what works.
+* **Seeking has to restart ffmpeg** at a new `-ss` offset — a generated stream
+  has no byte ranges. The client keeps a virtual timeline (`watchServerBase` +
+  the element's own `currentTime`) so the scrubber, the cast status poll and
+  transfer-to-screen all still read the true position.
+* **Kill the process on client disconnect.** Seeking and skipping abandon
+  streams constantly; without it the ffmpeg processes pile up and keep pulling
+  from googlevideo forever.
+
+`cast.js` was moved onto the same transport facade as part of this, so the
+remote, play-here, transfer and D-pad work regardless of which player is live.
+Captions are the one casualty — they only exist in the iframe, so the remote
+greys the button out.
+
+### Server video: two gotchas that cost real debugging time
+
+**A/V sync after a seek — dual-input seeking.** `-ss T` is applied to both the
+video and audio inputs, but video can only start on a keyframe while audio
+starts exactly where asked. Seek to an arbitrary second and the video begins up
+to a keyframe interval *earlier*; `-c copy` then normalises both to zero, so the
+offset is baked in and heard as **audio running ahead of the picture**. The same
+path runs on the audio→video handover, so it isn't two bugs.
+
+This is invisible to ffprobe: the fragmented-MP4 muxer reports identical
+container start times whatever you do (`-copyts`, `-start_at_zero`, all the
+same). Several rounds were lost trying to measure it before a user report —
+"seeking makes audio run ahead" — identified it by direction and symptom.
+
+Fix: snap the requested position back to a real keyframe
+(`media_stream.keyframe_at_or_before`, cached per video) and seek *both* inputs
+there. `/api/video/{id}/keyframe` lets the client match its timeline to where
+the stream actually starts.
+
+**`default_base_moof`, not `default_base_is_moof`.** The flag's *description*
+reads "Set the default-base-is-moof flag", which is not its name. Using the
+description as the name makes ffmpeg reject it with "Undefined constant", which
+reads like the flag is unsupported. Without it the browser mis-reads fragment
+offsets and reports the media as a few seconds long — logs showed
+`dur=7.04`, `dur=1.29`, `dur=6.81` for the same video.
+
+**Bot detection is real and arrives fast.** Repeated resolves from one IP during
+a debugging session got that IP blocked within an afternoon:
+`Sign in to confirm you're not a bot`. Resolution then fails outright and the
+frontend falls back to the embed. The 3h URL cache exists partly to keep request
+volume down; heavy testing blows straight through it.
+
 ### Costs, unchanged
 
 ToS gray area. yt-dlp breaks periodically and a fix means rebuilding the image. Playback

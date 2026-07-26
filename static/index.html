@@ -89,6 +89,14 @@
         Hide Shorts <span class="settings-hint" style="display:inline">(videos under 3m)</span>
       </label>
       <label class="settings-toggle">
+        <input type="checkbox" id="server-video-check">
+        Server-delivered video
+        <span class="settings-hint" style="display:inline">
+          (whole server — plays through this server so video keeps going when the
+          screen locks. Off = YouTube embed + audio-only switchover.)
+        </span>
+      </label>
+      <label class="settings-toggle">
         <input type="checkbox" id="wrap-strip-check">
         Wrap video strip <span class="settings-hint" style="display:inline">(multi-row instead of horizontal scroll)</span>
       </label>
@@ -259,9 +267,15 @@
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowfullscreen></iframe>
 
-        <!-- Audio mode. A same-origin <audio> keeps playing when the app is
-             backgrounded; the YouTube iframe does not. See PROSPECTS.md. -->
+        <!-- Server-delivered video: ffmpeg remuxes YouTube's DASH streams so a
+             same-origin <video> can play them, and unlike the iframe it keeps
+             playing when backgrounded. See PROSPECTS.md. -->
+        <video id="watch-video" class="watch-video" playsinline preload="auto"></video>
+
+        <!-- Audio mode. Same reasoning, audio only — used when server video is
+             off, or as the fallback when a remux isn't available. -->
         <audio id="watch-audio" preload="auto"></audio>
+
         <div id="now-playing" class="now-playing">
           <div class="np-art-wrap">
             <img id="np-art" class="np-art" alt="">
@@ -270,9 +284,15 @@
             <div id="np-title" class="np-title"></div>
             <div id="np-channel" class="np-channel"></div>
           </div>
+        </div>
+
+        <!-- Shared by audio mode and server video. A generated stream has no
+             byte ranges to seek within, so neither can use native controls. -->
+        <div id="player-chrome" class="player-chrome">
           <div class="np-scrub">
             <span id="np-elapsed" class="np-time">0:00</span>
             <div class="np-bar" id="np-bar" title="Seek">
+              <div id="np-bar-buffer" class="np-bar-buffer"></div>
               <div id="np-bar-fill" class="np-bar-fill"></div>
             </div>
             <span id="np-duration" class="np-time">0:00</span>
@@ -281,7 +301,7 @@
             <button class="np-btn" id="btn-np-prev" title="Previous">⏮</button>
             <button class="np-btn np-btn-main" id="btn-np-play" title="Play/pause (space)">▶</button>
             <button class="np-btn" id="btn-np-next" title="Next">⏭</button>
-            <button class="np-btn np-btn-video" id="btn-np-video" title="Back to video at this timestamp (a)">🎬</button>
+            <button class="np-btn np-btn-video" id="btn-np-video" title="Switch between audio and video (a)">🎬</button>
           </div>
         </div>
 

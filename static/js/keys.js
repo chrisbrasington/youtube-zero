@@ -17,9 +17,9 @@
  *   w        — start binge-watch from queue
  *   Escape   — close queue
  *
- * Inside player: Escape close, f fullscreen, t theater, y open in YT,
- * m mark read/unread, q/Q toggle queue, n/p next/prev, s Signal,
- * Enter→TV, 0-9 seek, space/k play-pause, j/l seek ±10, arrows seek ±5.
+ * In-player shortcuts are NOT here — they're in watch.js's own keydown
+ * handler, because the watch overlay is the only player now and its transport
+ * facade covers the iframe, the remuxed <video> and <audio> alike.
  */
 
 // YouTube IFrame API — lets us control playback without iframe focus stealing keys
@@ -214,71 +214,11 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  if (!player.videoId) return;
-
-  if (e.key === 'Escape') { closePlayer(); return; }
-  if (e.key === 'f') { $('player-frame').requestFullscreen?.(); return; }
-  if (e.key === 't' || e.key === 'T') {
-    player.mode = player.mode === 'theater' ? 'normal' : 'theater';
-    renderPlayer();
-    return;
-  }
-  if (e.key === 'y') {
-    window.open(`https://www.youtube.com/watch?v=${player.videoId}`, '_blank', 'noopener,noreferrer');
-    closePlayer();
-    return;
-  }
-  if (e.key === 'm') {
-    let currentlyRead = false;
-    for (const ch of allChannels()) {
-      const v = (ch.videos || []).find(x => x.video_id === player.videoId);
-      if (v) { currentlyRead = !!v.is_read; break; }
-    }
-    toggleVideoRead(player.videoId, currentlyRead);
-    return;
-  }
-  if (e.key === 'q' || e.key === 'Q') {
-    let inQ = false;
-    for (const ch of allChannels()) {
-      const v = (ch.videos || []).find(x => x.video_id === player.videoId);
-      if (v) { inQ = !!v.in_queue; break; }
-    }
-    const meta = videoMeta.get(player.videoId);
-    if (meta) toggleQueue(meta, inQ);
-    return;
-  }
-  if (e.key === 'n') { playNext(1);  return; }
-  if (e.key === 'p') { playNext(-1); return; }
-  if (e.key === 's' && state.signalConfigured) {
-    const meta = videoMeta.get(player.videoId);
-    if (meta) signalSendVideo(meta.video_id, meta.title, meta.channel_name, meta.thumbnail_url);
-    closePlayer();
-    return;
-  }
-  if (e.key === 'Enter' && state.tvConfigured) {
-    tvSend(player.videoId);
-    closePlayer();
-    return;
-  }
-  // Forward playback keys to YT iframe player
-  if (!ytPlayer) return;
-  try {
-    if (/^[0-9]$/.test(e.key)) {
-      const pct = parseInt(e.key, 10) / 10;
-      const dur = ytPlayer.getDuration?.();
-      if (dur) ytPlayer.seekTo(dur * pct, true);
-      e.preventDefault();
-      return;
-    }
-    if (e.key === ' ' || e.key === 'k') {
-      const st = ytPlayer.getPlayerState?.();
-      if (st === 1) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'j') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) - 10, true); e.preventDefault(); return; }
-    if (e.key === 'l') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) + 10, true); e.preventDefault(); return; }
-    if (e.key === 'ArrowLeft')  { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) - 5, true); e.preventDefault(); return; }
-    if (e.key === 'ArrowRight') { ytPlayer.seekTo((ytPlayer.getCurrentTime?.() || 0) + 5, true); e.preventDefault(); return; }
-  } catch {}
+  // The in-player shortcuts used to live here, gated on `player.videoId` and
+  // driving `ytPlayer` (the #player-overlay iframe). Both are dead: openPlayer
+  // routes everything through watchEnter now, so player.videoId is never set
+  // truthy and the whole block was unreachable — which is how Escape quietly
+  // stopped closing the player. They live in watch.js's handler instead, where
+  // they go through the transport facade and work for the iframe, the remuxed
+  // <video> and <audio> alike.
 });

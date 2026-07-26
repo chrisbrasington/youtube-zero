@@ -17,6 +17,11 @@ services:
       ADB_API_URL: ${ADB_API_URL:-http://adb-api:8080}
       USE_NOCOOKIE: ${USE_NOCOOKIE:-1}  # 1 = serve player from youtube-nocookie.com so it survives a youtube.com site block; 0 = use www.youtube.com
       AUDIO_MODE: ${AUDIO_MODE:-1}      # 1 = enable /api/audio (yt-dlp background audio); 0 = disable the endpoints
+      # Server-delivered video: ffmpeg remuxes YouTube's DASH streams so a
+      # same-origin <video> can play them, which keeps playback alive when the
+      # app is backgrounded. 0 = YouTube embed + the audio-mode switchover.
+      SERVER_VIDEO: ${SERVER_VIDEO:-1}
+      SERVER_VIDEO_MAX_HEIGHT: ${SERVER_VIDEO_MAX_HEIGHT:-1080}
     # Audio mode has to reach www.youtube.com, which the LAN resolver null-routes
     # to :: — the same block USE_NOCOOKIE exists to survive. It's a DNS block, not
     # a firewall (connecting to the real IP works), and it's aimed at browsing

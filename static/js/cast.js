@@ -220,8 +220,10 @@ function castMakeMark(mode) {
 
 function castOnCommand(msg) {
   switch (msg.action) {
-    case 'pause':     try { watchPlayer?.pauseVideo?.(); } catch {} break;
-    case 'resume':    try { watchPlayer?.playVideo?.();  } catch {} break;
+    // Through the transport facade: the receiver may be on the iframe, the
+    // remuxed <video>, or <audio>, and the remote shouldn't care which.
+    case 'pause':     if (watchIsPlaying()) watchTogglePlay(); break;
+    case 'resume':    if (!watchIsPlaying()) watchTogglePlay(); break;
     case 'next':      watchAdvance({ fromEnd: false }); break;
     case 'mark_next': watchAdvance({ fromEnd: true });  break;
     case 'prev':      watchPrev(); break;
@@ -229,7 +231,7 @@ function castOnCommand(msg) {
     case 'stop':      watchExit(); break;
     case 'seek':
       if (typeof msg.value === 'number' && state.watch?.active) {
-        try { watchPlayer?.seekTo?.(msg.value, true); } catch {}
+        watchSeek(msg.value);
       }
       break;
     case 'fullscreen': castToggleCover(); break;
@@ -247,6 +249,10 @@ function castOnCommand(msg) {
 // actually selecting a *track* — loading the module alone shows nothing. The
 // tracklist isn't populated the instant the module loads (and not at all until
 // the video has begun), so when no track is ready yet we retry briefly.
+// Captions are the one control with no equivalent outside the iframe: the
+// remuxed streams carry no caption track, so under server video (or audio mode)
+// watchPlayer is null and this no-ops. The remote greys the button out via
+// `captions` in the status payload rather than letting it look broken.
 function castSetCaptions(on, attempt = 0) {
   const p = watchPlayer;
   if (!p || !p.loadModule) return;
@@ -346,11 +352,8 @@ function castNavReset() {
 }
 
 function castSeek(delta) {
-  if (!watchPlayer) return;
-  try {
-    const t = (watchPlayer.getCurrentTime?.() || 0) + delta;
-    watchPlayer.seekTo(Math.max(0, t), true);
-  } catch {}
+  if (!state.watch?.active) return;
+  watchSeek(watchTime() + delta);
 }
 
 
@@ -364,9 +367,8 @@ function castSeek(delta) {
 let castScrub = { active: false, target: 0 };
 
 function castScrubStep(delta) {
-  if (!watchPlayer) return;
-  let dur = 0, cur = 0;
-  try { dur = watchPlayer.getDuration?.() || 0; cur = watchPlayer.getCurrentTime?.() || 0; } catch {}
+  if (!state.watch?.active) return;
+  const dur = watchDuration(), cur = watchTime();
   if (!castScrub.active) { castScrub.active = true; castScrub.target = cur; }
   let t = castScrub.target + delta;
   castScrub.target = dur > 0 ? Math.max(0, Math.min(t, dur)) : Math.max(0, t);
@@ -376,7 +378,7 @@ function castScrubStep(delta) {
 function castScrubRender(dur) {
   const el = $('cast-scrub');
   if (!el) return;
-  if (!dur) { try { dur = watchPlayer?.getDuration?.() || 0; } catch {} }
+  if (!dur) dur = watchDuration();
   const t = castScrub.target;
   $('cast-scrub-fill').style.width = dur > 0 ? (100 * t / dur) + '%' : '0%';
   $('cast-scrub-cur').textContent = castFmtTime(t);
@@ -387,7 +389,7 @@ function castScrubRender(dur) {
 function castScrubCommit() {
   const t = castScrub.target;
   castScrubEnd();
-  try { watchPlayer?.seekTo?.(t, true); } catch {}
+  watchSeek(t);
 }
 
 function castScrubCancel() { castScrubEnd(); }
@@ -520,11 +522,9 @@ function castTogglePlay() {
   if (castScrub.active) { castScrubCommit(); return; }             // commit a pending seek
   if (castNav.active) { castNavSelect(); return; }                 // player overlay focus ring
   if (castIsTv() && !state.watch?.active) { tvBrowseKey('ok'); return; }  // browse grid
-  if (!state.watch?.active || !watchPlayer) return;
+  if (!state.watch?.active) return;
   try {
-    const st = watchPlayer.getPlayerState?.();
-    if (st === 1) watchPlayer.pauseVideo();   // 1 = PLAYING
-    else watchPlayer.playVideo();
+    watchTogglePlay();
   } catch {}
 }
 
@@ -540,9 +540,9 @@ function castPollStatus() {
     const item = list.find(v => v.video_id === vid);
     title = item ? item.title : '';
     try {
-      ps  = watchPlayer?.getPlayerState?.();
-      cur = watchPlayer?.getCurrentTime?.() || 0;
-      dur = watchPlayer?.getDuration?.()    || 0;
+      ps  = watchIsPlaying() ? 1 : 2;   // remote only distinguishes playing/paused
+      cur = watchTime();
+      dur = watchDuration();
     } catch {}
   }
   // current_time advances every tick while playing — that's intended so the
@@ -554,6 +554,8 @@ function castPollStatus() {
   const payload = {
     video_id: vid, title, player_state: ps, index: idx, count,
     current_time: cur, duration: dur,
+    // Only the iframe has caption support — see castSetCaptions.
+    captions: !!watchPlayer,
   };
   // Send the jump list only when it changes — so a self-started screen (which
   // never went through /play) still exposes its queue for resume/transfer/pull,
@@ -670,7 +672,7 @@ async function castTransferLocal(targetId) {
   if (!videos.length) return;
 
   let seconds = 0;
-  try { seconds = watchPlayer?.getCurrentTime?.() || 0; } catch {}
+  try { seconds = watchTime(); } catch {}
   // Local modes map onto the cast mark vocabulary: the queue marks watched;
   // single/folder mark read.
   const markMode = state.watch.mode === 'queue' ? 'queue' : 'read';
@@ -1377,7 +1379,11 @@ function castRemoteHTML(screen, st, vids, curId) {
                 data-cast-ctl="resume" title="Play">▶</button>
         <button class="btn-icon player-btn" data-cast-ctl="next" title="Skip">⏭</button>
         <button class="btn-icon player-btn" data-cast-ctl="mark_next" title="Mark watched &amp; skip">✓⏭</button>
-        <button class="btn-icon player-btn cast-ctl-cc" data-cast-ctl="cc" title="Toggle captions">CC</button>
+        <button class="btn-icon player-btn cast-ctl-cc${st && st.captions === false ? ' cast-ctl-off' : ''}"
+                data-cast-ctl="cc"
+                title="${st && st.captions === false
+                  ? 'Captions need the YouTube player — unavailable on a server-delivered stream'
+                  : 'Toggle captions'}">CC</button>
         <button class="btn-icon player-btn" data-cast-ctl="fullscreen" title="Toggle fullscreen on screen">⛶</button>
         <button class="btn-icon player-btn" data-cast-ctl="stop" title="Stop">⏹</button>
       </div>

@@ -250,6 +250,10 @@ async function loadSettings() {
     }
     // Always sync checkbox to whatever state ended up as
     $('hide-shorts-check').checked = state.hideShorts;
+    // Server-wide, so unlike hideShorts the server is the only source of truth
+    // — there is no localStorage fallback to prefer.
+    const svCheck = $('server-video-check');
+    if (svCheck) svCheck.checked = !!s.server_video;
   } catch {}
 }
 

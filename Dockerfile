@@ -6,6 +6,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
+# ffmpeg remuxes YouTube's separate DASH video/audio streams into one playable
+# stream for server-delivered video (SERVER_VIDEO). Stream copy only — no
+# transcoding — so this is for the muxer, not the codecs.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first (layer cache)
 COPY requirements.txt .
 RUN uv pip install --system --no-cache -r requirements.txt

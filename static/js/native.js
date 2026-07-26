@@ -32,6 +32,20 @@
     try { return typeof watchIsAudio === 'function' && watchIsAudio(); } catch (e) { return false; }
   }
 
+  // Explicit play/pause for the MediaSession transport callbacks.
+  //
+  // These used to all route to nativeTogglePlay, which meant a *pause* command
+  // from the system would flip us to playing whenever the page and the session
+  // disagreed about the current state — an oscillation you could hear.
+  function setPlaying(want) {
+    try {
+      if (typeof watchIsPlaying !== 'function' || typeof watchTogglePlay !== 'function') return;
+      if (watchIsPlaying() !== want) watchTogglePlay();
+    } catch (e) {}
+  }
+  window.nativePlay  = function () { setPlaying(true); };
+  window.nativePause = function () { setPlaying(false); };
+
   // Invoked by native when the user taps the notification / lock-screen controls.
   window.nativeTogglePlay = function () {
     // watchTogglePlay drives whichever player is live; fall back to the raw YT
@@ -55,8 +69,16 @@
   // audio mode.
   window.nativeOnBackground = function () {
     try {
-      if (typeof state === 'undefined' || !state.watch?.active) return;
+      if (typeof state === 'undefined' || !state.watch?.active) {
+        console.log('BGDBG onBackground: no active watch'); return;
+      }
+      console.log('BGDBG onBackground server=' + !!state.watch.server
+        + ' audio=' + inAudioMode() + ' audioAuto=' + !!state.watch.audioAuto);
       if (inAudioMode()) return;
+      // Both transports end up in the same place: hand over to <audio>, which
+      // Chromium lets run in the background. Trying to keep a <video> alive
+      // here was measured and abandoned: Chromium re-pauses a backgrounded
+      // <video> every ~6s indefinitely, so a keep-alive is a permanent fight.
       if (typeof watchSetAudioMode === 'function') {
         watchSetAudioMode(true, { persist: false, auto: true });
       }
@@ -68,6 +90,7 @@
   window.nativeOnForeground = function () {
     try {
       if (typeof state === 'undefined' || !state.watch?.active) return;
+      console.log('BGDBG onForeground audioAuto=' + !!state.watch.audioAuto);
       if (!state.watch.audioAuto) return;
       if (typeof watchSetAudioMode === 'function') {
         watchSetAudioMode(false, { persist: false });
@@ -85,23 +108,29 @@
   // media notification and avoids having to hook every player's onStateChange.
   // In audio mode the metadata comes from our own list rather than the iframe —
   // there is no getVideoData() to ask.
-  function audioSnapshot() {
+  function mediaSnapshot() {
     const a = document.getElementById('watch-audio');
-    if (!a || !a.currentSrc) return null;
+    const v = document.getElementById('watch-video');
+    const el = (a && a.currentSrc) ? a : (v && v.currentSrc) ? v : null;
+    if (!el) return null;
     let title = '', artist = '', videoId = '';
     try {
       videoId = state.watch.currentVideoId || '';
       const item = (state.watch.list || []).find(v => v.video_id === videoId);
       if (item) { title = item.title || ''; artist = item.channel_name || ''; }
     } catch (e) {}
-    return { playing: !a.paused, active: true, title: title, artist: artist, videoId: videoId };
+    return { playing: !el.paused, active: true, title: title, artist: artist, videoId: videoId };
+  }
+
+  function onSameOriginElement() {
+    try { return inAudioMode() || !!state.watch?.server; } catch (e) { return false; }
   }
 
   let last = '';
   setInterval(function () {
     let playing, active, title = '', artist = '', videoId = '', st = -1;
 
-    const snap = inAudioMode() ? audioSnapshot() : null;
+    const snap = onSameOriginElement() ? mediaSnapshot() : null;
     if (snap) {
       ({ playing, active, title, artist, videoId } = snap);
       st = playing ? 1 : 2;

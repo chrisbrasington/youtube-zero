@@ -76,6 +76,21 @@ $('hide-shorts-check').addEventListener('change', async () => {
     .catch(e => console.warn('hide-shorts save failed:', e));
 });
 
+// Server-wide setting, and /config.js is read once at page load — so reload
+// rather than leave this client disagreeing with the server about which player
+// it should be using.
+$('server-video-check')?.addEventListener('change', async () => {
+  const on = $('server-video-check').checked;
+  try {
+    await api.post('/api/settings/server-video', { server_video: on });
+    status(on ? 'Server video on — reloading…' : 'Using the YouTube player — reloading…', 'ok');
+    setTimeout(() => location.reload(), 600);
+  } catch (e) {
+    status('Could not save: ' + e.message, 'err');
+    $('server-video-check').checked = !on;
+  }
+});
+
 function applyWrapStrip() {
   document.body.classList.toggle('wrap-strip', state.wrapStrip);
 }

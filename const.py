@@ -60,3 +60,20 @@ AUDIO_MODE = os.environ.get("AUDIO_MODE", "1") == "1"   # 0 disables the endpoin
 AUDIO_CACHE_TTL = int(os.environ.get("AUDIO_CACHE_TTL", "10800"))  # 3h; googlevideo URLs last ~6h
 AUDIO_RESOLVE_TIMEOUT = 20    # socket timeout for a yt-dlp lookup
 AUDIO_PROXY_CHUNK = 65536     # bytes per chunk when relaying the stream
+
+
+# ── Server-delivered video ───────────────────────────────────────────────────
+# When on, video plays from a same-origin <video> fed by ffmpeg remuxing the
+# DASH streams, instead of the YouTube iframe. Backgrounding then works for
+# video too and the audio-mode switchover never has to happen.
+#
+# Costs: ffmpeg per concurrent viewer, full video bitrate over the server's
+# uplink, and seeking restarts the stream at the new offset (a generated stream
+# has no byte ranges to seek within). Set 0 to go back to the iframe + audio
+# switchover, which stays fully functional either way.
+SERVER_VIDEO = os.environ.get("SERVER_VIDEO", "1") == "1"
+SERVER_VIDEO_MAX_HEIGHT = int(os.environ.get("SERVER_VIDEO_MAX_HEIGHT", "1080"))
+FFMPEG_BIN = os.environ.get("FFMPEG_BIN", "ffmpeg")
+FFPROBE_BIN = os.environ.get("FFPROBE_BIN", "ffprobe")
+# Seconds either side of a seek target to scan for keyframes.
+KEYFRAME_PROBE_WINDOW = 12

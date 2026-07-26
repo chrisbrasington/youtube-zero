@@ -15,11 +15,12 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
-import audio_stream
+import media_stream
 from const import (
     ADB_API_URL,
     AUDIO_MODE,
     AUDIO_PROXY_CHUNK,
+    FFMPEG_BIN,
     DAILY_QUOTA_LIMIT,
     DB_PATH,
     HTTP_TIMEOUT_LONG,
@@ -30,6 +31,7 @@ from const import (
     REFRESH_CONCURRENCY,
     REFRESH_INTERVAL,
     SIGNAL_API_URL,
+    SERVER_VIDEO,
     SIGNAL_RECONNECT_PAUSE,
     TZ_NAME,
     USE_NOCOOKIE,
@@ -834,7 +836,20 @@ def settings_get():
         "has_api_key": bool(key),
         "masked": masked,
         "hide_shorts": rows.get("hide_shorts", "0") == "1",
+        "server_video": server_video_enabled(),
     }
+
+
+def server_video_enabled() -> bool:
+    """Server-wide, so it lives in the DB rather than per-browser storage.
+
+    The SERVER_VIDEO env var is only the default for a server that has never
+    been told either way — once toggled in the UI, the stored value wins.
+    """
+    stored = get_all_settings().get("server_video")
+    if stored is None:
+        return SERVER_VIDEO
+    return stored == "1"
 
 
 @app.post("/api/settings/api-key")
@@ -850,6 +865,18 @@ class HideShortsReq(BaseModel):
 def settings_hide_shorts(req: HideShortsReq):
     set_setting("hide_shorts", "1" if req.hide_shorts else "0")
     return {"ok": True}
+
+
+class ServerVideoReq(BaseModel):
+    server_video: bool
+
+
+@app.post("/api/settings/server-video")
+def settings_server_video(req: ServerVideoReq):
+    """Affects every client, not just the one that flipped it — the server is
+    what does the remuxing."""
+    set_setting("server_video", "1" if req.server_video else "0")
+    return {"ok": True, "server_video": req.server_video}
 
 
 # ── Signal settings ───────────────────────────────────────────────────────────
@@ -1337,7 +1364,7 @@ async def audio_prefetch(video_id: str):
         raise HTTPException(404, "audio mode disabled")
     if not _parse_yt_video_id(video_id):
         raise HTTPException(400, "invalid video id")
-    info = await audio_stream.resolve(video_id)
+    info = await media_stream.resolve_audio(video_id)
     if not info:
         return {"ok": False}
     return {"ok": True, "mime": info["mime"], "duration": info.get("duration")}
@@ -1356,7 +1383,7 @@ async def audio_proxy(video_id: str, request: Request):
     if not _parse_yt_video_id(video_id):
         raise HTTPException(400, "invalid video id")
 
-    info = await audio_stream.resolve(video_id)
+    info = await media_stream.resolve_audio(video_id)
     if not info:
         raise HTTPException(502, "could not resolve audio stream")
 
@@ -1376,8 +1403,8 @@ async def audio_proxy(video_id: str, request: Request):
     if upstream.status_code in (403, 410):
         await upstream.aclose()
         await client.aclose()
-        audio_stream.invalidate(video_id)
-        info = await audio_stream.resolve(video_id, force=True)
+        media_stream.invalidate(video_id)
+        info = await media_stream.resolve_audio(video_id, force=True)
         if not info:
             raise HTTPException(502, "could not refresh audio stream")
         client, upstream = await open_upstream(info["url"])
@@ -1410,6 +1437,138 @@ async def audio_proxy(video_id: str, request: Request):
         status_code=upstream.status_code,
         headers=headers,
         media_type=info["mime"],
+    )
+
+
+@app.get("/api/video/{video_id}/info")
+async def server_video_info(video_id: str):
+    """Can this video be served from here, and how long is it?
+
+    The frontend asks before committing to server playback so it can fall back
+    to the iframe with a message rather than showing a broken player. Duration
+    matters because a generated stream has none of its own — the client builds
+    its timeline from this.
+    """
+    if not server_video_enabled():
+        raise HTTPException(404, "server video disabled")
+    if not _parse_yt_video_id(video_id):
+        raise HTTPException(400, "invalid video id")
+    pair = await media_stream.resolve_video(video_id)
+    if not pair:
+        return {"ok": False}
+    return {
+        "ok": True,
+        "duration": pair.get("duration"),
+        "mime": pair["mime"],
+        "height": pair.get("height"),
+        "vcodec": pair.get("vcodec"),
+    }
+
+
+@app.get("/api/video/{video_id}/keyframe")
+async def server_video_keyframe(video_id: str, t: float = 0.0):
+    """Where a seek to `t` will actually land.
+
+    The client asks first so its timeline matches the stream it's about to get;
+    otherwise the scrubber would read a few seconds off after every seek. Cached
+    per video, so only the first seek pays for the probe.
+    """
+    if not server_video_enabled():
+        raise HTTPException(404, "server video disabled")
+    if not _parse_yt_video_id(video_id):
+        raise HTTPException(400, "invalid video id")
+    if t <= 0:
+        return {"start": 0.0}
+    pair = await media_stream.resolve_video(video_id)
+    if not pair:
+        return {"start": t}
+    return {"start": await media_stream.keyframe_at_or_before(video_id, pair["video_url"], t)}
+
+
+@app.get("/api/video/{video_id}")
+async def server_video(video_id: str, request: Request, start: float = 0.0):
+    """Remux the DASH video+audio pair into one stream, live.
+
+    Everything above 360p on YouTube is delivered as separate video and audio
+    streams, so a plain <video> can't play it — ffmpeg puts them back together.
+    `-c copy` means no re-encoding: the cost is muxing and bandwidth, not
+    transcoding.
+
+    Seeking works by restarting ffmpeg at a new `start` offset, because a
+    stream generated on the fly has no byte ranges to seek within and no known
+    total length. The client keeps a virtual timeline (`start` + the element's
+    own currentTime) so the scrubber still reads correctly.
+    """
+    if not server_video_enabled():
+        raise HTTPException(404, "server video disabled")
+    if not _parse_yt_video_id(video_id):
+        raise HTTPException(400, "invalid video id")
+
+    pair = await media_stream.resolve_video(video_id)
+    if not pair:
+        raise HTTPException(502, "could not resolve video streams")
+
+    # Snap to a real keyframe before seeking. Both inputs get the same -ss, but
+    # video can only start on a keyframe while audio starts exactly where asked
+    # — seek to an arbitrary second and the video begins up to a keyframe
+    # interval earlier, heard as audio running ahead of the picture. Landing on
+    # a keyframe is exact for both.
+    start = max(0.0, start)
+    if start > 0:
+        start = await media_stream.keyframe_at_or_before(video_id, pair["video_url"], start)
+    # Reconnect flags matter: googlevideo drops long-lived connections, and
+    # without them a mid-video hiccup ends the stream instead of resuming.
+    reconnect = ["-reconnect", "1", "-reconnect_streamed", "1",
+                 "-reconnect_delay_max", "5"]
+    seek = ["-ss", f"{start:.3f}"] if start > 0 else []
+    cmd = [
+        FFMPEG_BIN, "-hide_banner", "-loglevel", "error",
+        *reconnect, *seek, "-i", pair["video_url"],
+        *reconnect, *seek, "-i", pair["audio_url"],
+        "-map", "0:v:0", "-map", "1:a:0", "-c", "copy",
+        "-f", pair["container"],
+        # Fragmented output so playback can start before the file "ends" — a
+        # normal MP4 puts its index at the end, which never arrives here.
+        #
+        # default_base_moof is load-bearing, not optional: without it the
+        # browser mis-reads fragment offsets and reports the media as a few
+        # seconds long, then keeps re-deciding as fragments arrive. (Its
+        # *description* is "default-base-is-moof", which is not the flag name —
+        # that typo cost a debugging round.)
+        #
+        # frag_duration keeps fragments small and regular so playback starts
+        # promptly and the element isn't handed one huge fragment.
+        *(["-movflags", "frag_keyframe+empty_moov+default_base_moof",
+           "-frag_duration", "1000000"] if pair["container"] == "mp4" else []),
+        "pipe:1",
+    ]
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+
+    async def body():
+        try:
+            while True:
+                chunk = await proc.stdout.read(AUDIO_PROXY_CHUNK)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            # Seeking and skipping abandon streams constantly; without this the
+            # ffmpeg processes accumulate and each one keeps pulling bytes from
+            # googlevideo forever.
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            await proc.wait()
+
+    return StreamingResponse(
+        body(),
+        media_type=pair["mime"],
+        headers={"Cache-Control": "no-store", "Accept-Ranges": "none"},
     )
 
 
@@ -1782,6 +1941,10 @@ async def config_js():
         f"window.YT_EMBED_HOST = {json.dumps(YT_EMBED_HOST)};\n"
         f"window.YT_WIDGET_API = {json.dumps(widget_api)};\n"
         f"window.YT_USE_NOCOOKIE = {json.dumps(USE_NOCOOKIE)};\n"
+        # Server-wide, not a per-browser preference: whether the box is willing
+        # to remux is a property of the box.
+        f"window.SERVER_VIDEO = {json.dumps(server_video_enabled())};\n"
+        f"window.AUDIO_MODE_ENABLED = {json.dumps(AUDIO_MODE)};\n"
     )
     return Response(
         content=body,

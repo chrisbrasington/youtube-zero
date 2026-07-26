@@ -53,7 +53,8 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 
 * <b>Send to TV via Android developer bridge container</b>
 * <b>Play on Screen — cast to a `/watch` display and drive it from your phone</b>
-* <b>Audio mode — keeps playing when the phone is locked</b>
+* <b>Server-delivered video — keeps playing when the phone is locked</b>
+* <b>Audio mode — the same, audio only, for a fraction of the bandwidth</b>
 * Embedded player with normal, theater and fullscreen modes
 * Keyboard shortcuts throughout
 * Shorts filtering (hides videos under 3 minutes)
@@ -232,6 +233,34 @@ first; hold **Shift** for newest first.
 | Mark watched and close | **✓ Watched** (when playing from the queue) |
 | Close the player | **✕**, click the backdrop, or press **Escape** |
 
+### Server-delivered video (default on)
+
+With `SERVER_VIDEO=1` the player is a same-origin `<video>` fed by the server
+instead of the YouTube embed, and **video keeps playing when the app is
+backgrounded or the screen locks** — no switch to audio needed.
+
+YouTube delivers anything above 360p as separate video and audio streams, so
+`ffmpeg` remuxes them back together on the fly. It's a stream copy, not a
+transcode: full 1080p H.264 out, no quality loss, no encoding cost.
+
+What it costs:
+
+* **ffmpeg per concurrent viewer**, and the full video bitrate over your uplink
+  (~0.7–3 Mbps, versus ~0.1 for audio mode).
+* **Seeking restarts the stream** at the new position. A generated stream has no
+  byte ranges to seek within, so the player asks the server to begin again at
+  that offset and keeps its own timeline. Expect a pause while it catches up —
+  the scrubber's dim bar shows how far the remux has got.
+* **No captions.** They live in the YouTube player, which isn't involved. The
+  cast remote greys the CC button out when a screen is on a server stream.
+* Everything else works: the cast remote, play-here, transfer-to-screen and the
+  TV D-pad all drive whichever player is live.
+
+Set `SERVER_VIDEO=0` to go back to the YouTube embed plus the audio-mode
+switchover described below. That path stays fully functional, and is also the
+automatic fallback whenever a remux isn't possible — you'll see a brief
+"using the YouTube player" message when that happens.
+
 ### Audio mode
 
 Press **🎧** in the player (or **a**) to drop the video and play audio only. The video is
@@ -286,6 +315,8 @@ Channels also refresh on their own in the background — see
 | `DB_PATH` | `./youtube_zero.db` | SQLite database path |
 | `SIGNAL_API_URL` | `http://signal-api:8080` | URL of signal-cli-rest-api sidecar |
 | `REFRESH_INTERVAL_SECONDS` | `3600` | Background refresh interval; `0` to disable |
+| `SERVER_VIDEO` | `1` | Serve video from the server via ffmpeg remux; `0` uses the YouTube embed |
+| `SERVER_VIDEO_MAX_HEIGHT` | `1080` | Cap the rendition picked for remuxing |
 | `AUDIO_MODE` | `1` | Enable `/api/audio` (yt-dlp background audio); `0` disables |
 | `AUDIO_CACHE_TTL` | `10800` | Seconds to cache a resolved stream URL (they last ~6h) |
 
