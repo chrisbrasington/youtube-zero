@@ -53,6 +53,7 @@ Watch what matters, queue what you want, dismiss what doesn't. <u>When you're do
 
 * <b>Send to TV via Android developer bridge container</b>
 * <b>Play on Screen — cast to a `/watch` display and drive it from your phone</b>
+* <b>Audio mode — keeps playing when the phone is locked</b>
 * Embedded player with normal, theater and fullscreen modes
 * Keyboard shortcuts throughout
 * Shorts filtering (hides videos under 3 minutes)
@@ -224,11 +225,38 @@ first; hold **Shift** for newest first.
 | Open in YouTube | **↗** or press **y** — marks watched |
 | Remove from queue | **Remove** |
 | Send the whole queue to Signal | **✉ Signal** in the queue header |
+| Audio only (survives a screen lock) | **🎧** or press **a** — see below |
 | Theater mode | **⬜** or press **t** |
 | Fullscreen | **⛶** or press **f** |
 | Send to Signal | Press **s** |
 | Mark watched and close | **✓ Watched** (when playing from the queue) |
 | Close the player | **✕**, click the backdrop, or press **Escape** |
+
+### Audio mode
+
+Press **🎧** in the player (or **a**) to drop the video and play audio only. The video is
+replaced by a now-playing panel — artwork, scrubber, prev/play/next — and playback
+**continues when the screen is off or the app is backgrounded**, with working lockscreen
+controls. In the Android app it switches over automatically when you background it.
+
+The YouTube embed cannot do this: Chromium suspends the iframe the moment the page is
+hidden. Audio mode feeds a same-origin `<audio>` element from `/api/audio/<video_id>`,
+which the server resolves with yt-dlp and proxies. See `PROSPECTS.md` for the measurements.
+
+The setting is per-browser and sticky. It never engages on `/tv` or a cast receiver —
+those are screens someone is looking at.
+
+Worth knowing:
+
+* **Views don't count.** Playback never touches YouTube's counters, so creators get nothing.
+* **No captions, chapters, or video** while it's on.
+* **The server carries the audio** — about 20 MB per 30 minutes, per listener.
+* **yt-dlp breaks periodically** when YouTube changes their player. Audio mode falls back
+  to the video player when it does, so a breakage costs background playback, not playback.
+  Fixing it means bumping `yt-dlp` in `requirements.txt` and rebuilding.
+* **Needs `www.youtube.com`.** If your DNS blocks it (Pi-hole, AdGuard), the server can't
+  resolve streams — see the `dns:` note in `compose.yaml`.
+* Set `AUDIO_MODE=0` to disable the endpoints entirely.
 
 ### On a phone
 
@@ -258,6 +286,8 @@ Channels also refresh on their own in the background — see
 | `DB_PATH` | `./youtube_zero.db` | SQLite database path |
 | `SIGNAL_API_URL` | `http://signal-api:8080` | URL of signal-cli-rest-api sidecar |
 | `REFRESH_INTERVAL_SECONDS` | `3600` | Background refresh interval; `0` to disable |
+| `AUDIO_MODE` | `1` | Enable `/api/audio` (yt-dlp background audio); `0` disables |
+| `AUDIO_CACHE_TTL` | `10800` | Seconds to cache a resolved stream URL (they last ~6h) |
 
 ## Stack
 

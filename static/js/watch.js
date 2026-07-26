@@ -178,12 +178,15 @@ function watchBindMediaSession() {
   watchMsBound = true;
   const ms = navigator.mediaSession;
   const safe = (name, fn) => { try { ms.setActionHandler(name, fn); } catch {} };
-  safe('play',          () => { try { watchPlayer?.playVideo();  } catch {} });
-  safe('pause',         () => { try { watchPlayer?.pauseVideo(); } catch {} });
+  // Routed through the transport facade so the lockscreen controls drive
+  // whichever player is live — iframe or <audio>.
+  safe('play',          () => { if (!watchIsPlaying()) watchTogglePlay(); });
+  safe('pause',         () => { if (watchIsPlaying())  watchTogglePlay(); });
   safe('nexttrack',     () => watchAdvance({ fromEnd: true }));
   safe('previoustrack', () => watchPrev());
-  safe('seekbackward',  (d) => { try { watchPlayer?.seekTo((watchPlayer.getCurrentTime?.() || 0) - (d?.seekOffset || 10), true); } catch {} });
-  safe('seekforward',   (d) => { try { watchPlayer?.seekTo((watchPlayer.getCurrentTime?.() || 0) + (d?.seekOffset || 10), true); } catch {} });
+  safe('seekbackward',  (d) => watchSeek(watchTime() - (d?.seekOffset || 10)));
+  safe('seekforward',   (d) => watchSeek(watchTime() + (d?.seekOffset || 10)));
+  safe('seekto',        (d) => { if (d?.seekTime != null) watchSeek(d.seekTime); });
 }
 
 
@@ -211,18 +214,186 @@ function watchArmUnmute() {
 }
 
 
+// ── Transport facade ─────────────────────────────────────────────────────────
+// Audio mode swaps the YouTube iframe for a same-origin <audio> element, because
+// Chromium suspends the iframe the moment the app is backgrounded and does not
+// suspend <audio> (both measured — see PROSPECTS.md). Everything else about a
+// watch session is shared: the list, advance, mark-as-read, queue rendering.
+// Only the handful of transport calls differ, so they all route through here.
+
+function watchAudioEl() { return document.getElementById('watch-audio'); }
+function watchIsAudio()  { return !!state.watch?.audio; }
+
+function watchTime() {
+  if (watchIsAudio()) return watchAudioEl()?.currentTime || 0;
+  try { return watchPlayer?.getCurrentTime?.() || 0; } catch { return 0; }
+}
+
+function watchDuration() {
+  if (watchIsAudio()) {
+    const d = watchAudioEl()?.duration;
+    return Number.isFinite(d) ? d : 0;
+  }
+  try { return watchPlayer?.getDuration?.() || 0; } catch { return 0; }
+}
+
+function watchSeek(t) {
+  const target = Math.max(0, t);
+  if (watchIsAudio()) {
+    const a = watchAudioEl();
+    if (a) a.currentTime = target;
+    return;
+  }
+  try { watchPlayer?.seekTo?.(target, true); } catch {}
+}
+
+function watchIsPlaying() {
+  if (watchIsAudio()) { const a = watchAudioEl(); return !!a && !a.paused; }
+  try { return watchPlayer?.getPlayerState?.() === 1; } catch { return false; }
+}
+
+function watchTogglePlay() {
+  if (watchIsAudio()) {
+    const a = watchAudioEl();
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {}); else a.pause();
+    return;
+  }
+  try {
+    if (watchIsPlaying()) watchPlayer.pauseVideo(); else watchPlayer.playVideo();
+  } catch {}
+}
+
+
+// ── Audio mode ───────────────────────────────────────────────────────────────
+
+let watchAudioBound = false;
+
+function watchBindAudio() {
+  if (watchAudioBound) return;
+  const a = watchAudioEl();
+  if (!a) return;
+  watchAudioBound = true;
+
+  a.addEventListener('ended', () => {
+    if (state.watch?.active && watchIsAudio()) watchAdvance({ fromEnd: true });
+  });
+  // A resolve failure (yt-dlp broken, video unavailable) must not dead-end the
+  // session — drop back to the iframe and keep playing.
+  a.addEventListener('error', () => {
+    if (!state.watch?.active || !watchIsAudio()) return;
+    status('Audio stream unavailable — using video', 'err');
+    setTimeout(() => status(''), 3000);
+    watchSetAudioMode(false);
+  });
+  ['play', 'pause', 'timeupdate', 'loadedmetadata'].forEach(evt =>
+    a.addEventListener(evt, watchRenderNowPlaying));
+}
+
+function watchLoadAudio(videoId, startSeconds = 0) {
+  const a = watchAudioEl();
+  if (!a) return;
+  watchBindAudio();
+  a.src = `/api/audio/${encodeURIComponent(videoId)}`;
+  if (startSeconds > 0) {
+    // currentTime before metadata lands is discarded, so wait for the duration.
+    a.addEventListener('loadedmetadata', () => {
+      try { a.currentTime = startSeconds; } catch {}
+    }, { once: true });
+  }
+  a.play().catch(() => {
+    status('Tap play to start audio', 'err');
+    setTimeout(() => status(''), 3000);
+  });
+}
+
+/** Switch the running session between iframe and audio, keeping the position. */
+function watchSetAudioMode(on) {
+  if (!state.watch) return;
+  if (!!state.watch.audio === !!on) return;
+  const at = watchTime();
+  const videoId = state.watch.currentVideoId;
+
+  if (on) {
+    try { watchPlayer?.stopVideo?.(); } catch {}
+    const f = $('watch-frame');
+    if (f) f.src = '';
+  } else {
+    const a = watchAudioEl();
+    if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
+  }
+
+  state.watch.audio = !!on;
+  $('watch-layout').classList.toggle('audio-mode', !!on);
+  $('btn-watch-audio')?.classList.toggle('on', !!on);
+  localStorage.setItem('audioMode', on ? '1' : '0');
+  if (videoId) watchPlay(videoId, at);
+}
+
+/** Warm the resolver so a 1-3s yt-dlp lookup never lands in a gap.
+ *
+ *  In audio mode that means the next item, for the transition between tracks.
+ *  In video mode inside the Android app it means the *current* item, because
+ *  backgrounding hands playback to <audio> and that swap should be instant.
+ *
+ *  Skipped entirely in a plain browser playing video — nothing there will ever
+ *  need the audio stream, and resolving costs a YouTube round-trip. */
+function watchPrefetchAudio() {
+  if (!state.watch) return;
+  const list = state.watch.list || [];
+  const i = list.findIndex(v => v.video_id === state.watch.currentVideoId);
+  const targets = [];
+  if (watchIsAudio()) {
+    if (i >= 0 && list[i + 1]) targets.push(list[i + 1].video_id);
+  } else if (window.AndroidMedia && state.watch.currentVideoId) {
+    targets.push(state.watch.currentVideoId);
+  }
+  for (const id of targets) api.post(`/api/audio/${id}/prefetch`).catch(() => {});
+}
+
+function watchRenderNowPlaying() {
+  if (!state.watch?.active || !watchIsAudio()) return;
+  const item = (state.watch.list || []).find(v => v.video_id === state.watch.currentVideoId);
+  const cur = watchTime(), dur = watchDuration();
+  const fmt = (s) => {
+    if (!Number.isFinite(s) || s < 0) return '0:00';
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  };
+  const art = $('np-art');
+  if (art && item && art.src !== item.thumbnail_url) art.src = item.thumbnail_url || '';
+  const t = $('np-title'); if (t) t.textContent = item?.title || '';
+  const c = $('np-channel'); if (c) c.textContent = item?.channel_name || '';
+  const e = $('np-elapsed'); if (e) e.textContent = fmt(cur);
+  const d = $('np-duration'); if (d) d.textContent = fmt(dur);
+  const bar = $('np-bar-fill');
+  if (bar) bar.style.width = dur > 0 ? `${Math.min(100, (cur / dur) * 100)}%` : '0%';
+  const pp = $('btn-np-play');
+  if (pp) pp.textContent = watchIsPlaying() ? '⏸' : '▶';
+}
+
+
+let watchLastPlayedId = null;
+
 function watchPlay(videoId, startSeconds = 0) {
+  const isNewVideo = videoId !== watchLastPlayedId;
   state.watch.currentVideoId = videoId;
   const item = (state.watch.list || []).find(v => v.video_id === videoId);
-  // Record "started watching" so the video lands in history even if never finished.
-  if (videoId) {
+  // Record "started watching" so the video lands in history even if never
+  // finished. Only on a genuinely new video — switching between video and audio
+  // re-enters here for the same one and shouldn't log it twice.
+  if (videoId && isNewVideo) {
+    watchLastPlayedId = videoId;
     api.post(`/api/videos/${videoId}/played`, item
       ? { title: item.title, channel_name: item.channel_name, thumbnail_url: item.thumbnail_url }
       : {}).catch(() => {});
   }
   $('watch-title').textContent = item ? item.title : '';
   $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
-  if (watchPlayer && watchPlayer.loadVideoById) {
+
+  if (watchIsAudio()) {
+    watchLoadAudio(videoId, startSeconds);
+  } else if (watchPlayer && watchPlayer.loadVideoById) {
     watchPlayer.loadVideoById(startSeconds > 0 ? { videoId, startSeconds } : videoId);
   } else {
     const origin = encodeURIComponent(location.origin);
@@ -237,6 +408,8 @@ function watchPlay(videoId, startSeconds = 0) {
   }
   watchRenderQueue();
   watchUpdateMediaSession();
+  watchRenderNowPlaying();
+  watchPrefetchAudio();
 }
 
 
@@ -295,6 +468,19 @@ function watchBindDom() {
   $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
 
+  // Audio mode: toggle + the now-playing transport that replaces the video.
+  $('btn-watch-audio')?.addEventListener('click', () => watchSetAudioMode(!watchIsAudio()));
+  $('btn-np-play')?.addEventListener('click', () => { watchTogglePlay(); watchRenderNowPlaying(); });
+  $('btn-np-next')?.addEventListener('click', () => watchAdvance({ fromEnd: false }));
+  $('btn-np-prev')?.addEventListener('click', () => watchPrev());
+  $('np-bar')?.addEventListener('click', (e) => {
+    const dur = watchDuration();
+    if (!dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    watchSeek(dur * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)));
+    watchRenderNowPlaying();
+  });
+
   const landscapeMq = matchMedia('(orientation: landscape)');
   const onOrientation = () => {
     if (!state.watch?.active || !isMobile()) return;
@@ -336,25 +522,20 @@ function watchBindDom() {
       sessionStorage.setItem('theaterPref', on ? '1' : '0');
       return;
     }
-    if (!watchPlayer) return;
+    if (e.key === 'a' || e.key === 'A') { watchSetAudioMode(!watchIsAudio()); return; }
+    if (!watchPlayer && !watchIsAudio()) return;
     try {
       if (/^[0-9]$/.test(e.key)) {
-        const pct = parseInt(e.key, 10) / 10;
-        const dur = watchPlayer.getDuration?.();
-        if (dur) watchPlayer.seekTo(dur * pct, true);
+        const dur = watchDuration();
+        if (dur) watchSeek(dur * (parseInt(e.key, 10) / 10));
         e.preventDefault();
         return;
       }
-      if (e.key === ' ' || e.key === 'k') {
-        const st = watchPlayer.getPlayerState?.();
-        if (st === 1) watchPlayer.pauseVideo(); else watchPlayer.playVideo();
-        e.preventDefault();
-        return;
-      }
-      if (e.key === 'j')          { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) - 10, true); e.preventDefault(); return; }
-      if (e.key === 'l')          { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) + 10, true); e.preventDefault(); return; }
-      if (e.key === 'ArrowLeft')  { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) - 5,  true); e.preventDefault(); return; }
-      if (e.key === 'ArrowRight') { watchPlayer.seekTo((watchPlayer.getCurrentTime?.() || 0) + 5,  true); e.preventDefault(); return; }
+      if (e.key === ' ' || e.key === 'k') { watchTogglePlay(); e.preventDefault(); return; }
+      if (e.key === 'j')          { watchSeek(watchTime() - 10); e.preventDefault(); return; }
+      if (e.key === 'l')          { watchSeek(watchTime() + 10); e.preventDefault(); return; }
+      if (e.key === 'ArrowLeft')  { watchSeek(watchTime() - 5);  e.preventDefault(); return; }
+      if (e.key === 'ArrowRight') { watchSeek(watchTime() + 5);  e.preventDefault(); return; }
     } catch {}
   });
 }
@@ -371,7 +552,15 @@ function watchEnter(config) {
     mark: config.mark || null,
     onExit: config.onExit || null,
     currentVideoId: null,
+    // Audio mode is sticky per browser. Never on a cast receiver or /tv — those
+    // are screens someone is looking at, and the point of audio mode is not
+    // looking at it.
+    audio: config.audio != null
+      ? !!config.audio
+      : (localStorage.getItem('audioMode') === '1' && !castIsTv() && config.mode !== 'cast'),
   };
+  $('watch-layout').classList.toggle('audio-mode', !!state.watch.audio);
+  $('btn-watch-audio')?.classList.toggle('on', !!state.watch.audio);
   document.body.classList.add('route-watch');
   $('watch-layout').classList.remove('hidden');
   // Restore session theater preference — watchExit() always strips the class,
@@ -425,7 +614,11 @@ function watchExit() {
   if (typeof castLocalScreenStop === 'function') castLocalScreenStop();  // stop being a / screen
   $('watch-layout').classList.add('hidden');
   $('watch-layout').classList.remove('theater');
+  $('watch-layout').classList.remove('audio-mode');
   $('watch-unmute').classList.add('hidden');
+  // Release the audio stream too, or the proxy keeps feeding a dead session.
+  const audioEl = document.getElementById('watch-audio');
+  if (audioEl) { try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {} }
   // Tear the YT player fully down and swap in a fresh blank iframe. Reusing a
   // player after stopVideo() leaves the iframe off youtube.com, so the next
   // loadVideoById postMessage hits our own origin and silently fails to play.

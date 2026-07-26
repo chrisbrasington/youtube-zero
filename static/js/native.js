@@ -28,10 +28,35 @@
     return null;
   }
 
+  function inAudioMode() {
+    try { return typeof watchIsAudio === 'function' && watchIsAudio(); } catch (e) { return false; }
+  }
+
   // Invoked by native when the user taps the notification / lock-screen controls.
   window.nativeTogglePlay = function () {
+    // watchTogglePlay drives whichever player is live; fall back to the raw YT
+    // player for the pre-audio-mode paths that don't have a watch session.
+    try {
+      if (typeof watchTogglePlay === 'function' && typeof state !== 'undefined' && state.watch?.active) {
+        watchTogglePlay();
+        return;
+      }
+    } catch (e) {}
     const p = activePlayer(); if (!p) return;
     try { (p.getPlayerState() === 1 ? p.pauseVideo() : p.playVideo()); } catch (e) {}
+  };
+
+  // Called from MainActivity when the app is backgrounded. The YouTube iframe is
+  // suspended within ~70ms of this (measured — see PROSPECTS.md), so hand the
+  // session over to the <audio> element, which isn't. One-way on purpose:
+  // switching back on every glance at the phone would stutter far more often
+  // than it would help.
+  window.nativeOnBackground = function () {
+    try {
+      if (typeof state === 'undefined' || !state.watch?.active) return;
+      if (inAudioMode()) return;
+      if (typeof watchSetAudioMode === 'function') watchSetAudioMode(true);
+    } catch (e) {}
   };
   window.nativeNext = function () {
     try { if (typeof watchAdvance === 'function') watchAdvance({ fromEnd: false }); } catch (e) {}
@@ -42,20 +67,41 @@
 
   // Poll the active player and push state changes to native. 1s is plenty for a
   // media notification and avoids having to hook every player's onStateChange.
+  // In audio mode the metadata comes from our own list rather than the iframe —
+  // there is no getVideoData() to ask.
+  function audioSnapshot() {
+    const a = document.getElementById('watch-audio');
+    if (!a || !a.currentSrc) return null;
+    let title = '', artist = '', videoId = '';
+    try {
+      videoId = state.watch.currentVideoId || '';
+      const item = (state.watch.list || []).find(v => v.video_id === videoId);
+      if (item) { title = item.title || ''; artist = item.channel_name || ''; }
+    } catch (e) {}
+    return { playing: !a.paused, active: true, title: title, artist: artist, videoId: videoId };
+  }
+
   let last = '';
   setInterval(function () {
-    const p = activePlayer();
-    let st = -1, title = '', artist = '', videoId = '';
-    if (p) {
-      try {
-        st = p.getPlayerState();
-        const d = p.getVideoData ? p.getVideoData() : null;
-        if (d) { title = d.title || ''; artist = d.author || ''; videoId = d.video_id || ''; }
-      } catch (e) {}
+    let playing, active, title = '', artist = '', videoId = '', st = -1;
+
+    const snap = inAudioMode() ? audioSnapshot() : null;
+    if (snap) {
+      ({ playing, active, title, artist, videoId } = snap);
+      st = playing ? 1 : 2;
+    } else {
+      const p = activePlayer();
+      if (p) {
+        try {
+          st = p.getPlayerState();
+          const d = p.getVideoData ? p.getVideoData() : null;
+          if (d) { title = d.title || ''; artist = d.author || ''; videoId = d.video_id || ''; }
+        } catch (e) {}
+      }
+      // YT states: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
+      playing = (st === 1 || st === 3);
+      active  = (st === 1 || st === 2 || st === 3);
     }
-    // YT states: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
-    const playing = (st === 1 || st === 3);
-    const active  = (st === 1 || st === 2 || st === 3);
     const sig = st + '|' + title + '|' + videoId;
     if (sig === last) return;
     last = sig;

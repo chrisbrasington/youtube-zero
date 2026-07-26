@@ -42,4 +42,22 @@ public class MediaWebView extends WebView {
         int real = super.getWindowVisibility();
         return real == View.GONE ? View.GONE : View.VISIBLE;
     }
+
+    /**
+     * Tell the page it is going into the background.
+     *
+     * The overrides above do NOT actually keep the YouTube iframe alive — that
+     * was measured on Android 17 and the renderer hides the page regardless
+     * (see PROSPECTS.md). They stay because they're harmless and cover older
+     * WebViews. What actually works is handing playback to a same-origin
+     * <audio> element, and the page needs to know when to do that.
+     */
+    @Override
+    public void onVisibilityAggregated(boolean isVisible) {
+        super.onVisibilityAggregated(true);
+        if (!isVisible) {
+            Log.i(TAG, "backgrounded -> nativeOnBackground()");
+            MainActivity.evalJs("window.nativeOnBackground && nativeOnBackground()");
+        }
+    }
 }

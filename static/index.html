@@ -245,6 +245,7 @@
       </div>
       <!-- On a narrow screen this row moves below the video and grows. -->
       <div class="watch-actions">
+        <button class="btn-icon player-btn" id="btn-watch-audio" title="Audio only — keeps playing when the phone is locked (a)">🎧</button>
         <button class="btn-icon player-btn" id="btn-watch-skip" title="Skip to next (n)">⏭</button>
         <button class="btn-icon player-btn" id="btn-watch-skip-mark" title="Mark watched and skip (Shift+N)">✓⏭</button>
         <a id="watch-yt-link" class="btn-icon player-btn" href="#" target="_blank" rel="noopener noreferrer" title="Open in YouTube">↗</a>
@@ -257,6 +258,29 @@
         <iframe id="watch-frame" class="watch-frame"
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowfullscreen></iframe>
+
+        <!-- Audio mode. A same-origin <audio> keeps playing when the app is
+             backgrounded; the YouTube iframe does not. See PROSPECTS.md. -->
+        <audio id="watch-audio" preload="auto"></audio>
+        <div id="now-playing" class="now-playing">
+          <img id="np-art" class="np-art" alt="">
+          <div id="np-title" class="np-title"></div>
+          <div id="np-channel" class="np-channel"></div>
+          <div class="np-bar" id="np-bar" title="Seek">
+            <div id="np-bar-fill" class="np-bar-fill"></div>
+          </div>
+          <div class="np-times">
+            <span id="np-elapsed">0:00</span>
+            <span id="np-duration">0:00</span>
+          </div>
+          <div class="np-transport">
+            <button class="np-btn" id="btn-np-prev" title="Previous">⏮</button>
+            <button class="np-btn np-btn-main" id="btn-np-play" title="Play/pause (space)">▶</button>
+            <button class="np-btn" id="btn-np-next" title="Next">⏭</button>
+          </div>
+          <div class="np-hint">Audio only · screen can be off</div>
+        </div>
+
         <div id="watch-unmute" class="watch-unmute hidden">🔇 Muted — click or press any key to unmute</div>
         <!-- TV-remote scrub preview: left/right move the target, OK commits, BACK cancels. -->
         <div id="cast-scrub" class="cast-scrub hidden">

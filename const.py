@@ -51,3 +51,12 @@ SHORTS_MAX_SECONDS = 180      # videos shorter than this are treated as Shorts
 HTTP_TIMEOUT_SHORT = 15       # quick reads (settings, qr code)
 HTTP_TIMEOUT_LONG = 30        # signal sends, image uploads
 SIGNAL_RECONNECT_PAUSE = 5    # backoff between signal-listener reconnects
+
+
+# ── Audio mode (background playback) ─────────────────────────────────────────
+# Audio-only streams fed to a same-origin <audio> element, because the YouTube
+# iframe is suspended the moment the app is backgrounded. See PROSPECTS.md.
+AUDIO_MODE = os.environ.get("AUDIO_MODE", "1") == "1"   # 0 disables the endpoints
+AUDIO_CACHE_TTL = int(os.environ.get("AUDIO_CACHE_TTL", "10800"))  # 3h; googlevideo URLs last ~6h
+AUDIO_RESOLVE_TIMEOUT = 20    # socket timeout for a yt-dlp lookup
+AUDIO_PROXY_CHUNK = 65536     # bytes per chunk when relaying the stream

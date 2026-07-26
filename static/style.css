@@ -2257,6 +2257,124 @@ input[type="password"] { font-size: 13px; }
   display: flex;
 }
 
+/* ── Audio mode ──────────────────────────────────────────────────────────────
+   Replaces the video with a now-playing panel. The video is hidden rather than
+   removed so toggling back doesn't rebuild the layout. */
+
+#watch-audio { display: none; }
+
+.now-playing { display: none; }
+
+.watch-layout.audio-mode .watch-frame { display: none; }
+.watch-layout.audio-mode .now-playing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-xl) var(--space-lg);
+  background: var(--bg);
+  text-align: center;
+}
+
+/* Big, because at arm's length in a pocket-and-glance context the artwork is
+   the only thing you can identify a track by. */
+.np-art {
+  width: min(46vh, 340px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--r);
+  background: var(--bg3);
+  box-shadow: 0 10px 40px rgba(0,0,0,.6);
+}
+
+.np-title {
+  font-size: 22px;
+  font-weight: 700;
+  font-stretch: var(--wd-narrow);
+  line-height: 1.25;
+  max-width: 34ch;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.np-channel {
+  font-size: 13px;
+  font-weight: 700;
+  font-stretch: var(--wd-wide);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: -6px;
+}
+
+.np-bar {
+  width: min(100%, 420px);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg4);
+  cursor: pointer;
+  overflow: hidden;
+}
+.np-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--pending);
+  transition: width .2s linear;
+}
+
+.np-times {
+  width: min(100%, 420px);
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: -6px;
+}
+
+.np-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+.np-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border-l);
+  color: var(--text);
+  font-size: 22px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.np-btn:hover { background: var(--bg4); border-color: var(--muted); }
+.np-btn-main {
+  width: 72px;
+  height: 72px;
+  font-size: 28px;
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.np-btn-main:hover { background: #fff; border-color: #fff; }
+
+.np-hint {
+  font-size: 13px;
+  color: var(--dim);
+}
+
+/* The toggle reads as engaged while audio mode is on. */
+#btn-watch-audio.on { color: var(--pending); }
+
 .watch-frame {
   flex: 1;
   width: 100%;

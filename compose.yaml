@@ -16,6 +16,15 @@ services:
       QUIET_HOURS_END: ${QUIET_HOURS_END:-6}      # 6am — skip refresh between these hours
       ADB_API_URL: ${ADB_API_URL:-http://adb-api:8080}
       USE_NOCOOKIE: ${USE_NOCOOKIE:-1}  # 1 = serve player from youtube-nocookie.com so it survives a youtube.com site block; 0 = use www.youtube.com
+      AUDIO_MODE: ${AUDIO_MODE:-1}      # 1 = enable /api/audio (yt-dlp background audio); 0 = disable the endpoints
+    # Audio mode has to reach www.youtube.com, which the LAN resolver null-routes
+    # to :: — the same block USE_NOCOOKIE exists to survive. It's a DNS block, not
+    # a firewall (connecting to the real IP works), and it's aimed at browsing
+    # rather than at this server, so give the container its own resolver. Nothing
+    # else on the network is affected. Drop this if the block ever goes away.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     restart: unless-stopped
     labels:
       homepage.group: Apps

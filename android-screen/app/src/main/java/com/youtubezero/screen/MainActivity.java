@@ -114,6 +114,15 @@ public class MainActivity extends Activity {
         });
 
         web.setWebChromeClient(new WebChromeClient() {
+            // Page console → logcat. Without it the page's own view of playback is
+            // invisible on-device, which is how four background-audio attempts got
+            // diagnosed by ear instead of by evidence. `adb logcat -s YTZeroMedia`.
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage cm) {
+                android.util.Log.i(MediaWebView.TAG, "JS " + cm.message());
+                return true;
+            }
+
             @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
                 if (customView != null) { callback.onCustomViewHidden(); return; }

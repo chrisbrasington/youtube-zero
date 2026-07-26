@@ -10,13 +10,16 @@ from typing import Optional
 
 import httpx
 import websockets
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
+import audio_stream
 from const import (
     ADB_API_URL,
+    AUDIO_MODE,
+    AUDIO_PROXY_CHUNK,
     DAILY_QUOTA_LIMIT,
     DB_PATH,
     HTTP_TIMEOUT_LONG,
@@ -1317,6 +1320,97 @@ async def video_info(video_id: str):
         "published_at": sn.get("publishedAt", ""),
         "duration": parse_duration(cd.get("duration", "")),
     }
+
+
+# ── Audio mode ────────────────────────────────────────────────────────────────
+# Feeds a same-origin <audio> element so playback survives the app being
+# backgrounded — the YouTube iframe does not. See PROSPECTS.md for the
+# measurements behind that. Both endpoints fail soft: on any error the frontend
+# falls back to the iframe, so a broken yt-dlp costs background audio, not
+# playback.
+
+@app.post("/api/audio/{video_id}/prefetch")
+async def audio_prefetch(video_id: str):
+    """Warm the resolver cache. Called for the next queue item while the
+    current one plays, so the 1-3s yt-dlp lookup never lands mid-transition."""
+    if not AUDIO_MODE:
+        raise HTTPException(404, "audio mode disabled")
+    if not _parse_yt_video_id(video_id):
+        raise HTTPException(400, "invalid video id")
+    info = await audio_stream.resolve(video_id)
+    if not info:
+        return {"ok": False}
+    return {"ok": True, "mime": info["mime"], "duration": info.get("duration")}
+
+
+@app.get("/api/audio/{video_id}")
+async def audio_proxy(video_id: str, request: Request):
+    """Relay the audio-only stream.
+
+    Proxied rather than redirected because googlevideo URLs are bound to the IP
+    that resolved them (our server, not the phone) and carry no CORS headers.
+    Range is forwarded both ways so <audio> can seek.
+    """
+    if not AUDIO_MODE:
+        raise HTTPException(404, "audio mode disabled")
+    if not _parse_yt_video_id(video_id):
+        raise HTTPException(400, "invalid video id")
+
+    info = await audio_stream.resolve(video_id)
+    if not info:
+        raise HTTPException(502, "could not resolve audio stream")
+
+    async def open_upstream(url: str):
+        client = httpx.AsyncClient(timeout=HTTP_TIMEOUT_LONG, follow_redirects=True)
+        headers = {}
+        rng = request.headers.get("range")
+        if rng:
+            headers["Range"] = rng
+        req = client.build_request("GET", url, headers=headers)
+        resp = await client.send(req, stream=True)
+        return client, resp
+
+    client, upstream = await open_upstream(info["url"])
+
+    # A cached URL that has aged out comes back 403/410 — re-resolve once.
+    if upstream.status_code in (403, 410):
+        await upstream.aclose()
+        await client.aclose()
+        audio_stream.invalidate(video_id)
+        info = await audio_stream.resolve(video_id, force=True)
+        if not info:
+            raise HTTPException(502, "could not refresh audio stream")
+        client, upstream = await open_upstream(info["url"])
+
+    if upstream.status_code >= 400:
+        code = upstream.status_code
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(502, f"upstream returned {code}")
+
+    # Lowercase the keys we keep: mixing "accept-ranges" from upstream with an
+    # "Accept-Ranges" of our own emits the header twice.
+    passthrough = ("content-length", "content-range", "accept-ranges")
+    headers = {
+        k.lower(): v for k, v in upstream.headers.items() if k.lower() in passthrough
+    }
+    headers.setdefault("accept-ranges", "bytes")
+    headers["cache-control"] = "no-store"
+
+    async def body():
+        try:
+            async for chunk in upstream.aiter_bytes(AUDIO_PROXY_CHUNK):
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        body(),
+        status_code=upstream.status_code,
+        headers=headers,
+        media_type=info["mime"],
+    )
 
 
 @app.delete("/api/channels/{channel_id}")
