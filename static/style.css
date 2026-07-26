@@ -2275,7 +2275,19 @@ input[type="password"] { font-size: 13px; }
    A same-origin <video> fed by the ffmpeg remux. Replaces the iframe when
    SERVER_VIDEO is on, and unlike the iframe it keeps playing backgrounded. */
 
-.watch-video { display: none; }
+/* object-fit sits on the bare element selector, and !important, on purpose.
+   Measured in fullscreen: computed object-fit came back `fill` — the initial
+   value — meaning every author rule below was being lost, including the
+   :fullscreen one. A rule keyed only on the element's own class can't be
+   dropped by an ancestor change, and author !important outranks the UA
+   !important that appears to be setting `fill` on descendants of the
+   fullscreen element. Without this, portrait video stretches to fill a
+   landscape screen; the stream is fine (1080x1920, SAR 1:1, DAR 9:16 straight
+   out of the remux), so this is purely a cascade problem. */
+.watch-video {
+  display: none;
+  object-fit: contain !important;
+}
 .watch-layout.server-video .watch-video {
   display: block;
   flex: 1;
@@ -2312,7 +2324,20 @@ input[type="password"] { font-size: 13px; }
 /* Fullscreen: the picture takes the whole screen and the controls float over
    the bottom of it, rather than the video sharing space with a toolbar. */
 .watch-frame-wrap:fullscreen { background: #000; }
-.watch-frame-wrap:fullscreen .watch-video { height: 100%; width: 100%; }
+
+/* object-fit must be restated here, not inherited from the non-fullscreen rule:
+   this selector has the same specificity and comes later, and without it a
+   portrait video gets scaled to fill a landscape screen. The second selector
+   covers the case where the <video> itself is the fullscreen element —
+   watchRequestFullscreen falls back to that, and then the wrap-descendant
+   selector never matches. */
+.watch-frame-wrap:fullscreen .watch-video,
+.watch-video:fullscreen {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;      /* letterbox, never stretch */
+  background: #000;
+}
 .watch-frame-wrap:fullscreen .player-chrome {
   position: absolute;
   left: 0;

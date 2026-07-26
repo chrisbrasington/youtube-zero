@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import random
@@ -1972,6 +1973,65 @@ class NoCacheStaticFiles(StaticFiles):
 app.mount("/static", NoCacheStaticFiles(directory="static"), name="static")
 
 
+# ── Cache-busted asset URLs ───────────────────────────────────────────────────
+#
+# Cache-Control: no-cache above asks browsers to revalidate, and mostly they do
+# — but "mostly" cost real debugging time: a stale style.css in one browser made
+# two correct fixes look like failures, and the in-app "clear browser cache"
+# button didn't reliably shift it either. Revalidation is a request; a changed
+# URL is a guarantee.
+#
+# So the asset references in index.html get ?v=<token>, where the token is a
+# hash of the assets' mtimes. Edit a file and every client fetches a URL it has
+# never seen. No build step, no manifest.
+
+_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "index.html")
+_index_cache: tuple = (None, None)          # (token, rewritten html)
+
+
+def _asset_token() -> str:
+    """Short hash over the mtimes of index.html and everything it loads."""
+    root = os.path.dirname(_INDEX_PATH)
+    paths = [_INDEX_PATH,
+             os.path.join(root, "style.css"),
+             os.path.join(root, "css", "utilities.css")]
+    js_dir = os.path.join(root, "js")
+    try:
+        paths += sorted(os.path.join(js_dir, f) for f in os.listdir(js_dir) if f.endswith(".js"))
+    except OSError:
+        pass
+    h = hashlib.sha1()
+    for p in paths:
+        try:
+            h.update(f"{p}:{os.path.getmtime(p)}".encode())
+        except OSError:
+            pass          # a missing file just doesn't contribute
+    return h.hexdigest()[:10]
+
+
+def _index_html() -> str:
+    """index.html with ?v= appended to its local css/js references."""
+    global _index_cache
+    token = _asset_token()
+    if _index_cache[0] == token:
+        return _index_cache[1]
+    with open(_INDEX_PATH, encoding="utf-8") as fh:
+        html = fh.read()
+    # Only same-origin /static assets — /config.js is generated per request and
+    # already uncacheable.
+    html = re.sub(
+        r'(href|src)="(/static/[^"?]+\.(?:css|js))"',
+        rf'\1="\2?v={token}"',
+        html,
+    )
+    _index_cache = (token, html)
+    return html
+
+
 @app.get("/{full_path:path}")
 def spa(full_path: str):
-    return FileResponse("static/index.html", headers={"Cache-Control": "no-cache"})
+    return Response(
+        content=_index_html(),
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )

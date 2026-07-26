@@ -154,7 +154,15 @@ def pick_video_pair(data: dict, max_height: int = SERVER_VIDEO_MAX_HEIGHT) -> Op
     Opus is the fallback and goes into WebM. Both are stream copies, so neither
     costs CPU beyond the muxing itself.
     """
-    vids = [f for f in _video_only(data) if (f.get("height") or 0) <= max_height]
+    # Cap on the SHORT side, not on height. Capping height treats a portrait
+    # video's long edge as its resolution, so a 1080x1920 clip has every decent
+    # rendition rejected (1920 > 1080) and falls back to something tiny — or to
+    # nothing at all, which drops the whole video to the iframe. "1080p" means
+    # the short side either way round.
+    def short_side(f):
+        w, h = f.get("width") or 0, f.get("height") or 0
+        return min(w, h) if w and h else h
+    vids = [f for f in _video_only(data) if short_side(f) <= max_height]
     auds = _audio_only(data)
     if not vids or not auds:
         return None
