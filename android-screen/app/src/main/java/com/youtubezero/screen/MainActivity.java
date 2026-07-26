@@ -283,6 +283,28 @@ public class MainActivity extends Activity {
         if (web != null) web.onResume();
     }
 
+    // Backgrounded or screen locked → hand playback to the <audio> element,
+    // because Chromium suspends the YouTube iframe within ~70ms of this.
+    //
+    // onStop, deliberately, not View visibility: entering fullscreen sets the
+    // WebView to GONE, which is indistinguishable from backgrounding at the
+    // View layer and made the fullscreen button drop into audio mode. onStop
+    // does not fire for a fullscreen view inside the same activity.
+    @Override
+    protected void onStop() {
+        super.onStop();
+        android.util.Log.i(MediaWebView.TAG, "onStop -> nativeOnBackground()");
+        evalJs("window.nativeOnBackground && nativeOnBackground()");
+    }
+
+    // Back in front of the user → undo the automatic switch (only ours; an
+    // explicit audio-mode choice is left alone).
+    @Override
+    protected void onStart() {
+        super.onStart();
+        evalJs("window.nativeOnForeground && nativeOnForeground()");
+    }
+
     @Override
     protected void onDestroy() {
         if (sInstance != null && sInstance.get() == this) sInstance = null;

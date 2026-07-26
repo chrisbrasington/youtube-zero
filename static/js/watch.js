@@ -224,6 +224,31 @@ function watchArmUnmute() {
 function watchAudioEl() { return document.getElementById('watch-audio'); }
 function watchIsAudio()  { return !!state.watch?.audio; }
 
+/**
+ * Destroy the YT player and swap in a fresh blank iframe.
+ *
+ * Blanking src alone is not enough: the YT.Player object survives, so the next
+ * watchPlay takes the loadVideoById path and postMessages into an iframe that
+ * is now on our own origin — which silently does nothing and leaves a black
+ * rectangle. A clean iframe forces watchPlay's create-from-scratch path.
+ *
+ * Needed on the way into audio mode as well as on exit, since audio mode also
+ * takes the video player out of service.
+ */
+function watchResetFrame() {
+  const oldFrame = $('watch-frame');
+  const freshFrame = oldFrame ? oldFrame.cloneNode(false) : null;
+  if (freshFrame) freshFrame.removeAttribute('src');
+  try { watchPlayer?.destroy?.(); } catch {}
+  try { watchPlayer?.stopVideo?.(); } catch {}
+  watchPlayer = null;
+  if (freshFrame) {
+    const cur = $('watch-frame');                  // destroy() usually removes it
+    if (cur) cur.replaceWith(freshFrame);
+    else $('watch-frame-wrap')?.insertBefore(freshFrame, $('watch-frame-wrap').firstChild);
+  }
+}
+
 function watchTime() {
   if (watchIsAudio()) return watchAudioEl()?.currentTime || 0;
   try { return watchPlayer?.getCurrentTime?.() || 0; } catch { return 0; }
@@ -307,26 +332,36 @@ function watchLoadAudio(videoId, startSeconds = 0) {
   });
 }
 
-/** Switch the running session between iframe and audio, keeping the position. */
-function watchSetAudioMode(on) {
+/** Switch the running session between iframe and audio, keeping the position.
+ *
+ *  opts.persist — remember this as the browser's default. True for an explicit
+ *    toggle, false for the automatic switch on backgrounding: auto-switching
+ *    used to write the preference, so one pocketed phone left every later
+ *    session stuck in audio.
+ *  opts.auto — mark the switch as ours rather than the user's, so returning to
+ *    the foreground can undo it.
+ */
+function watchSetAudioMode(on, opts = {}) {
+  const { persist = true, auto = false } = opts;
   if (!state.watch) return;
   if (!!state.watch.audio === !!on) return;
   const at = watchTime();
   const videoId = state.watch.currentVideoId;
 
   if (on) {
-    try { watchPlayer?.stopVideo?.(); } catch {}
-    const f = $('watch-frame');
-    if (f) f.src = '';
+    // Full teardown, not just a blanked src — see watchResetFrame. Leaving the
+    // player object alive here is what made the return trip a black screen.
+    watchResetFrame();
   } else {
     const a = watchAudioEl();
     if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
   }
 
   state.watch.audio = !!on;
+  state.watch.audioAuto = on ? auto : false;
   $('watch-layout').classList.toggle('audio-mode', !!on);
   $('btn-watch-audio')?.classList.toggle('on', !!on);
-  localStorage.setItem('audioMode', on ? '1' : '0');
+  if (persist) localStorage.setItem('audioMode', on ? '1' : '0');
   if (videoId) watchPlay(videoId, at);
 }
 
@@ -360,8 +395,15 @@ function watchRenderNowPlaying() {
     const m = Math.floor(s / 60), sec = Math.floor(s % 60);
     return `${m}:${String(sec).padStart(2, '0')}`;
   };
+  // Compare the attribute, not .src — reading .src gives the resolved absolute
+  // URL, so it never equals the stored value and the image reloads every tick.
   const art = $('np-art');
-  if (art && item && art.src !== item.thumbnail_url) art.src = item.thumbnail_url || '';
+  if (art) {
+    const src = item?.thumbnail_url || '';
+    if (src && art.getAttribute('src') !== src) art.setAttribute('src', src);
+    if (!src) art.removeAttribute('src');
+    art.classList.toggle('hidden', !src);
+  }
   const t = $('np-title'); if (t) t.textContent = item?.title || '';
   const c = $('np-channel'); if (c) c.textContent = item?.channel_name || '';
   const e = $('np-elapsed'); if (e) e.textContent = fmt(cur);
@@ -473,6 +515,8 @@ function watchBindDom() {
   $('btn-np-play')?.addEventListener('click', () => { watchTogglePlay(); watchRenderNowPlaying(); });
   $('btn-np-next')?.addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-np-prev')?.addEventListener('click', () => watchPrev());
+  // Back to video, resuming at the current position (watchSetAudioMode carries it).
+  $('btn-np-video')?.addEventListener('click', () => watchSetAudioMode(false));
   $('np-bar')?.addEventListener('click', (e) => {
     const dur = watchDuration();
     if (!dur) return;
@@ -623,17 +667,7 @@ function watchExit() {
   // player after stopVideo() leaves the iframe off youtube.com, so the next
   // loadVideoById postMessage hits our own origin and silently fails to play.
   // A clean iframe forces watchPlay's create-from-scratch path on re-entry.
-  const oldFrame = $('watch-frame');
-  const freshFrame = oldFrame ? oldFrame.cloneNode(false) : null;
-  if (freshFrame) freshFrame.removeAttribute('src');
-  try { watchPlayer?.destroy?.(); } catch {}
-  try { watchPlayer?.stopVideo?.(); } catch {}
-  watchPlayer = null;
-  if (freshFrame) {
-    const cur = $('watch-frame');                  // destroy() usually removes it
-    if (cur) cur.replaceWith(freshFrame);
-    else $('watch-frame-wrap')?.insertBefore(freshFrame, $('watch-frame-wrap').firstChild);
-  }
+  watchResetFrame();
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch {}
   }

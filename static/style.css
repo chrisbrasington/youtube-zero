@@ -2266,36 +2266,57 @@ input[type="password"] { font-size: 13px; }
 .now-playing { display: none; }
 
 .watch-layout.audio-mode .watch-frame { display: none; }
+
+/* Grid, not flex-with-fixed-children: the artwork row absorbs whatever space is
+   left and the control rows keep their natural height. A flex column with a
+   fixed-size image overflowed the frame area and painted over the buttons
+   underneath it. `overflow: hidden` makes that impossible by construction. */
 .watch-layout.audio-mode .now-playing {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  justify-items: center;
   gap: var(--space-md);
-  flex: 1;
+  width: 100%;
   min-height: 0;
-  padding: var(--space-xl) var(--space-lg);
+  overflow: hidden;
+  padding: var(--space-lg);
   background: var(--bg);
   text-align: center;
 }
 
-/* Big, because at arm's length in a pocket-and-glance context the artwork is
-   the only thing you can identify a track by. */
+/* Audio mode has no 16:9 content, so release the ratio the video needs and let
+   the panel take the height it actually wants. */
+.watch-layout.audio-mode .watch-frame-wrap { aspect-ratio: auto; }
+body.narrow-ui .watch-layout.audio-mode .watch-frame-wrap { min-height: 62vh; }
+
+.np-art-wrap {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Scales to the space available rather than claiming a fixed size — the whole
+   point is that it can shrink instead of pushing the transport off-screen. */
 .np-art {
-  width: min(46vh, 340px);
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: var(--r);
   background: var(--bg3);
   box-shadow: 0 10px 40px rgba(0,0,0,.6);
 }
 
+.np-meta { max-width: 46ch; }
+
 .np-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   font-stretch: var(--wd-narrow);
   line-height: 1.25;
-  max-width: 34ch;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -2303,17 +2324,31 @@ input[type="password"] { font-size: 13px; }
 }
 
 .np-channel {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   font-stretch: var(--wd-wide);
   letter-spacing: .05em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-top: -6px;
+  margin-top: 3px;
 }
 
+/* Times flank the bar instead of sitting on their own row — one row shorter. */
+.np-scrub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: min(100%, 460px);
+}
+.np-time {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
 .np-bar {
-  width: min(100%, 420px);
+  flex: 1;
+  min-width: 0;
   height: 6px;
   border-radius: 3px;
   background: var(--bg4);
@@ -2327,50 +2362,41 @@ input[type="password"] { font-size: 13px; }
   transition: width .2s linear;
 }
 
-.np-times {
-  width: min(100%, 420px);
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  margin-top: -6px;
-}
-
 .np-transport {
   display: flex;
   align-items: center;
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 .np-btn {
   background: var(--bg3);
   border: 1px solid var(--border-l);
   color: var(--text);
-  font-size: 22px;
-  width: 56px;
-  height: 56px;
+  font-size: 20px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   transition: background var(--t-fast), border-color var(--t-fast);
 }
 .np-btn:hover { background: var(--bg4); border-color: var(--muted); }
 .np-btn-main {
-  width: 72px;
-  height: 72px;
-  font-size: 28px;
+  width: 64px;
+  height: 64px;
+  font-size: 26px;
   background: var(--text);
   color: var(--bg);
   border-color: var(--text);
 }
 .np-btn-main:hover { background: #fff; border-color: #fff; }
 
-.np-hint {
-  font-size: 13px;
-  color: var(--dim);
-}
+/* Set apart from the transport cluster — it leaves audio mode rather than
+   controlling playback. */
+.np-btn-video { margin-left: var(--space-lg); }
+.np-btn-video:hover { border-color: var(--focus); color: var(--focus); }
 
 /* The toggle reads as engaged while audio mode is on. */
 #btn-watch-audio.on { color: var(--pending); }

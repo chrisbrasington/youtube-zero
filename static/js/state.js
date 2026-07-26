@@ -98,9 +98,18 @@ function folderViewMode(folder) {
   const chosen = state.folderView.get(folder.id);
   if (chosen) return chosen;
   // On a phone one folder's video strip is most of the screen, so folders
-  // start as one-line rows — tap the one you actually want. /tv is excluded:
-  // its D-pad grid navigates tiles, so it needs the strips open.
-  if (isMobile() && !document.body.classList.contains('route-tv')) return 'collapsed';
+  // start as one-line rows — tap the one you actually want.
+  //
+  // Only a real TV is excluded: its D-pad grid navigates video tiles, so
+  // collapsing would leave nothing to move through. The /phone flavor also
+  // carries route-tv (it reuses that UI) but is a touchscreen, so it collapses
+  // like any other phone.
+  // route-phone is trusted directly rather than leaning on isMobile(): that
+  // reads window.innerWidth, and the app's WebView runs a desktop UA with a
+  // wide viewport, so the width is not something to bet this on.
+  const isPhoneApp = document.body.classList.contains('route-phone');
+  const isTvScreen = document.body.classList.contains('route-tv') && !isPhoneApp;
+  if ((isMobile() || isPhoneApp) && !isTvScreen) return 'collapsed';
   const hasUnread = (folder.channels || []).some(ch =>
     (ch.videos || []).some(v => !v.is_read && !isShort(v, ch))
   );

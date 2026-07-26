@@ -46,16 +46,32 @@
     try { (p.getPlayerState() === 1 ? p.pauseVideo() : p.playVideo()); } catch (e) {}
   };
 
-  // Called from MainActivity when the app is backgrounded. The YouTube iframe is
-  // suspended within ~70ms of this (measured — see PROSPECTS.md), so hand the
-  // session over to the <audio> element, which isn't. One-way on purpose:
-  // switching back on every glance at the phone would stutter far more often
-  // than it would help.
+  // Called from MainActivity.onStop — the app is backgrounded or the screen is
+  // locked. The YouTube iframe is suspended within ~70ms of this (measured, see
+  // PROSPECTS.md), so hand the session to the <audio> element, which isn't.
+  //
+  // Not persisted: this is our decision, not the user's. Writing it to the
+  // stored preference meant one pocketed phone left every later session in
+  // audio mode.
   window.nativeOnBackground = function () {
     try {
       if (typeof state === 'undefined' || !state.watch?.active) return;
       if (inAudioMode()) return;
-      if (typeof watchSetAudioMode === 'function') watchSetAudioMode(true);
+      if (typeof watchSetAudioMode === 'function') {
+        watchSetAudioMode(true, { persist: false, auto: true });
+      }
+    } catch (e) {}
+  };
+
+  // Called from MainActivity.onStart. Undo *our* switch only — if the user
+  // chose audio mode themselves, leave it alone.
+  window.nativeOnForeground = function () {
+    try {
+      if (typeof state === 'undefined' || !state.watch?.active) return;
+      if (!state.watch.audioAuto) return;
+      if (typeof watchSetAudioMode === 'function') {
+        watchSetAudioMode(false, { persist: false });
+      }
     } catch (e) {}
   };
   window.nativeNext = function () {

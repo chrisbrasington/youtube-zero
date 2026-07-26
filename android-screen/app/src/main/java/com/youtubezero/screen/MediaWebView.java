@@ -44,20 +44,16 @@ public class MediaWebView extends WebView {
     }
 
     /**
-     * Tell the page it is going into the background.
+     * Deliberately does NOT signal "app backgrounded" to the page.
      *
-     * The overrides above do NOT actually keep the YouTube iframe alive — that
-     * was measured on Android 17 and the renderer hides the page regardless
-     * (see PROSPECTS.md). They stay because they're harmless and cover older
-     * WebViews. What actually works is handing playback to a same-origin
-     * <audio> element, and the page needs to know when to do that.
+     * View visibility is the wrong signal for that: entering fullscreen calls
+     * onShowCustomView, which sets this WebView to GONE, which looks exactly
+     * like being backgrounded. Hooking it here made the fullscreen button drop
+     * into audio mode. The Activity's onStop() is the honest signal and lives
+     * in MainActivity.
      */
     @Override
     public void onVisibilityAggregated(boolean isVisible) {
         super.onVisibilityAggregated(true);
-        if (!isVisible) {
-            Log.i(TAG, "backgrounded -> nativeOnBackground()");
-            MainActivity.evalJs("window.nativeOnBackground && nativeOnBackground()");
-        }
     }
 }
