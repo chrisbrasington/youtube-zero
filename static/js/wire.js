@@ -91,6 +91,16 @@ $('server-video-check')?.addEventListener('change', async () => {
   }
 });
 
+// Per-device opt-out. No round-trip — localStorage owns it — but the running
+// watch session already picked its transport, so reload for the same reason.
+$('server-video-client-check')?.addEventListener('change', () => {
+  const on = $('server-video-client-check').checked;
+  if (on) localStorage.removeItem('serverVideo');
+  else localStorage.setItem('serverVideo', '0');
+  status(on ? 'Server video on here — reloading…' : 'YouTube player on this device — reloading…', 'ok');
+  setTimeout(() => location.reload(), 600);
+});
+
 function applyWrapStrip() {
   document.body.classList.toggle('wrap-strip', state.wrapStrip);
 }

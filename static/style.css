@@ -2673,8 +2673,16 @@ body.route-history #settings-panel { display: none; }
 .watch-layout.theater .watch-queue-pane { display: none; }
 
 /* Cast "cover" mode — remote-triggered, gesture-free fill-the-viewport view.
-   Hides the on-screen header bar and up-next pane so the video fills the page. */
+   Hides the on-screen header bar and up-next pane so the video fills the page.
+
+   The actions row goes too. It sits in the grid's top-right cell, so leaving it
+   up put a toolbar over the corner of an otherwise-fullscreen picture — and on
+   a TV it isn't reachable anyway: cover mode turns the D-pad focus ring off
+   (castSetCover → castNavReset), so those buttons are decoration. ↑/↓ leaves
+   cover and brings the whole bar back. */
 body.cast-cover .watch-header,
+body.cast-cover .watch-actions,
+body.cast-cover .watch-transfer-bar,
 body.cast-cover .watch-queue-pane { display: none; }
 
 /* D-pad focus cursor for TV-remote navigation on /watch (driven by cast.js

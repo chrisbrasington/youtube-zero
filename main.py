@@ -421,7 +421,7 @@ async def _handle_signal_command(cmd: str, number: str):
             _tv_persist_ip(s["ip"])
             await _signal_send_plain(number, f"playing on TV ✓")
         else:
-            await _signal_send_plain(number, f"failed: {r.text[:200]}")
+            await _signal_send_plain(number, f"failed: {_adb_error(r)}")
         return
     if cmd == "/ping":
         await _signal_send_plain(number, "pong")
@@ -929,6 +929,22 @@ def signal_delete():
 DEFAULT_TV_IP = "192.168.0.27"
 
 
+def _adb_error(r: httpx.Response) -> str:
+    """adb-api's message, not its JSON envelope.
+
+    Its errors are written for a person to read (notably the "TV hasn't
+    authorized this server" one), and the old `r.text[:200]` chopped them off
+    mid-sentence behind a literal `{"detail":`.
+    """
+    try:
+        detail = r.json().get("detail")
+        if isinstance(detail, str) and detail:
+            return detail
+    except Exception:
+        pass
+    return r.text[:200]
+
+
 def _tv_settings_load() -> dict:
     with db() as c:
         rows = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM settings").fetchall()}
@@ -980,7 +996,7 @@ async def tv_connect():
         except Exception as exc:
             raise HTTPException(503, f"adb-api unavailable: {exc}")
     if r.status_code != 200:
-        raise HTTPException(502, f"adb-api error: {r.text[:200]}")
+        raise HTTPException(r.status_code if r.status_code == 409 else 502, _adb_error(r))
     body = r.json()
     if body.get("ok"):
         _tv_persist_ip(s["ip"])
@@ -1000,7 +1016,7 @@ async def tv_play(req: TvPlayReq):
         except Exception as exc:
             raise HTTPException(503, f"adb-api unavailable: {exc}")
     if r.status_code != 200:
-        raise HTTPException(502, f"adb-api error: {r.text[:200]}")
+        raise HTTPException(r.status_code if r.status_code == 409 else 502, _adb_error(r))
     body = r.json()
     if body.get("ok"):
         _tv_persist_ip(s["ip"])

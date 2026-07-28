@@ -422,7 +422,7 @@ function watchFallbackToEmbed(message) {
 /** Can the server remux this one? Answered before committing, so a "no" shows
  *  the embed rather than a broken player. */
 async function watchServerVideoAvailable(videoId) {
-  if (!window.SERVER_VIDEO) return null;
+  if (!serverVideoOn()) return null;
   try {
     const r = await api.get(`/api/video/${videoId}/info`);
     return r && r.ok ? r : null;
@@ -623,7 +623,7 @@ function watchPlay(videoId, startSeconds = 0) {
   // Pick the transport. Server video wins when the server offers it, because
   // it's the only one that survives backgrounding *and* keeps the picture;
   // audio mode is an explicit downgrade the user (or a fallback) asked for.
-  const wantServer = !!window.SERVER_VIDEO
+  const wantServer = serverVideoOn()
                   && !state.watch.serverUnavailable
                   && !state.watch.audio;
   state.watch.server = wantServer;

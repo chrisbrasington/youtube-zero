@@ -44,6 +44,31 @@ const player = {
 
 const videoMeta = new Map();
 
+
+// ── Server video: server offers it, client may decline ───────────────────────
+//
+// window.SERVER_VIDEO says whether the box is willing to remux. That stays a
+// server-wide setting — it's a property of the box. But a client can opt out:
+// the TV APK wants the YouTube embed every time, since the TV isn't going to
+// background the player and the embed gives it captions.
+//
+// ?server_video=0 records the refusal in localStorage so it survives every
+// later load (the APK's URL carries it; a browser can set it once by hand).
+// ?server_video=auto clears the override and goes back to following the server.
+//
+// The override is one-way on purpose: a client can't turn server video *on*
+// when the server has it off, because the endpoints aren't there to call.
+(function captureServerVideoParam() {
+  const p = new URLSearchParams(location.search).get('server_video');
+  if (p === null) return;
+  if (p === 'auto') localStorage.removeItem('serverVideo');
+  else localStorage.setItem('serverVideo', (p === '0' || p === 'false') ? '0' : '1');
+})();
+
+function serverVideoOn() {
+  return !!window.SERVER_VIDEO && localStorage.getItem('serverVideo') !== '0';
+}
+
 // Drag/drop sources — set on dragstart, read in dragover/drop handlers.
 let dragSrcId       = null;
 let dragSrcType     = null;   // 'folder' | 'channel'

@@ -131,6 +131,14 @@ The `compose.yaml` includes an `adb-api` sidecar that wraps `adb` for Android TV
 
 ADB keys persist via `./adb-data:/root/.android` so the trust prompt only shows once.
 
+**"TV hasn't authorized this server."** The TV forgot the key — a factory reset,
+a firmware update, or someone hitting *Revoke debugging authorizations*. Only
+someone at the TV can clear it: accept the *Allow debugging?* dialog (tick
+*Always allow*), or if no dialog appears, revoke authorizations on the TV and
+retry. Before reporting this, `adb-api` restarts its local adb server and
+reconnects once, which re-raises the dialog on a TV that merely dropped the
+session — so a reboot generally recovers by itself.
+
 ### Play on Screen (cast to a /watch display)
 
 Open `http://<host>:8000/watch` on any display — a spare monitor, an HTPC, a TV browser, or the
@@ -260,6 +268,20 @@ Set `SERVER_VIDEO=0` to go back to the YouTube embed plus the audio-mode
 switchover described below. That path stays fully functional, and is also the
 automatic fallback whenever a remux isn't possible — you'll see a brief
 "using the YouTube player" message when that happens.
+
+**Per-device opt-out.** Whether the box will remux is server-wide — it's the box
+doing the work — but any single client can decline and use the embed instead:
+
+* `?server_video=0` on any page, remembered in that browser's `localStorage`
+  from then on. `?server_video=auto` clears it and goes back to following the
+  server.
+* **⚙ Settings** → *…use it on this device*, the same switch with a checkbox.
+
+The TV APK's URL carries `?server_video=0`, so a TV always gets the embed. It
+never backgrounds a player, so it gains nothing from server delivery, and the
+embed brings captions the remux can't. Note the opt-out is one-way: a client
+can't turn server video *on* when the server has it off, because the endpoints
+aren't there to call.
 
 ### Audio mode
 

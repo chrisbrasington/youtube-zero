@@ -254,6 +254,13 @@ async function loadSettings() {
     // — there is no localStorage fallback to prefer.
     const svCheck = $('server-video-check');
     if (svCheck) svCheck.checked = !!s.server_video;
+    // The per-device opt-out, on the other hand, only ever lives in
+    // localStorage — see serverVideoOn() in state.js.
+    const svClient = $('server-video-client-check');
+    if (svClient) {
+      svClient.checked = localStorage.getItem('serverVideo') !== '0';
+      svClient.disabled = !s.server_video;
+    }
   } catch {}
 }
 

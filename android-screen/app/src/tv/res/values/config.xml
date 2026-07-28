@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- tv flavor → /tv (browse + play + cast receiver). Output: dist/yt-zero-screen.apk -->
+<!-- tv flavor → /tv (browse + play + cast receiver). Output: dist/yt-zero-screen.apk
+
+     server_video=0 pins this screen to the YouTube embed no matter what the
+     server's own setting says. Server video exists so playback survives a
+     backgrounded phone; a TV never backgrounds, and the embed brings captions
+     the remux can't. See serverVideoOn() in static/js/state.js. -->
 <resources>
-    <string name="server_url" translatable="false">https://youtube.home.chrisincode.com/tv</string>
+    <string name="server_url" translatable="false">https://youtube.home.chrisincode.com/tv?server_video=0</string>
 </resources>
