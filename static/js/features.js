@@ -59,9 +59,10 @@ async function loadSignalSettings() {
 }
 
 
+// The Signal buttons — on every video card and on the queue card — are rendered
+// from state.signalConfigured, so a re-render is all it takes to reveal them.
 function updateSignalVisibility() {
-  const qBtn = $('btn-signal-queue');
-  if (qBtn) qBtn.classList.toggle('hidden', !state.signalConfigured);
+  render();
 }
 
 

@@ -10,12 +10,11 @@
  * Keys (active when no watch overlay is open):
  *   r        — play a random visible video
  *   Shift+R  — random across queue + visible feed
- *   q        — toggle queue pane
- *   Shift+Q  — open queue and play first item
+ *   q        — collapse / expand the queue card
+ *   Shift+Q  — play the first queued item
  *   1..9     — play first video of Nth row
  *   Shift+1..9 — play Nth shallow queue item
  *   w        — start binge-watch from queue
- *   Escape   — close queue
  *
  * In-player shortcuts are NOT here — they're in watch.js's own keydown
  * handler, because the watch overlay is the only player now and its transport
@@ -114,14 +113,7 @@ document.addEventListener('keydown', e => {
       return;
     }
     const pick = combined[Math.floor(Math.random() * combined.length)];
-    if (pick.source === 'queue' && !state.queueOpen) openQueuePane();
     openPlayer(pick.video_id, pick.title, pick.queue_id || null);
-    return;
-  }
-
-  // Global: Escape closes queue when no player open
-  if (!mod && !uiPlayerActive() && e.key === 'Escape' && state.queueOpen) {
-    closeQueuePane();
     return;
   }
 
@@ -131,7 +123,7 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Global: shift+Q → open queue + play first shallow item
+  // Global: shift+Q → play the first queued item
   if (!uiPlayerActive() && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Q') {
     const shallow = shallowQueue();
     if (!shallow.length) {
@@ -139,7 +131,6 @@ document.addEventListener('keydown', e => {
       setTimeout(() => status(''), 2000);
       return;
     }
-    if (!state.queueOpen) openQueuePane();
     const first = shallow[0];
     openPlayer(first.video_id, first.title, first.video_id);
     return;
@@ -151,9 +142,10 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Global: q → toggle queue visibility
+  // Global: q → collapse / expand the queue card, and scroll to it
   if (!mod && !uiPlayerActive() && e.key === 'q') {
-    toggleQueuePane();
+    toggleQueueCard();
+    $('queue-card')?.scrollIntoView({ block: 'nearest' });
     return;
   }
 
@@ -171,7 +163,6 @@ document.addEventListener('keydown', e => {
       setTimeout(() => status(''), 2500);
       return;
     }
-    if (!state.queueOpen) openQueuePane();
     const item = shallow[n - 1];
     openPlayer(item.video_id, item.title, item.video_id);
     return;

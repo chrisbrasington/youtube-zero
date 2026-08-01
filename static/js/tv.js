@@ -40,7 +40,6 @@ async function tvEnter(variant) {
 
   // Mount the browse UI (mirrors the main-feed boot; configurable extras like
   // Signal/TV-send stay off — their buttons are hidden in TV mode anyway).
-  if (state.queueOpen) $('queue-pane').classList.remove('hidden');
   await loadAll();
   await loadSettings();
   render();
@@ -71,9 +70,7 @@ const tvNav = {
   rows() {
     const rows = [];
 
-    const controls = [$('btn-random'), $('btn-queue')];
-    if (state.queueOpen && shallowQueue().length) controls.push($('btn-watch-queue'));
-    rows.push(controls.filter(Boolean));
+    rows.push([$('btn-random')].filter(Boolean));
 
     // Resume/Here/Transfer for other playing screens (the bar under the header).
     document.querySelectorAll('#cast-resume .cast-resume-item').forEach(item => {
@@ -81,20 +78,18 @@ const tvNav = {
       if (btns.length) rows.push(btns);
     });
 
+    // The queue card leads this list and the deep card closes it, exactly as
+    // they're rendered — nothing here singles them out.
     document.querySelectorAll('#channels-list .folder-card, #channels-list .channel-card')
       .forEach(card => {
-        // A folder gets its own row (the whole header highlights; OK plays it
-        // all). Channels have no play-all, so they're only their video rows.
+        // A folder-shaped card gets its own row: the whole header highlights,
+        // and OK plays it all (or, for the deep queue, pulls it open).
+        // Channels have no play-all, so they're only their video rows.
         const header = card.querySelector('.folder-header');
-        if (header && card.querySelector('[data-action="watch-folder"]')) rows.push([header]);
+        if (header) rows.push([header]);
         const strip = card.querySelector('.video-strip');
         if (strip) this.tileRows(strip).forEach(r => rows.push(r));
       });
-
-    if (state.queueOpen) {
-      document.querySelectorAll('[data-action="play-from-queue"]')
-        .forEach(item => rows.push([item]));
-    }
 
     return rows.filter(r => r.length);
   },
@@ -132,13 +127,16 @@ const tvNav = {
   },
 
   // Activate the focused element by dispatching its real click — every target
-  // (random, queue toggle, watch-queue, folder ▶, video tile, queue item) is
-  // already wired, and on /tv those handlers play here.
+  // (random, folder ▶, watch-queue ▶, video tile) is already wired, and on /tv
+  // those handlers play here.
   select() {
     const el = this.current();
     if (!el) return;
-    if (el.classList.contains('folder-header')) {            // folder row → play it all
-      el.closest('.folder-card')?.querySelector('[data-action="watch-folder"]')?.click();
+    if (el.classList.contains('folder-header')) {
+      // A header row plays the whole card. The deep queue has nothing to play,
+      // so OK falls through to the header itself and pulls the card open.
+      const play = el.querySelector('[data-action="watch-folder"], [data-action="watch-queue"]');
+      (play || el).click();
       return;
     }
     el.click();

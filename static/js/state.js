@@ -15,8 +15,12 @@
 const state = {
   feed:             { folders: [], channels: [] },
   queue:            [],
-  queueOpen:        localStorage.getItem('queueOpen') === '1',
-  deepOpen:         localStorage.getItem('deepOpen') === '1',
+  // The queue is a card in the feed, like a folder. Its open/closed state is a
+  // client preference, so localStorage owns it; open is the default.
+  queueCardOpen:    (localStorage.getItem('queueCardOpen') ?? '1') === '1',
+  // The deep queue is parked content — it starts collapsed on every load, in
+  // every view, and only a click pulls it up. Deliberately not persisted.
+  deepOpen:         false,
   hideShorts:       localStorage.getItem('hideShorts') === '1',  // sync read, no async needed
   wrapStrip:        (localStorage.getItem('wrapStrip') ?? '1') === '1',
   forceMobile:      localStorage.getItem('forceMobile') === '1',

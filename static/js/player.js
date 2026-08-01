@@ -14,17 +14,21 @@
 
 function visiblePlayList() {
   // Returns ordered array of {video_id, title, channel_name, queue_id?}
-  // Deep queue items are intentionally excluded — they're parked, not playable.
-  const shallow = shallowQueue();
-  if (state.queueOpen && shallow.length) {
-    return shallow.map(q => ({
-      video_id: q.video_id,
-      title: q.title,
-      channel_name: q.channel_name,
-      queue_id: q.video_id,
-    }));
-  }
+  // in page order, so playNext walks the feed the way it reads. The queue is
+  // the first card, so its videos lead — but only when it's expanded, same
+  // rule a collapsed folder gets. Deep queue items are intentionally excluded:
+  // they're parked, not playable.
   const out = [];
+  if (state.queueCardOpen) {
+    for (const q of shallowQueue()) {
+      out.push({
+        video_id: q.video_id,
+        title: q.title,
+        channel_name: q.channel_name,
+        queue_id: q.video_id,
+      });
+    }
+  }
   const items = topLevelItems();
   function pushChannel(ch) {
     for (const v of (ch.videos || [])) {
@@ -130,7 +134,6 @@ async function playerMarkWatched() {
     await api.post(`/api/queue/${vid}/watched`);
     state.queue = state.queue.filter(q => q.video_id !== vid);
     setInQueue(vid, false);
-    renderQueue();
-    renderQueueBadge();
+    render();
   } catch {}
 }

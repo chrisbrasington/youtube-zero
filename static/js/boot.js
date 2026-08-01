@@ -34,7 +34,6 @@
   }
 
   updateQuota();
-  if (state.queueOpen) { $('queue-pane').classList.remove('hidden'); reconcileBackGuard(); }
   await loadAll();            // build UI with state from localStorage
   await loadSettings();       // reconcile DB → re-render only if value changed
   await loadSignalSettings(); // check Signal config, show/hide send buttons

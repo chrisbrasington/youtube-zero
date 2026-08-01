@@ -25,7 +25,7 @@ $('btn-player-fullscreen').addEventListener('click', () => {
 $('btn-player-watched').addEventListener('click', playerMarkWatched);
 
 
-// ── Header: add / refresh / queue / clear / sort / settings ──────────────────
+// ── Header: add / refresh / clear / sort / settings ──────────────────────────
 
 $('btn-add-channel').addEventListener('click', addChannel);
 $('btn-play-input').addEventListener('click', playFromInput);
@@ -42,8 +42,6 @@ $('btn-new-folder').addEventListener('click', createFolder);
 $('btn-refresh-all').addEventListener('click', refreshAll);
 $('btn-random').addEventListener('click', randomPlay);
 $('btn-clear-all').addEventListener('click', clearAll);
-$('btn-queue').addEventListener('click', toggleQueuePane);
-$('btn-close-queue').addEventListener('click', closeQueuePane);
 $('btn-quick-queue').addEventListener('click', toggleQuickQueueMode);
 $('btn-quick-queue-close').addEventListener('click', closeQuickQueueMode);
 $('btn-quick-queue-play').addEventListener('click', playQuickQueue);
@@ -59,9 +57,6 @@ $('btn-save-key').addEventListener('click', saveApiKey);
 $('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
 $('btn-signal-link').addEventListener('click', linkSignal);
 $('btn-signal-remove').addEventListener('click', removeSignal);
-$('btn-signal-queue').addEventListener('click', signalSendQueue);
-$('btn-clear-queue').addEventListener('click', () => clearQueue(false));
-$('btn-watch-queue').addEventListener('click', () => castIsTv() ? watchStartQueue() : castOrWatchQueue());
 $('btn-cast').addEventListener('click', () => castOpenRemote());
 $('signal-number-input').addEventListener('keydown', e => { if (e.key === 'Enter') linkSignal(); });
 $('btn-tv-save').addEventListener('click', saveTvSettings);

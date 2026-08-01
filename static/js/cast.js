@@ -408,7 +408,9 @@ function castBack() {
   if (castRemoteOpen()) { castCloseRemote(); return true; }   // close the remote panel
   if (castScrub.active) { castScrubCancel(); return true; }   // cancel a pending seek
   if (state.watch?.active) { watchExit(); return true; }
-  if (castIsTv() && state.queueOpen) { closeQueuePane(); return true; }  // /tv browse: BACK closes the queue, not the app
+  // /tv browse: the deep queue is the one thing you pull open, so BACK folds it
+  // away again rather than exiting the app.
+  if (castIsTv() && state.deepOpen) { toggleDeepCard(); return true; }
   return false;
 }
 

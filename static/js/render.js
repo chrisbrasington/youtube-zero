@@ -6,6 +6,10 @@
  * top-level ordering and the initial loadAll() that primes state from
  * the API.
  *
+ * The queue and the deep queue are folder cards inside the feed rather
+ * than a pane of their own: the queue leads the list, the deep queue
+ * closes it, and the videos in both are ordinary video tiles.
+ *
  * Classic script. Render functions write to innerHTML and as a side
  * effect populate videoMeta (declared in state.js) so the click
  * dispatcher in events.js can look up full metadata from a video id.
@@ -28,6 +32,9 @@ function topLevelItems() {
 
 // ── Feed ─────────────────────────────────────────────────────────────────────
 
+// The queue bookends the feed: what you've lined up to watch sits above
+// everything, what you've parked sits below it. Both are folder cards, so a
+// queued video looks and behaves exactly like a video anywhere else on the page.
 function renderFeed() {
   const el = $('channels-list');
   let items = topLevelItems();
@@ -38,25 +45,24 @@ function renderFeed() {
       (type === 'folder' ? folderUnreadCount(item) : countUnread(item)) > 0);
   }
 
-  if (items.length === 0) {
-    $('all-clear-badge').classList.add('hidden');
-    el.innerHTML = `
-      <div class="empty-state">
-        <h3>No channels yet</h3>
-        <p>Add a YouTube channel or create a folder above.</p>
-      </div>`;
-    return;
-  }
+  const body = items.length === 0
+    ? `<div class="empty-state">
+         <h3>No channels yet</h3>
+         <p>Add a YouTube channel or create a folder above.</p>
+       </div>`
+    : items.map(({ type, item }) =>
+        type === 'folder' ? renderFolder(item) : renderChannel(item, false)
+      ).join('');
 
   const totalUnread = items.reduce((n, { type, item }) =>
     n + (type === 'folder' ? folderUnreadCount(item) : countUnread(item)), 0
   );
 
-  $('all-clear-badge').classList.toggle('hidden', totalUnread !== 0);
+  // Queued videos are still waiting on you, so they hold the badge back too.
+  $('all-clear-badge').classList.toggle(
+    'hidden', totalUnread !== 0 || shallowQueue().length > 0);
 
-  el.innerHTML = items.map(({ type, item }) =>
-    type === 'folder' ? renderFolder(item) : renderChannel(item, false)
-  ).join('');
+  el.innerHTML = renderQueueCard() + body + renderDeepCard();
 
   // Feed rebuilt → restore the TV-remote focus ring if we're on /tv (see tv.js).
   if (typeof tvRefocus === 'function') tvRefocus();
@@ -231,7 +237,11 @@ function renderChannel(ch, nested) {
 
 // ── Video tile (compact strip) ───────────────────────────────────────────────
 
-function renderVideoTile(video, channel, showChannel, folderId = null) {
+// `opts.queue` is 'shallow' or 'deep' when the tile lives in one of the queue
+// cards. Everything about the tile stays the same except the first rail button,
+// which becomes the move that makes sense from where you're standing: park it
+// for later, or pull it back up.
+function renderVideoTile(video, channel, showChannel, folderId = null, opts = {}) {
   videoMeta.set(video.video_id, {
     video_id:      video.video_id,
     channel_id:    channel.channel_id,
@@ -243,16 +253,41 @@ function renderVideoTile(video, channel, showChannel, folderId = null) {
   });
 
   const vid     = escAttr(video.video_id);
+  const group   = opts.queue || null;
   const inQueue = video.in_queue;
   const inQuickQueue = state.quickQueueVideos.includes(video.video_id);
-  const qpos    = queuePositionOf(video.video_id);
+  // Inside a queue card every tile is queued, so the ring and the ⤓ marker are
+  // noise; the running position is still worth showing in the main queue.
+  const qpos    = group ? null : queuePositionOf(video.video_id);
+  const qnum    = group === 'shallow' ? queuePositionOf(video.video_id) : null;
   const isFiltered = folderId != null &&
     state.folderChannelFilter.get(folderId) === channel.channel_id;
 
+  const firstRailBtn =
+    group === 'deep'
+      ? `<button class="rail-btn rail-queue"
+                 data-action="queue-undeep"
+                 data-video-id="${vid}"
+                 title="Move back up to the queue">+ Queue</button>`
+    : group === 'shallow'
+      ? `<button class="rail-btn rail-later"
+                 data-action="queue-deep"
+                 data-video-id="${vid}"
+                 title="Park in the deep queue">+ Later</button>`
+      : `<button class="rail-btn rail-queue ${inQueue ? 'queued' : ''}"
+                 data-action="toggle-queue"
+                 data-video-id="${vid}"
+                 data-in-queue="${inQueue ? '1' : '0'}"
+                 title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
+           ${inQueue ? '✓ Queued' : '+ Queue'}
+         </button>`;
+
   return `
-    <div class="video-tile ${inQuickQueue ? 'quick-queue-selected' : ''} ${inQueue ? 'is-queued' : ''}"
+    <div class="video-tile ${inQuickQueue ? 'quick-queue-selected' : ''} ${!group && inQueue ? 'is-queued' : ''}"
          data-action="open-player"
          data-video-id="${vid}"
+         ${group === 'shallow' ? `data-queue-id="${vid}"` : ''}
+         ${group ? `draggable="true" data-drag-context="queue" data-group="${group}"` : ''}
          data-title="${escAttr(video.title)}"
          tabindex="0"
          title="${escAttr(video.title)}">
@@ -263,21 +298,20 @@ function renderVideoTile(video, channel, showChannel, folderId = null) {
         ${qpos ? `<span class="tile-qpos ${qpos.deep ? 'deep' : ''}"
                         title="${qpos.deep ? 'Deep queue' : 'Queue position ' + qpos.n}"
                   >${qpos.deep ? '⤓' : qpos.n}</span>` : ''}
+        ${qnum ? `<span class="tile-qpos" title="Queue position ${qnum.n}">${qnum.n}</span>` : ''}
         ${inQuickQueue ? `<span class="tile-qqueue-check">✓</span>` : ''}
         <span class="tile-scrim"></span>
         <span class="tile-play">▶</span>
         <div class="tile-rail">
-          <button class="rail-btn rail-queue ${inQueue ? 'queued' : ''}"
-                  data-action="toggle-queue"
-                  data-video-id="${vid}"
-                  data-in-queue="${inQueue ? '1' : '0'}"
-                  title="${inQueue ? 'In queue — click to remove' : 'Add to queue'}">
-            ${inQueue ? '✓ Queued' : '+ Queue'}
-          </button>
+          ${firstRailBtn}
           <button class="rail-btn rail-done"
-                  data-action="video-read"
+                  data-action="${group ? 'queue-done' : 'video-read'}"
                   data-video-id="${vid}"
-                  title="Mark as read">✓ Done</button>
+                  title="${group ? 'Mark watched and drop from the queue' : 'Mark as read'}">✓ Done</button>
+          ${opts.subscribable ? `<button class="rail-btn rail-sub"
+                  data-action="subscribe-from-queue"
+                  data-channel-id="${escAttr(channel.channel_id)}"
+                  title="Subscribe to ${escAttr(channel.name)}">+ Sub</button>` : ''}
           <button class="rail-btn rail-more"
                   data-action="more-actions"
                   data-video-id="${vid}"
@@ -373,115 +407,78 @@ function queuePositionOf(videoId) {
   return deepQueue().some(q => q.video_id === videoId) ? { n: 0, deep: true } : null;
 }
 
-function renderQueueBadge() {
-  const n = shallowQueue().length;
-  const badge = $('queue-badge');
-  badge.textContent = n;
-  badge.className = 'queue-badge' + (n === 0 ? ' empty' : '');
-  $('btn-queue').classList.toggle('active', state.queueOpen);
+// A queue row carries its own channel name rather than belonging to a channel
+// card, so hand renderVideoTile a stand-in. Videos added by URL have no
+// channel at all, which the tile already renders as a bare age line.
+//
+// A queued video can come from a channel you don't follow — that's the one
+// place in the app that offers to subscribe, so the tile grows a fourth rail
+// button for it rather than losing the option.
+function renderQueueTile(item, group, subscribedIds) {
+  return renderVideoTile(
+    item,
+    { channel_id: item.channel_id || '', name: item.channel_name || '' },
+    !!item.channel_name,
+    null,
+    {
+      queue: group,
+      subscribable: !!item.channel_id && !subscribedIds.has(item.channel_id),
+    },
+  );
 }
 
-function qItemHtml(item, subscribedIds, group) {
-  const isSubscribed = subscribedIds.has(item.channel_id);
-  const isDeep = group === 'deep';
-  const deepBtn = isDeep
-    ? `<button class="q-icon-btn q-deep-toggle" data-action="queue-undeep"
-              data-video-id="${escAttr(item.video_id)}"
-              title="Move back to main queue">⤒</button>`
-    : `<button class="q-icon-btn q-deep-toggle" data-action="queue-deep"
-              data-video-id="${escAttr(item.video_id)}"
-              title="Move to deep queue">⤓</button>`;
-  return `
-    <div class="q-item" draggable="true" data-drag-context="queue"
-         data-video-id="${escAttr(item.video_id)}" data-group="${group}">
-      <div class="q-thumb-wrap"
-           data-action="play-from-queue"
-           data-video-id="${escAttr(item.video_id)}"
-           data-title="${escAttr(item.title)}">
-        <img class="q-thumb" src="${escAttr(item.thumbnail_url)}" alt=""
-             onerror="this.src='data:image/svg+xml,<svg/>'">
-        ${item.duration ? `<span class="q-dur">${esc(item.duration)}</span>` : ''}
-      </div>
-      <div class="q-info">
-        <div class="q-title">${esc(item.title)}</div>
-        <div class="q-channel">${esc(item.channel_name)}</div>
-        <div class="q-actions">
-          <button class="q-icon-btn q-play"
-                  data-action="play-from-queue"
-                  data-video-id="${escAttr(item.video_id)}"
-                  data-title="${escAttr(item.title)}"
-                  title="Play">▶</button>
-          <a class="q-icon-btn"
-             href="https://www.youtube.com/watch?v=${escAttr(item.video_id)}"
-             target="_blank" rel="noopener noreferrer"
-             data-action="watch-yt"
-             data-video-id="${escAttr(item.video_id)}"
-             title="Open on YouTube (marks watched)">↗</a>
-          ${!isSubscribed && item.channel_id ? `<button class="q-icon-btn"
-                  data-action="subscribe-from-queue"
-                  data-channel-id="${escAttr(item.channel_id)}"
-                  title="Subscribe to ${escAttr(item.channel_name)}">+</button>` : ''}
-          ${state.signalConfigured ? `<button class="q-icon-btn q-signal"
-                  data-action="signal-send"
-                  data-video-id="${escAttr(item.video_id)}"
-                  data-title="${escAttr(item.title)}"
-                  data-channel-name="${escAttr(item.channel_name)}"
-                  data-thumbnail-url="${escAttr(item.thumbnail_url || '')}"
-                  title="Send to Signal Notes to Self">✉</button>` : ''}
-          ${state.tvConfigured ? `<button class="q-icon-btn q-tv"
-                  data-action="tv-send"
-                  data-video-id="${escAttr(item.video_id)}"
-                  title="Play on TV">📺</button>` : ''}
-          ${deepBtn}
-          <button class="q-icon-btn q-remove"
-                  data-action="remove-queue"
-                  data-video-id="${escAttr(item.video_id)}"
-                  title="Remove from queue">✕</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderQueue() {
-  const el = $('queue-list');
+// First card in the feed whenever anything is queued — nothing to show and it
+// stays out of the way entirely.
+function renderQueueCard() {
+  const items = shallowQueue();
+  if (!items.length) return '';
+  const open = state.queueCardOpen;
   const subscribedIds = new Set(allChannels().map(c => c.channel_id));
-  const shallow = shallowQueue();
-  const deep    = deepQueue();
-
-  let html = '';
-  if (shallow.length === 0 && deep.length === 0) {
-    html += '<div class="queue-empty">Queue is empty</div>';
-  } else if (shallow.length === 0) {
-    html += '<div class="queue-empty queue-empty-shallow">Main queue is empty</div>';
-  } else {
-    html += `<div class="q-group" data-group="shallow">${
-      shallow.map(it => qItemHtml(it, subscribedIds, 'shallow')).join('')
-    }</div>`;
-  }
-
-  if (deep.length > 0) {
-    const expanded = state.deepOpen;
-    html += `
-      <div class="deep-section ${expanded ? 'expanded' : 'collapsed'}">
-        <div class="deep-header" data-action="toggle-deep" role="button" tabindex="0">
-          <span class="deep-caret">${expanded ? '▾' : '▸'}</span>
-          <span class="deep-title">Deep Queue</span>
-          <span class="deep-count">${deep.length}</span>
-          ${!expanded ? `<div class="deep-preview">${
-            deep.slice(0, 12).map(it => `
-              <img class="deep-preview-thumb" src="${escAttr(it.thumbnail_url)}"
-                   alt="" title="${escAttr(it.title)}"
-                   onerror="this.src='data:image/svg+xml,<svg/>'">`).join('')
-          }${deep.length > 12 ? `<span class="deep-preview-more">+${deep.length - 12}</span>` : ''}</div>` : ''}
+  return `
+    <div class="folder-card queue-card has-new" id="queue-card">
+      <div class="folder-header" id="queue-card-header" data-action="toggle-queue-card">
+        <span class="folder-icon queue-card-icon">▶</span>
+        <span class="folder-name">Queue</span>
+        <div class="folder-right">
+          <span class="badge-new">${items.length} queued</span>
+          <button class="ch-btn watch-folder" data-action="watch-queue"
+                  title="Watch through the queue">▶</button>
+          ${state.signalConfigured ? `<button class="ch-btn" data-action="signal-queue"
+                  title="Send the queue to Signal Notes to Self">✉</button>` : ''}
+          <button class="ch-btn delete" data-action="clear-queue"
+                  title="Empty the queue (the deep queue is untouched)">✕</button>
+          <span class="ch-btn ch-caret ${open ? 'open' : ''}">▼</span>
         </div>
-        ${expanded ? `<div class="q-group" data-group="deep">${
-          deep.map(it => qItemHtml(it, subscribedIds, 'deep')).join('')
-        }</div>` : ''}
-      </div>`;
-  }
+      </div>
+      ${open ? `<div class="video-strip">${
+        items.map(it => renderQueueTile(it, 'shallow', subscribedIds)).join('')
+      }</div>` : ''}
+    </div>`;
+}
 
-  el.innerHTML = html;
+// Always last, always collapsed to start with. Parked videos should cost one
+// row of the page until you go looking for them.
+function renderDeepCard() {
+  const items = deepQueue();
+  if (!items.length) return '';
+  const open = state.deepOpen;
+  const subscribedIds = new Set(allChannels().map(c => c.channel_id));
+  return `
+    <div class="folder-card deep-card" id="deep-queue-card">
+      <div class="folder-header" id="deep-queue-card-header" data-action="toggle-deep">
+        <span class="folder-icon queue-card-icon">⤓</span>
+        <span class="folder-name">Deep Queue</span>
+        <div class="folder-right">
+          <span class="badge-quiet">${items.length} parked</span>
+          <button class="ch-btn delete" data-action="clear-deep-queue"
+                  title="Empty the deep queue">✕</button>
+          <span class="ch-btn ch-caret ${open ? 'open' : ''}">▼</span>
+        </div>
+      </div>
+      ${open ? `<div class="video-strip">${
+        items.map(it => renderQueueTile(it, 'deep', subscribedIds)).join('')
+      }</div>` : ''}
+    </div>`;
 }
 
 
@@ -536,9 +533,7 @@ function pruneFolderFilters() {
 
 function render() {
   pruneFolderFilters();
-  renderFeed();
-  renderQueue();
-  renderQueueBadge();
+  renderFeed();      // the queue and deep-queue cards render with the feed
   renderPlayer();
 }
 

@@ -102,7 +102,7 @@
 
 /* Numerals are this app's real content — counts, durations, queue positions,
    ages, quota. Tabular everywhere so they don't jitter as digits change. */
-.tile-dur, .v-dur, .q-dur, .badge-new, .queue-badge, .deep-count,
+.tile-dur, .v-dur, .q-dur, .badge-new, .badge-quiet, .queue-badge,
 .tile-age, .v-age, .ch-meta, .quota-pill, .last-checked,
 .tile-qpos, .auto-refresh-interval, .auto-refresh-countdown,
 #watch-queue-count, .history-pager {
@@ -993,18 +993,7 @@ input::placeholder { color: var(--dim); }
   opacity: .8;
 }
 
-/* ── Queue pane ──────────────────────────────────────────────────────────── */
-
-.queue-pane {
-  width: 600px;
-  min-width: 340px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg2);
-  border-left: 1px solid var(--border);
-  overflow: hidden;
-}
+/* ── Queue rows (watch "Up Next", cast remote, history) ──────────────────── */
 
 .queue-header {
   display: flex;
@@ -1016,8 +1005,6 @@ input::placeholder { color: var(--dim); }
 }
 
 .queue-title { font-size: 22px; font-weight: 700; }
-
-.queue-header-actions { display: flex; align-items: center; gap: 6px; }
 
 .queue-list {
   overflow-y: auto;
@@ -1089,111 +1076,36 @@ input::placeholder { color: var(--dim); }
 
 .q-channel { font-size: 17px; color: var(--muted); margin-top: 2px; }
 
-.q-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
 
-/* Shared icon-only action button for queue rows */
-.q-icon-btn {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border-l);
-  border-radius: var(--r-sm);
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  font-size: 16px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all .12s;
+/* ── Queue cards (the queue + the deep queue, in the feed) ───────────────── */
+
+/* Both borrow .folder-card wholesale — same spine, same header, same strip —
+   so a queued video is visually a video in a folder and nothing more. Only the
+   spine colour separates them: gold for what's lined up, quiet for what's
+   parked. */
+.queue-card.has-new { border-left-color: var(--pending); }
+.deep-card          { border-left-color: var(--border-l); }
+
+/* The folder icon is a button (it opens the icon picker); these two are just a
+   glyph, so match the metrics without the affordance. */
+.queue-card-icon {
+  font-size: 19px;
   flex-shrink: 0;
+  width: 27px;
+  text-align: center;
 }
-.q-icon-btn:hover { color: var(--text); border-color: var(--muted); background: var(--bg4); }
+.deep-card .folder-name { color: var(--muted); }
 
-/* Per-action accent on hover */
-.q-icon-btn.q-play:hover    { color: #fff; background: var(--accent); border-color: var(--accent); }
-.q-icon-btn.q-remove:hover  { color: var(--accent); border-color: var(--accent); background: transparent; }
-.q-icon-btn.q-signal:hover  { color: var(--signal); border-color: var(--signal); background: transparent; }
-.q-icon-btn.q-tv:hover      { color: var(--tv); border-color: var(--tv); background: transparent; }
-.q-icon-btn.q-deep-toggle:hover { color: var(--amber); border-color: var(--amber); background: transparent; }
-
-.q-item.dragging  { opacity: .4; touch-action: none; }
-.q-item.drag-over { outline: 2px solid var(--accent); background: rgba(255,68,68,.06); }
-
-/* ── Deep queue section ──────────────────────────────────────────────────── */
-
-.deep-section {
-  margin-top: 10px;
-  border-top: 1px dashed var(--border);
-  padding-top: 10px;
-}
-
-.deep-section.drag-into .deep-header {
+/* Drop a queued tile on the collapsed deep card to park it. */
+.deep-card.drag-into {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-  background: rgba(255,68,68,.06);
+  background: rgba(255,68,68,.04);
 }
 
-.deep-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  user-select: none;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-}
-.deep-header:hover { background: var(--bg4); }
+.video-tile.dragging  { opacity: .4; touch-action: none; }
+.video-tile.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.deep-caret { font-size: 14px; color: var(--muted); width: 12px; text-align: center; flex-shrink: 0; }
-.deep-title { font-size: 15px; font-weight: 600; color: var(--text); flex-shrink: 0; }
-.deep-count {
-  font-size: 12px;
-  background: var(--bg4);
-  color: var(--muted);
-  border-radius: 10px;
-  padding: 1px 8px;
-  flex-shrink: 0;
-}
-
-.deep-preview {
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  flex: 1;
-  margin-left: 6px;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.deep-preview::-webkit-scrollbar { display: none; }
-
-.deep-preview-thumb {
-  width: 56px;
-  height: 32px;
-  object-fit: cover;
-  border-radius: 3px;
-  background: var(--bg4);
-  flex-shrink: 0;
-}
-.deep-preview-more {
-  font-size: 11px;
-  color: var(--muted);
-  padding: 0 4px;
-  align-self: center;
-  flex-shrink: 0;
-}
-
-.deep-section.expanded .q-group[data-group="deep"] {
-  margin-top: 8px;
-}
-/* Slightly dimmed look for deep items when expanded */
-.deep-section.expanded .q-item {
-  background: var(--bg2);
-}
 
 /* ── Compact video strip (default channel view) ──────────────────────────── */
 
@@ -1349,6 +1261,13 @@ body.wrap-strip .video-strip {
 .rail-done:hover         { border-color: var(--clear); color: var(--clear); }
 .rail-more:hover         { border-color: var(--focus); color: var(--focus); }
 .rail-more { flex: 0 0 30px; }
+
+/* The two queue moves. "+ Later" pushes a video down into the deep queue, so
+   it reads quiet; "+ Queue" on a parked video is the way back up, so it reads
+   like the queue itself. */
+.rail-later:hover { border-color: var(--muted); color: var(--text); }
+.rail-sub         { flex: 0 0 auto; }
+.rail-sub:hover   { border-color: var(--green); color: var(--green); }
 
 /* Persistent queue marker. The queue is genuinely ordered, so the tile shows
    where this video sits in it — not just that it is in there somewhere. */
@@ -1936,16 +1855,6 @@ body.mobile-ui {
   .queue-badge { line-height: 1; vertical-align: middle; }
   .logo       { font-size: 22px; }
 
-  /* Queue pane full-width on mobile */
-  .queue-pane {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    min-width: 0;
-    z-index: 300;
-    border-left: none;
-  }
-
   /* Channels pane padding */
   .channels-pane { padding: 10px 12px; }
 
@@ -2125,14 +2034,7 @@ input[type="password"] { font-size: 13px; }
   .v-thumb { width: 108px; height: 60px; }
   .q-thumb-wrap { width: 80px; height: 45px; }
   .q-dur { font-size: 10px; padding: 0 3px; }
-  .q-icon-btn { width: 28px; height: 28px; font-size: 14px; }
-  .q-actions { gap: 3px; }
-
-  .deep-header { padding: 5px 6px; gap: 6px; flex-wrap: nowrap; }
-  .deep-title { font-size: 13px; }
-  .deep-count { font-size: 11px; padding: 1px 6px; }
-  .deep-preview-thumb { width: 44px; height: 25px; }
-  .deep-preview { gap: 3px; }
+  .queue-card-icon { font-size: 15px; width: 20px; }
 
   /* ── Watch history: stack the per-row actions onto their own full-width line
         so they don't overlap the title or run off-screen on phones. ─────────── */
@@ -2874,10 +2776,13 @@ body.route-tv [data-action="toggle-queue"],
 body.route-tv [data-action="signal-send"],
 body.route-tv [data-action="tv-send"],
 body.route-tv [data-action="more-actions"],
-body.route-tv #btn-clear-queue,
-body.route-tv [data-action="remove-queue"],
 body.route-tv [data-action="queue-deep"],
-body.route-tv [data-action="queue-undeep"] { display: none !important; }
+body.route-tv [data-action="queue-undeep"],
+body.route-tv [data-action="queue-done"],
+body.route-tv [data-action="subscribe-from-queue"],
+body.route-tv [data-action="signal-queue"],
+body.route-tv [data-action="clear-queue"],
+body.route-tv [data-action="clear-deep-queue"] { display: none !important; }
 
 
 /* ── "Resume control" bar: playing screen(s) detected on the main remote (/) ── */

@@ -2,7 +2,8 @@
 
 /*
  * Drag-and-drop for the feed (folders + channels reorder, channel-into-
- * folder move) and for the watch queue (reorder, shallow ↔ deep move).
+ * folder move) and for the queue cards, whose tiles reorder and move
+ * between the queue and the deep queue (drop one on the deep card).
  *
  * Classic script. Two parallel code paths:
  *   - Native HTML5 drag-and-drop (mouse / desktop): dragstart/dragend/
@@ -15,9 +16,15 @@
  * live in state.js; queueDragSrcId and touchDrag are local here.
  */
 
+// Only real folders and channels reorder — the queue cards borrow .folder-card
+// for their looks but carry no id, and dragging one would move nothing.
 function anyCard(el) {
-  return el.closest('.channel-card') || el.closest('.folder-card');
+  return el.closest('.channel-card[data-channel-id]') ||
+         el.closest('.folder-card[data-folder-id]');
 }
+
+// A queue tile — the drag unit inside either queue card.
+const Q_TILE = '[data-drag-context="queue"]';
 
 let queueDragSrcId = null;
 let touchDrag = null;
@@ -27,9 +34,12 @@ let touchDrag = null;
 
 document.addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch') return;
-  const qItem = e.target.closest('.q-item[draggable]');
+  const qItem = e.target.closest(Q_TILE);
   if (!qItem) return;
-  if (e.target.closest('button, a, [data-action]')) return;
+  // The tile itself is a data-action (open-player); only a nested control —
+  // a rail button — should block the long press.
+  const inner = e.target.closest('button, a, [data-action]');
+  if (inner && inner !== qItem) return;
   const startX = e.clientX, startY = e.clientY;
   touchDrag = {
     srcId: qItem.dataset.videoId,
@@ -59,19 +69,19 @@ document.addEventListener('pointermove', e => {
     return;
   }
   e.preventDefault();
-  document.querySelectorAll('.q-item, .deep-section').forEach(q =>
+  document.querySelectorAll(`${Q_TILE}, .deep-card`).forEach(q =>
     q.classList.remove('drag-over', 'drag-into')
   );
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el) { touchDrag.target = null; touchDrag.deep = null; return; }
-  const target = el.closest('.q-item');
+  const target = el.closest(Q_TILE);
   if (target && target.dataset.videoId !== touchDrag.srcId) {
     target.classList.add('drag-over');
     touchDrag.target = target;
     touchDrag.deep = null;
     return;
   }
-  const deepHdr = el.closest('.deep-section');
+  const deepHdr = el.closest('.deep-card');
   const src = state.queue.find(q => q.video_id === touchDrag.srcId);
   if (deepHdr && src && !src.is_deep) {
     deepHdr.classList.add('drag-into');
@@ -89,7 +99,7 @@ function endTouchDrag(commit) {
   if (touchDrag.active && commit) {
     commitQueueDrop(touchDrag.srcId, touchDrag.target, touchDrag.deep);
   }
-  document.querySelectorAll('.q-item, .deep-section').forEach(q =>
+  document.querySelectorAll(`${Q_TILE}, .deep-card`).forEach(q =>
     q.classList.remove('drag-over', 'drag-into', 'dragging')
   );
   queueDragSrcId = null;
@@ -103,7 +113,7 @@ document.addEventListener('pointercancel', e => { if (touchDrag && e.pointerId =
 
 document.addEventListener('dragstart', e => {
   // Queue item drag
-  const qItem = e.target.closest('.q-item[draggable]');
+  const qItem = e.target.closest(Q_TILE);
   if (qItem) {
     queueDragSrcId = qItem.dataset.videoId;
     e.dataTransfer.effectAllowed = 'move';
@@ -129,7 +139,7 @@ document.addEventListener('dragstart', e => {
 });
 
 document.addEventListener('dragend', () => {
-  document.querySelectorAll('.channel-card, .folder-card, .q-item').forEach(c =>
+  document.querySelectorAll(`.channel-card, .folder-card, ${Q_TILE}`).forEach(c =>
     c.classList.remove('dragging', 'drag-over', 'drag-into')
   );
   dragSrcId = dragSrcType = dragSrcFolderId = null;
@@ -139,10 +149,10 @@ document.addEventListener('dragend', () => {
 document.addEventListener('dragover', e => {
   // Queue reorder / cross-group move
   if (queueDragSrcId) {
-    document.querySelectorAll('.q-item, .deep-section').forEach(q =>
+    document.querySelectorAll(`${Q_TILE}, .deep-card`).forEach(q =>
       q.classList.remove('drag-over', 'drag-into')
     );
-    const target = e.target.closest('.q-item');
+    const target = e.target.closest(Q_TILE);
     if (target && target.dataset.videoId !== queueDragSrcId) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -150,7 +160,7 @@ document.addEventListener('dragover', e => {
       return;
     }
     // Drop on deep header (collapsed) → move into deep
-    const deepHdr = e.target.closest('.deep-section');
+    const deepHdr = e.target.closest('.deep-card');
     const srcItem = state.queue.find(q => q.video_id === queueDragSrcId);
     if (deepHdr && srcItem && !srcItem.is_deep) {
       e.preventDefault();
@@ -167,7 +177,7 @@ document.addEventListener('dragover', e => {
   );
 
   if (dragSrcType === 'channel') {
-    const folderCard = e.target.closest('.folder-card');
+    const folderCard = e.target.closest('.folder-card[data-folder-id]');
     if (folderCard) {
       const targetFolderId = parseInt(folderCard.dataset.folderId, 10);
       if (targetFolderId !== dragSrcFolderId) {
@@ -179,7 +189,7 @@ document.addEventListener('dragover', e => {
       }
       // Same folder → fall through to channel reorder below
     }
-    const channelCard = e.target.closest('.channel-card');
+    const channelCard = e.target.closest('.channel-card[data-channel-id]');
     if (channelCard && channelCard.dataset.channelId !== dragSrcId) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -190,7 +200,7 @@ document.addEventListener('dragover', e => {
 
   if (dragSrcType === 'folder') {
     // Folder reorder: hover over any top-level item
-    const topCard = e.target.closest('.channel-card:not(.nested)') || e.target.closest('.folder-card');
+    const topCard = e.target.closest('.channel-card[data-channel-id]:not(.nested)') || e.target.closest('.folder-card[data-folder-id]');
     if (topCard) {
       const targetId = topCard.dataset.channelId || topCard.dataset.folderId;
       if (targetId !== dragSrcId) {
@@ -226,8 +236,7 @@ function commitQueueDrop(srcId, target, deepHdr) {
   const [m] = state.queue.splice(si, 1);
   state.queue.splice(di, 0, m);
   state.queue.forEach((q, i) => { q.sort_order = i; });
-  renderQueue();
-  renderQueueBadge();
+  render();
 
   if (targetGroup !== srcGroup) {
     api.post(`/api/queue/${srcId}/deep`, { is_deep: targetGroup === 'deep' })
@@ -241,8 +250,8 @@ function commitQueueDrop(srcId, target, deepHdr) {
 document.addEventListener('drop', e => {
   if (queueDragSrcId) {
     const srcId = queueDragSrcId;
-    const deepHdr = e.target.closest('.deep-section');
-    const target  = e.target.closest('.q-item');
+    const deepHdr = e.target.closest('.deep-card');
+    const target  = e.target.closest(Q_TILE);
     if (target || deepHdr) e.preventDefault();
     commitQueueDrop(srcId, target, deepHdr);
     return;
@@ -251,7 +260,7 @@ document.addEventListener('drop', e => {
   if (!dragSrcId) return;
 
   if (dragSrcType === 'channel') {
-    const folderCard = e.target.closest('.folder-card');
+    const folderCard = e.target.closest('.folder-card[data-folder-id]');
     if (folderCard) {
       const targetFolderId = parseInt(folderCard.dataset.folderId, 10);
       if (targetFolderId !== dragSrcFolderId) {
@@ -261,7 +270,7 @@ document.addEventListener('drop', e => {
       }
       // Same folder — fall through to channel reorder
     }
-    const channelCard = e.target.closest('.channel-card');
+    const channelCard = e.target.closest('.channel-card[data-channel-id]');
     if (channelCard && channelCard.dataset.channelId !== dragSrcId) {
       e.preventDefault();
       reorderChannels(dragSrcId, channelCard.dataset.channelId);
@@ -270,7 +279,7 @@ document.addEventListener('drop', e => {
   }
 
   if (dragSrcType === 'folder') {
-    const topCard = e.target.closest('.channel-card:not(.nested)') || e.target.closest('.folder-card');
+    const topCard = e.target.closest('.channel-card[data-channel-id]:not(.nested)') || e.target.closest('.folder-card[data-folder-id]');
     if (!topCard) return;
     const targetId = topCard.dataset.channelId || topCard.dataset.folderId;
     if (targetId === dragSrcId) return;

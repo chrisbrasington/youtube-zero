@@ -40,8 +40,36 @@ document.addEventListener('click', e => {
     closePlayer(); return;
   }
 
-  // Folder: toggle
-  const fHeader = e.target.closest('.folder-header');
+  // Queue card: collapse / expand
+  const qcHdr = e.target.closest('[data-action="toggle-queue-card"]');
+  if (qcHdr && !e.target.closest('.ch-btn')) { toggleQueueCard(); return; }
+
+  // Deep queue card: collapse / expand
+  const deepHdr = e.target.closest('[data-action="toggle-deep"]');
+  if (deepHdr && !e.target.closest('.ch-btn')) { toggleDeepCard(); return; }
+
+  // Queue card: watch it through / send to Signal / empty it
+  if (e.target.closest('[data-action="watch-queue"]')) {
+    e.stopPropagation();
+    castIsTv() ? watchStartQueue() : castOrWatchQueue();   // /tv always plays here
+    return;
+  }
+  if (e.target.closest('[data-action="signal-queue"]')) {
+    e.stopPropagation(); signalSendQueue(); return;
+  }
+  if (e.target.closest('[data-action="clear-queue"]')) {
+    e.stopPropagation();
+    if (confirm('Empty the queue? The deep queue is untouched.')) clearQueue(false);
+    return;
+  }
+  if (e.target.closest('[data-action="clear-deep-queue"]')) {
+    e.stopPropagation();
+    if (confirm('Empty the deep queue?')) clearQueue(true);
+    return;
+  }
+
+  // Folder: toggle. The queue cards borrow .folder-header, so key off the id.
+  const fHeader = e.target.closest('.folder-header[data-folder-id]');
   if (fHeader && !e.target.closest('.ch-btn') && !e.target.closest('.ch-check') &&
       !e.target.closest('.folder-icon-btn') && !e.target.closest('.folder-filter')) {
     toggleFolder(parseInt(fHeader.dataset.folderId, 10)); return;
@@ -163,9 +191,13 @@ document.addEventListener('click', e => {
     return;
   }
 
-  // Open player (tile or row thumb) — or toggle quick queue if in selection mode
+  // Open player (tile or row thumb) — or toggle quick queue if in selection mode.
+  // The rail buttons live inside the tile, so a click only opens the player when
+  // nothing nested claimed it first (that check used to be a list of every
+  // rail action, which went stale every time the rail grew a button).
   const openEl = e.target.closest('[data-action="open-player"]');
-  if (openEl && !e.target.closest('[data-action="toggle-queue"]') && !e.target.closest('[data-action="signal-send"]') && !e.target.closest('[data-action="tv-send"]') && !e.target.closest('[data-action="more-actions"]') && !e.target.closest('[data-action="filter-folder-channel"]') && !e.target.closest('[data-action="video-read"]') && !e.target.closest('[data-action="video-unread"]')) {
+  const claimed = e.target.closest('[data-action]');
+  if (openEl && claimed === openEl) {
     if (state.quickQueueMode) {
       toggleVideoInQuickQueue(openEl.dataset.videoId);
       return;
@@ -187,7 +219,11 @@ document.addEventListener('click', e => {
       openActionSheet(ctx);
       return;
     }
-    openPlayer(openEl.dataset.videoId, openEl.dataset.title); return;
+    // A tile in the queue card carries its queue id, so playing it starts the
+    // binge from there instead of playing the one video on its own.
+    openPlayer(openEl.dataset.videoId, openEl.dataset.title,
+               openEl.dataset.queueId || null);
+    return;
   }
 
   // Action sheet handlers
@@ -296,50 +332,21 @@ document.addEventListener('click', e => {
     return;
   }
 
-  // Play from queue
-  const playBtn = e.target.closest('[data-action="play-from-queue"]');
-  if (playBtn) {
-    if (e.ctrlKey || e.metaKey) {
-      const ctx = buildSheetCtx(playBtn.dataset.videoId);
-      if (!ctx.title) ctx.title = playBtn.dataset.title || '';
-      openActionSheet(ctx);
-      return;
-    }
-    if (e.altKey && state.tvConfigured) {
-      tvSend(playBtn.dataset.videoId);
-      return;
-    }
-    openPlayer(playBtn.dataset.videoId, playBtn.dataset.title, playBtn.dataset.videoId); return;
-  }
-
-  // YouTube link (mark watched)
-  const ytLink = e.target.closest('[data-action="watch-yt"]');
-  if (ytLink) { watchOnYouTube(ytLink.dataset.videoId); return; }
-
-  // Remove from queue
-  const rmBtn = e.target.closest('[data-action="remove-queue"]');
-  if (rmBtn) { removeFromQueue(rmBtn.dataset.videoId); return; }
-
   // Subscribe to channel from queue
   const subBtn = e.target.closest('[data-action="subscribe-from-queue"]');
-  if (subBtn) { subscribeFromQueue(subBtn.dataset.channelId); return; }
+  if (subBtn) { e.stopPropagation(); subscribeFromQueue(subBtn.dataset.channelId); return; }
 
-  // Move into deep queue
+  // "+ Later" — park a queued video in the deep queue
   const deepBtn = e.target.closest('[data-action="queue-deep"]');
   if (deepBtn) { e.stopPropagation(); setQueueDeep(deepBtn.dataset.videoId, true); return; }
 
-  // Move out of deep queue
+  // "+ Queue" — pull a parked video back up
   const undeepBtn = e.target.closest('[data-action="queue-undeep"]');
   if (undeepBtn) { e.stopPropagation(); setQueueDeep(undeepBtn.dataset.videoId, false); return; }
 
-  // Toggle deep section expand/collapse
-  const deepHdr = e.target.closest('[data-action="toggle-deep"]');
-  if (deepHdr) {
-    state.deepOpen = !state.deepOpen;
-    localStorage.setItem('deepOpen', state.deepOpen ? '1' : '0');
-    renderQueue();
-    return;
-  }
+  // "✓ Done" on a queue tile — watched, and out of the queue
+  const qDone = e.target.closest('[data-action="queue-done"]');
+  if (qDone) { e.stopPropagation(); markQueueWatched(qDone.dataset.videoId); return; }
 });
 
 

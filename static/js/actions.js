@@ -4,10 +4,10 @@
  * All non-rendering action handlers — channel CRUD, folder CRUD,
  * per-video read state, queue ops, refresh helpers, sort persistence.
  *
- * Classic script, loaded after app.js so render() / renderQueue() /
- * renderQueueBadge() / topLevelItems() are in scope. Every function
- * here either mutates state.* and calls render(), or fires off an
- * api.{get,post,del} promise; failures route to status().
+ * Classic script, loaded after app.js so render() / topLevelItems()
+ * are in scope. Every function here either mutates state.* and calls
+ * render(), or fires off an api.{get,post,del} promise; failures route
+ * to status().
  *
  * setRefreshProgress + refreshAll also live here because they
  * naturally co-locate with the "Refresh All" header button and the
@@ -31,7 +31,10 @@ async function addChannel() {
     const ch = await api.post('/api/channels', { input });
     $('channel-input').value = '';
     if (ch.video_found) {
-      renderQueue();
+      // A video URL goes straight into the queue server-side — pull it back so
+      // the queue card actually shows what was just added.
+      state.queue = await api.get('/api/queue');
+      render();
       status(`Video found: ${ch.title}`, 'ok');
     } else {
       state.feed.channels.push(ch);
@@ -86,7 +89,6 @@ async function subscribeFromQueue(channelId) {
     const ch = await api.post('/api/channels', { input: channelId });
     state.feed.channels.push(ch);
     render();
-    renderQueue();
     status(`Added ${ch.name}`, 'ok');
     setTimeout(() => status(''), 3000);
   } catch (e) {
@@ -107,7 +109,8 @@ async function addChannels(inputs) {
     try {
       const ch = await api.post('/api/channels', { input: valid[i] });
       if (ch.video_found) {
-        renderQueue();
+        state.queue = await api.get('/api/queue');
+        render();
       } else {
         state.feed.channels.push(ch);
         render();
@@ -501,13 +504,28 @@ async function setQueueDeep(videoId, isDeep) {
   }
 }
 
-async function watchOnYouTube(videoId) {
+// "✓ Done" on a queue tile: watched, and gone from the queue. The feed's own
+// ✓ Done only marks read, because a feed video isn't lined up for anything.
+async function markQueueWatched(videoId) {
   try {
     await api.post(`/api/queue/${videoId}/watched`);
     state.queue = state.queue.filter(q => q.video_id !== videoId);
     setInQueue(videoId, false);
     render();
   } catch {}
+}
+
+// The queue card remembers whether it's open; the deep card never does — it
+// starts collapsed every load so parked videos stay out of the way by default.
+function toggleQueueCard() {
+  state.queueCardOpen = !state.queueCardOpen;
+  localStorage.setItem('queueCardOpen', state.queueCardOpen ? '1' : '0');
+  render();
+}
+
+function toggleDeepCard() {
+  state.deepOpen = !state.deepOpen;
+  render();
 }
 
 
