@@ -46,7 +46,14 @@ function reconcileBackGuard() {
 
 window.addEventListener('popstate', () => {
   if (backGuardConsuming) { backGuardConsuming = false; return; }
-  if (!backGuardLayer()) return;   // not ours — let the navigation stand
+  if (!backGuardLayer()) {
+    // Nothing of ours is open. One case still needs handling: going forward
+    // back into a /<videoId> entry after backing out of it. Reopen the video —
+    // otherwise the feed sits there under a video URL, looking broken.
+    const vid = videoIdFromPath(location.pathname);
+    if (vid && !state.watch) watchBootVideo(vid);
+    return;                        // otherwise not ours — let the navigation stand
+  }
   backGuardArmed = false;          // the gesture already popped our sentinel
   watchExit();
 });

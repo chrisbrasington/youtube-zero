@@ -8,6 +8,9 @@
  * overlay's standalone bootstrap. Otherwise, do the standard feed boot
  * sequence — settings/signal/tv reconciliation, EventSource subscribe,
  * visibility-resume hook.
+ *
+ * /<videoId> is not a branch: it's the feed with a video already open, so it
+ * runs the same sequence and then opens the overlay on top.
  */
 
 (async () => {
@@ -46,4 +49,10 @@
       loadAll();
     }
   });
+
+  // A bare /<videoId> — someone reopened a link to something that was playing.
+  // The feed is already up behind it; the queue load above decides whether the
+  // video still has a queue to play inside of.
+  const videoId = videoIdFromPath(location.pathname);
+  if (videoId) await watchBootVideo(videoId);
 })();

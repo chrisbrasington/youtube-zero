@@ -30,14 +30,78 @@ function watchRouteFor(path) {
 }
 
 
-// In-page entry points — preserve click gesture so audio autoplay works.
+// ── /<videoId> in the address bar ────────────────────────────────────────────
+//
+// Whatever is playing shows as /<videoId>, so the link can be copied, sent, or
+// reopened later. It is a replaceState, never a navigation: the page doesn't
+// move, and working through a twenty-item queue must not leave twenty entries
+// for the back button to chew through. The one history entry that does exist is
+// navback.js's sentinel — pushed when the overlay opens, popped by a back
+// gesture — and rewriting its URL in place is what makes back land on the feed.
+//
+// Only on the feed route. /tv, /phone, /history and the /watch* routes all read
+// their own pathname at boot, so rewriting the URL there would reload into a
+// different app.
 
-function watchStartQueue() {
-  const list = shallowQueue().map(q => ({
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+/** The bare video id a path names, or null if it names anything else. */
+function videoIdFromPath(path) {
+  const p = String(path || '').replace(/^\/+|\/+$/g, '');
+  return VIDEO_ID_RE.test(p) ? p : null;
+}
+
+function watchUrlSyncOn() {
+  if (!state.watch?.inPage) return false;
+  const p = location.pathname.replace(/\/+$/, '') || '/';
+  return p === '/' || !!videoIdFromPath(p);
+}
+
+function watchSyncUrl(videoId) {
+  if (!videoId || !watchUrlSyncOn()) return;
+  // Keep history.state — it carries the back-guard sentinel flag — and keep the
+  // query string, which is how the APK passes ?server_video=0.
+  try { history.replaceState(history.state, '', `/${videoId}${location.search}`); } catch {}
+}
+
+function watchRestoreUrl() {
+  if (!videoIdFromPath(location.pathname)) return;
+  try { history.replaceState(history.state, '', `/${location.search}`); } catch {}
+}
+
+
+// ── Shared list + mark builders ──────────────────────────────────────────────
+
+/** The shallow queue as watch-list items. */
+function watchQueueItems() {
+  return shallowQueue().map(q => ({
     video_id: q.video_id, title: q.title,
     channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
     duration: q.duration,
   }));
+}
+
+/** Finished a queued video: off the queue, and off the feed's queue badge. */
+async function watchQueueMark(id) {
+  await api.post(`/api/queue/${id}/watched`);
+  state.queue = state.queue.filter(q => q.video_id !== id);
+  setInQueue(id, false);
+}
+
+/** Finished a feed video: mark it read here and in the loaded feed. */
+async function watchReadMark(id) {
+  try { await api.post(`/api/videos/${id}/read`); } catch {}
+  for (const ch of allChannels()) {
+    const v = (ch.videos || []).find(x => x.video_id === id);
+    if (v) v.is_read = true;
+  }
+}
+
+
+// In-page entry points — preserve click gesture so audio autoplay works.
+
+function watchStartQueue() {
+  const list = watchQueueItems();
   if (!list.length) {
     status('Queue empty', 'err'); setTimeout(() => status(''), 2000);
     return;
@@ -45,11 +109,7 @@ function watchStartQueue() {
   watchEnter({
     mode: 'queue', inPage: true, mutedStart: false, badgeLabel: '',
     list,
-    mark: async (id) => {
-      await api.post(`/api/queue/${id}/watched`);
-      state.queue = state.queue.filter(q => q.video_id !== id);
-      setInQueue(id, false);
-    },
+    mark: watchQueueMark,
   });
 }
 
@@ -86,13 +146,7 @@ function watchStartFolder(folderId, order = 'oldest') {
       channel_name: v._channel.name, thumbnail_url: v.thumbnail_url,
       duration: v.duration,
     })),
-    mark: async (id) => {
-      await api.post(`/api/videos/${id}/read`);
-      for (const ch of allChannels()) {
-        const v = (ch.videos || []).find(x => x.video_id === id);
-        if (v) v.is_read = true;
-      }
-    },
+    mark: watchReadMark,
   });
 }
 
@@ -619,6 +673,7 @@ function watchPlay(videoId, startSeconds = 0) {
   }
   $('watch-title').textContent = item ? item.title : '';
   $('watch-yt-link').href = `https://www.youtube.com/watch?v=${videoId}`;
+  watchSyncUrl(videoId);   // address bar follows whatever is playing
 
   // Pick the transport. Server video wins when the server offers it, because
   // it's the only one that survives backgrounding *and* keeps the picture;
@@ -935,6 +990,7 @@ function watchExit() {
   const inPage = state.watch.inPage;
   const onExit = state.watch.onExit;
   state.watch = null;
+  watchRestoreUrl();   // nothing playing → back to the plain feed URL
   if (document.fullscreenElement) { try { document.exitFullscreen?.(); } catch {} }
   document.body.classList.remove('route-watch');
   document.body.classList.remove('cast-cover');   // clean up /tv + cast fullscreen
@@ -987,16 +1043,8 @@ async function watchBootUrl(route) {
       location.href = '/';
       return;
     }
-    list = shallowQueue().map(q => ({
-      video_id: q.video_id, title: q.title,
-      channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
-      duration: q.duration,
-    }));
-    mark = route.mode === 'queue-test' ? null : async (id) => {
-      await api.post(`/api/queue/${id}/watched`);
-      state.queue = state.queue.filter(q => q.video_id !== id);
-      setInQueue(id, false);
-    };
+    list = watchQueueItems();
+    mark = route.mode === 'queue-test' ? null : watchQueueMark;
     badgeLabel = route.mode === 'queue-test' ? 'TEST' : '';
   } else if (route.mode === 'folder') {
     const raw = sessionStorage.getItem('tempWatch');
@@ -1011,4 +1059,55 @@ async function watchBootUrl(route) {
 
   if (!list.length) { location.href = '/'; return; }
   watchEnter({ mode: route.mode, inPage: false, mutedStart: true, list, mark, badgeLabel });
+}
+
+
+/**
+ * Open a /<videoId> URL. Called after the normal feed boot, so this is the
+ * feed with the overlay already up rather than a page of its own.
+ *
+ * The URL carries one id and nothing else. If that id is still in the queue we
+ * play the queue around it, the same as clicking it in the feed would; anything
+ * else plays alone — including an id this instance has never seen, which is the
+ * whole point of the link being shareable.
+ *
+ * mutedStart, because a cold load has no click behind it and browsers refuse
+ * autoplay with sound; the unmute banner takes the first tap.
+ */
+async function watchBootVideo(videoId) {
+  // Sit the overlay's history sentinel on top of a plain "/" entry, so a back
+  // gesture closes the video and leaves a feed URL rather than a stale one.
+  try { history.replaceState({}, '', `/${location.search}`); } catch {}
+
+  if (shallowQueue().some(q => q.video_id === videoId)) {
+    watchEnter({
+      mode: 'queue', inPage: true, mutedStart: true,
+      list: watchQueueItems(),
+      startId: videoId,
+      mark: watchQueueMark,
+    });
+    return;
+  }
+
+  let meta = videoMeta.get(videoId);
+  if (!meta || !meta.title) {
+    // Nothing local knows this id. Ask YouTube for a title so the overlay, the
+    // lockscreen metadata and the history row aren't blank — but a failure (no
+    // API key, offline, private video) still plays: the player only needs the id.
+    try {
+      meta = await api.get(`/api/video-info/${videoId}`);
+      videoMeta.set(videoId, meta);
+    } catch { meta = null; }
+  }
+  watchEnter({
+    mode: 'single', inPage: true, mutedStart: true, singleShot: true,
+    list: [{
+      video_id:      videoId,
+      title:         meta?.title || '',
+      channel_name:  meta?.channel_name || '',
+      thumbnail_url: meta?.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+      duration:      meta?.duration || '',
+    }],
+    mark: watchReadMark,
+  });
 }

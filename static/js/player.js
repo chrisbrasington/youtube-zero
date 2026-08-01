@@ -86,17 +86,9 @@ function openPlayer(videoId, title, queueVideoId = null) {
   if (queueVideoId && shallow.some(q => q.video_id === queueVideoId)) {
     watchEnter({
       mode: 'queue', inPage: true, mutedStart: false,
-      list: shallow.map(q => ({
-        video_id: q.video_id, title: q.title,
-        channel_name: q.channel_name, thumbnail_url: q.thumbnail_url,
-        duration: q.duration,
-      })),
+      list: watchQueueItems(),
       startId: queueVideoId,
-      mark: async (id) => {
-        await api.post(`/api/queue/${id}/watched`);
-        state.queue = state.queue.filter(q => q.video_id !== id);
-        setInQueue(id, false);
-      },
+      mark: watchQueueMark,
     });
     return;
   }
@@ -109,13 +101,7 @@ function openPlayer(videoId, title, queueVideoId = null) {
       channel_name: meta.channel_name || '',
       thumbnail_url: meta.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
     }],
-    mark: async (id) => {
-      try { await api.post(`/api/videos/${id}/read`); } catch {}
-      for (const ch of allChannels()) {
-        const v = (ch.videos || []).find(x => x.video_id === id);
-        if (v) v.is_read = true;
-      }
-    },
+    mark: watchReadMark,
   });
 }
 
