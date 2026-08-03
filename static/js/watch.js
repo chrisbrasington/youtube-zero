@@ -792,13 +792,19 @@ function watchBindDom() {
     if (e.target.closest('.player-chrome')) return;   // using them, not summoning them
     peekChrome();
   });
-  // Leaving fullscreen must clear it, or the class lingers and the inline bar
-  // comes back stuck in its revealed state.
+  // Once the cursor shield is up it's what the pointer is actually over, so a
+  // press has to lift it too — otherwise a click that isn't preceded by a mouse
+  // move has nowhere to land. (Movement alone already lifts it: the mousemove
+  // bubbles from the shield to the wrapper.)
+  $('watch-cursor-shield')?.addEventListener('pointerdown', peekChrome);
+  // Entering fullscreen starts the idle clock even if the mouse never moves, so
+  // the pointer fades out rather than vanishing the instant the screen fills.
+  // Leaving must clear it, or the class lingers and the inline bar comes back
+  // stuck in its revealed state.
   document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement) {
-      clearTimeout(peekTimer);
-      $('watch-frame-wrap')?.classList.remove('chrome-peek');
-    }
+    clearTimeout(peekTimer);
+    if (document.fullscreenElement) { peekChrome(); return; }
+    $('watch-frame-wrap')?.classList.remove('chrome-peek');
   });
 
   // Audio mode: toggle + the now-playing transport that replaces the video.

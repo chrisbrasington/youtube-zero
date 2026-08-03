@@ -2263,6 +2263,32 @@ input[type="password"] { font-size: 13px; }
 .watch-frame-wrap:fullscreen.chrome-peek,
 .watch-frame-wrap:fullscreen:focus-within { cursor: default; }
 
+/* ...except over the embed, where that rule stops at the iframe's edge. Inside
+   is YouTube's own document, and because we fullscreen the wrapper rather than
+   the iframe, YouTube never learns it is fullscreen and never hides the pointer
+   itself — so it sits there over the picture.
+
+   The fix is a transparent sheet of our own document laid over the embed, which
+   our cursor rule can style. It is up only while playback is idle; the movement
+   that ends the idle removes it, so YouTube's controls are clickable again the
+   moment you go looking for them.
+
+   Mouse only. On a touchscreen there is no pointer to hide and the sheet would
+   do nothing but swallow the first tap. */
+.watch-cursor-shield { display: none; }
+
+@media (hover: hover) and (pointer: fine) {
+  .watch-layout:not(.audio-mode):not(.server-video)
+  .watch-frame-wrap:fullscreen:not(.chrome-peek) .watch-cursor-shield {
+    display: block;
+    position: absolute;   /* no z-index: paints over the static iframe, and
+                             under every overlay declared after it */
+    inset: 0;
+    background: transparent;
+    cursor: none;
+  }
+}
+
 /* How far the remux has actually got — the honest signal for whether a seek
    has caught up, since a restarted stream buffers from scratch. */
 .np-bar-buffer {

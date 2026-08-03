@@ -263,6 +263,11 @@
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowfullscreen></iframe>
 
+        <!-- Invisible sheet over the embed that hides the mouse pointer while
+             fullscreen playback is idle. The iframe is YouTube's document, so
+             our `cursor: none` can't reach inside it — see the CSS. -->
+        <div id="watch-cursor-shield" class="watch-cursor-shield"></div>
+
         <!-- Server-delivered video: ffmpeg remuxes YouTube's DASH streams so a
              same-origin <video> can play them, and unlike the iframe it keeps
              playing when backgrounded. See PROSPECTS.md. -->
