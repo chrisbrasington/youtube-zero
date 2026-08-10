@@ -10,7 +10,9 @@
  * visibility-resume hook.
  *
  * /<videoId> is not a branch: it's the feed with a video already open, so it
- * runs the same sequence and then opens the overlay on top.
+ * runs the same sequence and then opens the overlay on top. ?share=<videoId>
+ * (the phone APK's YouTube-link hand-off) is the same idea — the route boots
+ * normally and the action card opens over it.
  */
 
 (async () => {
@@ -27,10 +29,21 @@
     return;
   }
 
+  // A YouTube link opened into the phone APK arrives as ?share=<videoId>. Read it
+  // before any route branches — the route decides what to boot, this only decides
+  // what to put on top of it once it's up.
+  const shared = consumeShareParam();
+
   const route = watchRouteFor(location.pathname);
   if (route) {
     if (route.mode === 'tv') { await tvEnter(); return; }
-    if (route.mode === 'phone') { await tvEnter('phone'); return; }
+    if (route.mode === 'phone') {
+      await tvEnter('phone');
+      // After tvEnter, so the queue is loaded: it's what tells the card whether
+      // this video is already queued (Add vs Remove).
+      if (shared) await openSheetForVideoId(shared);
+      return;
+    }
     if (route.mode === 'cast-receiver') { castReceiverEnter(); return; }
     await watchBootUrl(route);
     return;
@@ -55,4 +68,8 @@
   // video still has a queue to play inside of.
   const videoId = videoIdFromPath(location.pathname);
   if (videoId) await watchBootVideo(videoId);
+
+  // Same share hand-off on the plain feed route — the phone flavor points at
+  // /phone today, but this is also how ?share= is testable in a browser.
+  if (shared) await openSheetForVideoId(shared);
 })();

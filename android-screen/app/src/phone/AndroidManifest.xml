@@ -3,7 +3,11 @@
      fullscreen theme for the tv/watch appliance; on a handheld we want a normal app:
        - orientation "unspecified" → follows the device, so portrait is allowed
        - Theme.Black.NoTitleBar    → keeps the status bar (not fullscreen)
-     immersive=false (src/phone/res/values/config.xml) stops MainActivity re-hiding the bars. -->
+     immersive=false (src/phone/res/values/config.xml) stops MainActivity re-hiding the bars.
+
+     This flavor is also a share/open target for YouTube links: tapping a youtube.com or
+     youtu.be link (VIEW) or sharing one from the YouTube app (SEND) opens yt-zero with
+     that video's action card. See MainActivity.videoIdFromIntent(). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           xmlns:tools="http://schemas.android.com/tools">
 
@@ -11,9 +15,40 @@
         android:theme="@android:style/Theme.Black.NoTitleBar"
         tools:replace="android:theme">
 
+        <!-- singleTask so a second link doesn't stack a second WebView on top of the
+             first: the running task comes forward and the link arrives at
+             onNewIntent() instead, leaving whatever is playing alone. -->
         <activity
             android:name=".MainActivity"
             android:screenOrientation="unspecified"
-            tools:replace="android:screenOrientation" />
-    </application>
+            android:launchMode="singleTask"
+            tools:replace="android:screenOrientation">
+
+            <!-- Open a YouTube link with yt-zero. No android:autoVerify — we don't own
+                 youtube.com, so this is a chooser entry, never the default handler.
+                 Within one filter the data elements cross-product, so this is
+                 {http,https} × {the five hosts}. -->
+            <intent-filter android:label="@string/share_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="youtube.com" />
+                <data android:host="www.youtube.com" />
+                <data android:host="m.youtube.com" />
+                <data android:host="music.youtube.com" />
+                <data android:host="youtu.be" />
+            </intent-filter>
+
+            <!-- Share → yt-zero, from the YouTube app's share sheet. The shared text is
+                 a link with tracking junk around it; the id is pulled out of it. -->
+            <intent-filter android:label="@string/share_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+        </activity>
+     </application>
 </manifest>

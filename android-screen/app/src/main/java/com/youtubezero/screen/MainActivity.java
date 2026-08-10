@@ -109,7 +109,9 @@ public class MainActivity extends Activity {
             public void onReceivedError(WebView view, int errorCode,
                                         String description, String failingUrl) {
                 // Screen may boot before the server is reachable — keep retrying.
-                view.postDelayed(() -> view.loadUrl(buildUrl()), 5000);
+                // getIntent() so a link we were launched with survives the retry.
+                view.postDelayed(
+                    () -> view.loadUrl(buildUrl(videoIdFromIntent(getIntent()))), 5000);
             }
         });
 
@@ -150,7 +152,52 @@ public class MainActivity extends Activity {
         });
 
         if (immersive) hideSystemUi();
-        web.loadUrl(buildUrl());
+        // Cold start. If we were launched by a YouTube link (phone flavor's VIEW/SEND
+        // filters), the id rides in on the query string so the page can act on it as
+        // part of its normal boot.
+        web.loadUrl(buildUrl(videoIdFromIntent(getIntent())));
+    }
+
+    // ── YouTube link → action card ───────────────────────────────────────────
+    //
+    // Warm path. The activity is singleTask (phone flavor), so a second link lands
+    // here rather than in a fresh onCreate. Reloading would kill whatever is playing,
+    // so ask the page to open the sheet in place; only fall back to a load when the
+    // page is too old to know the entry point.
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        final String videoId = videoIdFromIntent(intent);
+        if (videoId == null || web == null) return;
+        web.evaluateJavascript(
+            "(typeof nativeOpenVideo==='function') ? (nativeOpenVideo('" + videoId + "'), true) : false",
+            value -> { if (!"true".equals(value) && web != null) web.loadUrl(buildUrl(videoId)); });
+    }
+
+    // Every YouTube link shape we can be handed, plus a bare id. Ids are exactly 11
+    // chars of [A-Za-z0-9_-], which is what makes this safe to run over the arbitrary
+    // text an ACTION_SEND carries ("Watch this! https://youtu.be/ID?si=<tracking>").
+    private static final java.util.regex.Pattern VIDEO_ID = java.util.regex.Pattern.compile(
+            "(?:youtu\\.be/|[?&]v=|[?&]vi=|/shorts/|/embed/|/live/|/v/)([A-Za-z0-9_-]{11})");
+    private static final java.util.regex.Pattern BARE_ID =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{11}$");
+
+    /** The video id an incoming VIEW/SEND intent names, or null for anything else. */
+    static String videoIdFromIntent(Intent intent) {
+        if (intent == null) return null;
+        String text = null;
+        String action = intent.getAction();
+        if (Intent.ACTION_VIEW.equals(action) && intent.getData() != null) {
+            text = intent.getData().toString();
+        } else if (Intent.ACTION_SEND.equals(action)) {
+            text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        }
+        if (text == null) return null;
+        text = text.trim();
+        java.util.regex.Matcher m = VIDEO_ID.matcher(text);
+        if (m.find()) return m.group(1);
+        return BARE_ID.matcher(text).matches() ? text : null;
     }
 
     // JS → native. Called from native.js (only present when the page detects this
@@ -175,14 +222,19 @@ public class MainActivity extends Activity {
         }
     }
 
-    private String buildUrl() {
+    private String buildUrl() { return buildUrl(null); }
+
+    /** The configured page, optionally with ?share=<id> for a link we were opened with. */
+    private String buildUrl(String shareVideoId) {
         String url = getString(R.string.server_url);
         String name = getString(R.string.screen_name);
         url += url.contains("?") ? "&" : "?";
         if (name != null && !name.isEmpty()) {
             url += "name=" + Uri.encode(name) + "&";
         }
-        return url + "kiosk=1";
+        url += "kiosk=1";
+        if (shareVideoId != null) url += "&share=" + Uri.encode(shareVideoId);
+        return url;
     }
 
     private void hideSystemUi() {

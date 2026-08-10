@@ -97,6 +97,19 @@
       }
     } catch (e) {}
   };
+  // Called from MainActivity.onNewIntent — a YouTube link was opened or shared
+  // into the already-running app. Open the action card over whatever is on
+  // screen; reloading the page for it would stop playback.
+  //
+  // Existence is the feature test: MainActivity checks `typeof nativeOpenVideo`
+  // and falls back to loading ?share=<id> when an older web deploy lacks it.
+  window.nativeOpenVideo = function (videoId) {
+    try {
+      if (typeof closeActionSheet === 'function' && sheetCtx) closeActionSheet();
+      openSheetForVideoId(videoId);
+    } catch (e) {}
+  };
+
   window.nativeNext = function () {
     try { if (typeof watchAdvance === 'function') watchAdvance({ fromEnd: false }); } catch (e) {}
   };

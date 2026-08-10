@@ -113,6 +113,46 @@ function closeActionSheet() {
 }
 
 
+// ── Open the card for a bare video id ────────────────────────────────────────
+//
+// The id may name something the feed has never heard of (a link someone sent),
+// so look the title up first — buildSheetCtx only reads videoMeta and the queue.
+// A failed lookup (no API key, offline, private video) is not fatal: the card
+// still opens and every action on it works from the id alone.
+
+async function openSheetForVideoId(videoId) {
+  if (!videoId) return;
+  const known = videoMeta.get(videoId);
+  if (!known || !known.title) {
+    status('Looking up video…', 'loading');
+    try { videoMeta.set(videoId, await api.get(`/api/video-info/${videoId}`)); } catch {}
+    status('');
+  }
+  openActionSheet(buildSheetCtx(videoId));
+}
+
+
+// ── Android share target ─────────────────────────────────────────────────────
+//
+// The APK opens <page>?share=<videoId> when it's handed a YouTube link (see
+// MainActivity.videoIdFromIntent). Read once and strip it from the URL: the
+// WebView reloads on error and on process restart, and a card that reappears
+// every time the page comes back would be its own bug.
+
+function consumeShareParam() {
+  let p;
+  try { p = new URLSearchParams(location.search); } catch { return null; }
+  const videoId = p.get('share');
+  if (!videoId) return null;
+  p.delete('share');
+  const qs = p.toString();
+  try {
+    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : ''));
+  } catch {}
+  return VIDEO_ID_RE.test(videoId) ? videoId : null;
+}
+
+
 // ── Mobile detection / body-class toggles ────────────────────────────────────
 
 function isMobile() {

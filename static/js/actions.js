@@ -64,23 +64,12 @@ async function playFromInput() {
     setTimeout(() => status(''), 3000);
     return;
   }
-  const vid = m[1];
-  const existing = videoMeta.get(vid);
-  if (!existing || !existing.title) {
-    $('btn-play-input').disabled = true;
-    status('Looking up video…', 'loading');
-    try {
-      const meta = await api.get(`/api/video-info/${vid}`);
-      videoMeta.set(vid, meta);
-      status('');
-    } catch {
-      // No API key / offline / not found — sheet still works with just the id.
-      status('');
-    } finally {
-      $('btn-play-input').disabled = false;
-    }
+  $('btn-play-input').disabled = true;
+  try {
+    await openSheetForVideoId(m[1]);   // looks the title up, then opens the card
+  } finally {
+    $('btn-play-input').disabled = false;
   }
-  openActionSheet(buildSheetCtx(vid));
 }
 
 async function subscribeFromQueue(channelId) {
