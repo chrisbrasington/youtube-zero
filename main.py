@@ -1691,17 +1691,32 @@ async def channels_refresh(channel_id: str):
     return {"ok": True, "count": len(videos)}
 
 
+def _status_channel_id(c, video_id: str):
+    """channel_id to file a video_status row under. The catalog is the usual
+    source, but a video added by URL only lives in `queue` until its channel is
+    subscribed — read it from there rather than 404ing on a video the user can
+    plainly see in the queue."""
+    row = c.execute(
+        "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
+    ).fetchone()
+    if not row:
+        row = c.execute(
+            "SELECT channel_id FROM queue WHERE video_id=?", (video_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return row["channel_id"] or ""
+
+
 @app.post("/api/videos/{video_id}/read")
 def video_mark_read(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
-        vid = c.execute(
-            "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
-        ).fetchone()
-        if not vid:
+        channel_id = _status_channel_id(c, video_id)
+        if channel_id is None:
             raise HTTPException(404, "Video not found")
         c.execute(
             "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?,?,?)",
-            (video_id, vid["channel_id"], "read"),
+            (video_id, channel_id, "read"),
         )
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")
@@ -1719,14 +1734,12 @@ def video_mark_played(video_id: str, req: PlayedReq):
 @app.post("/api/videos/{video_id}/unread")
 def video_mark_unread(video_id: str, background_tasks: BackgroundTasks):
     with db() as c:
-        vid = c.execute(
-            "SELECT channel_id FROM videos WHERE video_id=?", (video_id,)
-        ).fetchone()
-        if not vid:
+        channel_id = _status_channel_id(c, video_id)
+        if channel_id is None:
             raise HTTPException(404, "Video not found")
         c.execute(
             "INSERT OR REPLACE INTO video_status (video_id, channel_id, status) VALUES (?,?,?)",
-            (video_id, vid["channel_id"], "unread"),
+            (video_id, channel_id, "unread"),
         )
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")

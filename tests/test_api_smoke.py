@@ -53,6 +53,32 @@ async def test_queue_list_returns_list(client, fresh_db):
     assert isinstance(r.json(), list)
 
 
+async def test_mark_read_works_for_queue_only_video(client, fresh_db):
+    """A video added by URL can live in `queue` with no row in `videos` yet.
+    Marking it read used to 404."""
+    await client.post("/api/queue", json={
+        "video_id": "urlvid00001",
+        "channel_id": "UCurl",
+        "channel_name": "Some Channel",
+        "title": "Added by URL",
+        "thumbnail_url": "",
+        "published_at": "2026-01-01T00:00:00Z",
+    })
+    r = await client.post("/api/videos/urlvid00001/read")
+    assert r.status_code == 200
+    main = fresh_db
+    with main.db() as c:
+        row = c.execute(
+            "SELECT status FROM video_status WHERE video_id='urlvid00001'"
+        ).fetchone()
+    assert row["status"] == "read"
+
+
+async def test_mark_read_still_404s_for_unknown_video(client, fresh_db):
+    r = await client.post("/api/videos/nosuchvid01/read")
+    assert r.status_code == 404
+
+
 async def test_quota_get_returns_dict(client, fresh_db):
     r = await client.get("/api/quota")
     assert r.status_code == 200

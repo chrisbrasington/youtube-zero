@@ -70,7 +70,14 @@
     // Only thumbnail area initiates swipe — text region passes through to scroll
     if (target.closest('.tile-thumb-wrap')) {
       const tile = target.closest('.video-tile');
-      if (tile) return { el: tile, type: 'video', vid: tile.dataset.videoId };
+      // Inside a queue card the swipe is the ✓ Done button: mark watched and
+      // drop from the queue. Marking read there would leave the item sitting in
+      // the queue, and a video added by URL isn't in the feed to mark at all.
+      if (tile) return {
+        el: tile,
+        type: tile.dataset.dragContext === 'queue' ? 'queue' : 'video',
+        vid: tile.dataset.videoId,
+      };
     }
     if (target.closest('.v-thumb-wrap')) {
       const row = target.closest('.video-row');
@@ -115,7 +122,8 @@
       el.style.transition = 'transform .2s, opacity .2s';
       el.style.transform = 'translateX(110%)';
       el.style.opacity = '0';
-      if (type === 'video') toggleVideoRead(vid, false);
+      if (type === 'queue') markQueueWatched(vid);
+      else if (type === 'video') toggleVideoRead(vid, false);
     } else {
       el.style.transition = 'transform .15s, opacity .15s';
       el.style.transform = '';

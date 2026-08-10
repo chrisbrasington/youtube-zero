@@ -18,6 +18,9 @@ function buildSheetCtx(videoId) {
     const v = (ch.videos || []).find(x => x.video_id === videoId);
     if (v) { isRead = !!v.is_read; inQueue = !!v.in_queue; break; }
   }
+  // A video added by URL isn't in any subscribed channel's list, so the feed
+  // says nothing about it — the queue itself is the authority on queued state.
+  if (!inQueue) inQueue = (state.queue || []).some(q => q.video_id === videoId);
   return {
     videoId,
     title: meta.title || '',
