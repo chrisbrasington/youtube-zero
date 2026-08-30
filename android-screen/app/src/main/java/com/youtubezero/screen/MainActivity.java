@@ -220,6 +220,25 @@ public class MainActivity extends Activity {
             startService(new Intent(MainActivity.this, PlaybackService.class)
                     .setAction(PlaybackService.ACTION_STOP));
         }
+
+        /**
+         * Clipboard for the page (dom.js copyText). The web APIs can't do this
+         * while a YouTube embed is playing: focus is in the cross-origin iframe,
+         * so writeText() rejects with "Document is not focused" and
+         * execCommand('copy') has nothing selected in the focused document.
+         * Native doesn't care where focus is.
+         */
+        @JavascriptInterface
+        public void copyText(final String text) {
+            if (text == null || text.isEmpty()) return;
+            runOnUiThread(() -> {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                        getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("youtube-zero", text));
+                }
+            });
+        }
     }
 
     private String buildUrl() { return buildUrl(null); }

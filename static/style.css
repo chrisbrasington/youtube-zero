@@ -553,6 +553,30 @@ input::placeholder { color: var(--dim); }
 .status-msg.loading { color: var(--dim); }
 .status-msg.signal  { color: var(--green); font-weight: 600; }
 
+/* Floating confirmation (dom.js toast). Fixed and above everything because the
+   thing it confirms usually happens over the watch layout or the action sheet,
+   where the toolbar's .status-msg is hidden. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 900;
+  max-width: 80vw;
+  padding: 10px 16px;
+  border-radius: var(--r);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 15px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  opacity: 0;
+  transition: opacity .18s ease;
+  pointer-events: none;   /* never in the way of the control you just tapped */
+}
+.toast.show { opacity: 1; }
+.toast.err  { color: var(--accent); }
+
 /* ── Channel card ────────────────────────────────────────────────────────── */
 
 .channel-card {
@@ -1950,6 +1974,10 @@ body.mobile-ui {
   .watch-actions .player-btn:active { background: var(--bg4); }
   /* "✓ Watched" is the one to hit on purpose — give it the room. */
   #btn-player-watched { flex: 2; }
+  /* Our ⛶ duplicates the one inside the embed's own controls, and on a phone
+     that row is tight — every button we drop makes the rest thumb-sized.
+     Desktop keeps it (and the `f` key), landscape still auto-fullscreens. */
+  #btn-watch-fullscreen { display: none; }
 }
 
 /* Mobile: revert font/thumb bumps — real-viewport only, NOT for force-mobile */

@@ -289,8 +289,7 @@ function renderVideoTile(video, channel, showChannel, folderId = null, opts = {}
          ${group === 'shallow' ? `data-queue-id="${vid}"` : ''}
          ${group ? `draggable="true" data-drag-context="queue" data-group="${group}"` : ''}
          data-title="${escAttr(video.title)}"
-         tabindex="0"
-         title="${escAttr(video.title)}">
+         tabindex="0">
       <div class="tile-thumb-wrap">
         <img class="tile-thumb" src="${escAttr(video.thumbnail_url || '')}" alt=""
              onerror="this.style.display='none'">

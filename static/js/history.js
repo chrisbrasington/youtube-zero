@@ -172,17 +172,5 @@ function historyBindDom() {
 
 
 function historyCopy(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    return;
-  }
-  // Fallback (non-secure context / older Android)
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.left = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand('copy'); } catch {}
-  document.body.removeChild(ta);
+  copyText(text);   // dom.js — native bridge / focus-safe fallbacks
 }

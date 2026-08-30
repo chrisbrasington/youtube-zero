@@ -275,19 +275,9 @@ document.addEventListener('click', e => {
     const c = sheetCtx; closeActionSheet();
     const shareUrl = `https://www.youtube.com/watch?v=${c.videoId}`;
     if (navigator.share) {
-      navigator.share({ title: c.title, url: shareUrl }).catch(() => {
-        if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(shareUrl);
-        }
-      });
+      navigator.share({ title: c.title, url: shareUrl }).catch(() => copyText(shareUrl));
     } else {
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(shareUrl);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = shareUrl; ta.style.position = 'fixed'; ta.style.left = '-9999px';
-        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      }
+      copyText(shareUrl);
     }
     return;
   }
@@ -297,23 +287,9 @@ document.addEventListener('click', e => {
 
     const url = `https://www.youtube.com/watch?v=${c.videoId}`;
 
-    const doCopy = (text) => {
-      if (navigator.clipboard && window.isSecureContext) {
-        return navigator.clipboard.writeText(text);
-      }
-
-      // fallback (Android-safe)
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    };
-
-    doCopy(url);
+    // copyText handles the iframe-has-focus case (playing embed), which used to
+    // silently fail in the Android app.
+    copyText(url).then(ok => toast(ok ? 'Link copied' : 'Copy failed', ok ? '' : 'err'));
     return;
   }
   // Per-video read/unread

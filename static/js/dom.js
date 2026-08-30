@@ -3,7 +3,8 @@
 /*
  * DOM helpers + plain-text/HTML escaping.
  *
- * Classic script. Exposes `$`, `esc`, `escAttr`, `timeAgo`, `status` as globals.
+ * Classic script. Exposes `$`, `esc`, `escAttr`, `timeAgo`, `status`, `toast`,
+ * `copyText` as globals.
  */
 
 const $ = id => document.getElementById(id);
@@ -46,4 +47,69 @@ function status(msg, type = '') {
   if (!el) return;
   el.textContent = msg;
   el.className = 'status-msg' + (type ? ' ' + type : '');
+}
+
+
+/*
+ * Transient confirmation that works from anywhere. `status` writes into the
+ * toolbar, which body.route-watch hides along with the whole header — so while
+ * a video is playing (exactly when copy-link gets used) it says nothing.
+ */
+let toastTimer = null;
+
+function toast(msg, type = '') {
+  let el = $('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.className = 'toast' + (type ? ' ' + type : '');
+  requestAnimationFrame(() => el.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+
+/*
+ * Copy text to the clipboard from anywhere — including while a YouTube embed
+ * is playing. That case is the whole reason this isn't a one-liner: focus then
+ * lives inside the cross-origin iframe, so navigator.clipboard.writeText
+ * rejects with "Document is not focused" and execCommand('copy') has nothing
+ * selected in the focused document. The Android WebView hits this every time.
+ *
+ * Order: native bridge (doesn't care where focus is), then the async API, then
+ * the textarea trick — whose ta.focus() is what actually pulls focus back out
+ * of the iframe. Resolves to true/false so callers can report success.
+ */
+function copyText(text) {
+  const s = String(text ?? '');
+  if (!s) return Promise.resolve(false);
+
+  try {
+    if (window.AndroidMedia && typeof AndroidMedia.copyText === 'function') {
+      AndroidMedia.copyText(s);
+      return Promise.resolve(true);
+    }
+  } catch (e) {}
+
+  const legacy = () => {
+    const ta = document.createElement('textarea');
+    ta.value = s;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    return ok;
+  };
+
+  if (navigator.clipboard && window.isSecureContext && document.hasFocus()) {
+    return navigator.clipboard.writeText(s).then(() => true, () => legacy());
+  }
+  return Promise.resolve(legacy());
 }

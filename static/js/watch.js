@@ -775,6 +775,15 @@ function watchBindDom() {
   });
   $('btn-watch-skip').addEventListener('click', () => watchAdvance({ fromEnd: false }));
   $('btn-watch-skip-mark').addEventListener('click', () => watchAdvance({ fromEnd: true }));
+  // Copy the link for whatever is playing. copyText (dom.js) goes through the
+  // native bridge in the app, because with the embed playing focus lives in the
+  // cross-origin iframe and the web clipboard APIs refuse.
+  $('btn-watch-copy')?.addEventListener('click', () => {
+    const id = state.watch?.currentVideoId;
+    if (!id) return;
+    copyText(`https://www.youtube.com/watch?v=${id}`)
+      .then(ok => toast(ok ? 'Link copied' : 'Copy failed', ok ? '' : 'err'));
+  });
 
   // Fullscreen controls: show on activity, then get out of the way. Driven by
   // mousemove rather than :hover because in fullscreen the wrapper covers the
