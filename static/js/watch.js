@@ -88,12 +88,22 @@ async function watchQueueMark(id) {
   setInQueue(id, false);
 }
 
-/** Finished a feed video: mark it read here and in the loaded feed. */
+/**
+ * Finished a feed video: mark it read here and in the loaded feed.
+ *
+ * A video played on its own (ctrl+click Play Here, a deep link, a random pick)
+ * can still be sitting in the queue, shallow or deep — watching it counts, so
+ * take it off the queue too. Without this the video comes back on the next
+ * render even though it's just been watched.
+ */
 async function watchReadMark(id) {
   try { await api.post(`/api/videos/${id}/read`); } catch {}
   for (const ch of allChannels()) {
     const v = (ch.videos || []).find(x => x.video_id === id);
     if (v) v.is_read = true;
+  }
+  if (state.queue.some(q => q.video_id === id)) {
+    try { await watchQueueMark(id); } catch {}
   }
 }
 
