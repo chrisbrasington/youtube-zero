@@ -26,6 +26,7 @@ from const import (
     DB_PATH,
     HTTP_TIMEOUT_LONG,
     HTTP_TIMEOUT_SHORT,
+    QUEUE_STALE_DAYS,
     QUIET_END,
     QUIET_START,
     REFRESH_BACKOFF_SECONDS,
@@ -54,6 +55,7 @@ from queries import (
     clear_queue,
     clear_video_status_for_channel,
     count_history,
+    demote_stale_queue_items,
     delete_setting,
     get_all_settings,
     get_history,
@@ -115,6 +117,13 @@ async def _refresh_channels(api_key: str) -> list[dict]:
     return list(results)
 
 
+async def _demote_stale_queue():
+    moved = demote_stale_queue_items(QUEUE_STALE_DAYS)
+    if moved:
+        print(f"[queue] moved {moved} item(s) older than {QUEUE_STALE_DAYS}d to deep queue")
+        await _broadcast("refreshed")
+
+
 async def _background_refresh():
     if REFRESH_INTERVAL <= 0:
         return
@@ -129,6 +138,10 @@ async def _background_refresh():
                 api_key = get_api_key()
                 if api_key:
                     await _refresh_channels(api_key)
+        except Exception:
+            pass
+        try:
+            await _demote_stale_queue()
         except Exception:
             pass
 
@@ -578,6 +591,7 @@ async def _signal_listener():
 
 @asynccontextmanager
 async def lifespan(app):
+    await _demote_stale_queue()
     asyncio.create_task(_background_refresh())
     asyncio.create_task(_signal_listener())
     asyncio.create_task(_backfill_queue_video_meta())
@@ -1886,9 +1900,12 @@ def queue_set_deep(video_id: str, req: DeepReq, background_tasks: BackgroundTask
             "WHERE watched_at IS NULL AND COALESCE(is_deep,0)=?",
             (target,),
         ).fetchone()[0]
+        # Moving back to the main queue restarts its stale-to-deep clock.
         c.execute(
-            "UPDATE queue SET is_deep=?, sort_order=? WHERE video_id=?",
-            (target, max_order + 1, video_id),
+            "UPDATE queue SET is_deep=?, sort_order=?, "
+            "added_at = CASE WHEN ? = 0 THEN CURRENT_TIMESTAMP ELSE added_at END "
+            "WHERE video_id=?",
+            (target, max_order + 1, target, video_id),
         )
         c.commit()
     background_tasks.add_task(_broadcast, "refreshed")

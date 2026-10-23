@@ -327,6 +327,33 @@ def clear_queue(deep: bool = False) -> None:
         c.commit()
 
 
+def demote_stale_queue_items(days: int) -> int:
+    """Move main-queue items added more than `days` ago to the end of the deep
+    queue, oldest first. `added_at` resets whenever an item re-enters the main
+    queue, so each stay gets the full window. Returns the number moved."""
+    with db() as c:
+        rows = c.execute(
+            "SELECT video_id FROM queue "
+            "WHERE watched_at IS NULL AND COALESCE(is_deep, 0) = 0 "
+            "AND added_at <= datetime('now', ?) "
+            "ORDER BY added_at, id",
+            (f"-{days} days",),
+        ).fetchall()
+        if not rows:
+            return 0
+        start = c.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM queue "
+            "WHERE watched_at IS NULL AND COALESCE(is_deep, 0) = 1"
+        ).fetchone()[0]
+        for i, r in enumerate(rows):
+            c.execute(
+                "UPDATE queue SET is_deep = 1, sort_order = ? WHERE video_id = ?",
+                (start + i, r["video_id"]),
+            )
+        c.commit()
+    return len(rows)
+
+
 # ── Video status ─────────────────────────────────────────────────────────────
 
 def clear_video_status_for_channel(channel_id: str) -> None:

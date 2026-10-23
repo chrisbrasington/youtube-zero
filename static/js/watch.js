@@ -129,11 +129,13 @@ function watchStartQueueWith(videoIds) {
     status('No videos selected', 'err'); setTimeout(() => status(''), 2000);
     return;
   }
-  // No `mark` — a quick queue is a throwaway playlist, so finishing a video
-  // must not touch the real queue or read state.
+  // The playlist itself is throwaway, but watching a video in it is not: finish
+  // one and it's read in the feed and off the real queue, wherever it was
+  // picked from. watchReadMark does both.
   watchEnter({
     mode: 'queue', inPage: true, mutedStart: false, badgeLabel: '⚡ Quick Queue',
     list,
+    mark: watchReadMark,
   });
 }
 

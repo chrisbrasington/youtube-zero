@@ -29,6 +29,7 @@ YT_EMBED_HOST = "https://www.youtube-nocookie.com" if USE_NOCOOKIE else "https:/
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "0"))
 REFRESH_CONCURRENCY = 5          # parallel channels per refresh sweep
 REFRESH_BACKOFF_SECONDS = 0.06   # pause between fetches to avoid stampede
+QUEUE_STALE_DAYS = 7             # main-queue items older than this move to the deep queue
 
 
 # ── Quiet hours ──────────────────────────────────────────────────────────────
