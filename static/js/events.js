@@ -219,10 +219,9 @@ document.addEventListener('click', e => {
       openActionSheet(ctx);
       return;
     }
-    // A tile in the queue card carries its queue id, so playing it starts the
-    // binge from there instead of playing the one video on its own.
-    openPlayer(openEl.dataset.videoId, openEl.dataset.title,
-               openEl.dataset.queueId || null);
+    // A queue tile plays alone, like a folder tile — the queue header's ▶ is
+    // how you binge the whole thing. watchReadMark still takes it off the queue.
+    openPlayer(openEl.dataset.videoId, openEl.dataset.title);
     return;
   }
 
