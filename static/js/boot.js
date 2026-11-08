@@ -55,6 +55,8 @@
   await loadSignalSettings(); // check Signal config, show/hide send buttons
   await loadTvSettings();
   render();                   // re-render so TV buttons appear once configured
+  castFeedScreenStart();      // be a screen while idle, so a phone can drive this tab
+                              // (first: sets castScreenId, which hides self from the list)
   castRefreshScreens();       // discover any watching screens, reveal cast controls
   connectEventSource();
   document.addEventListener('visibilitychange', () => {

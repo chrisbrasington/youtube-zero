@@ -67,6 +67,15 @@
   // Not persisted: this is our decision, not the user's. Writing it to the
   // stored preference meant one pocketed phone left every later session in
   // audio mode.
+  //
+  // Embed mode does NOT hand off. Destroying the iframe to start <audio> was
+  // unreliable (audio still loading / play() refused while hidden / resolve
+  // error), and when it didn't finish, the position went with it: the return
+  // trip read audio.currentTime (0) and rebuilt the iframe from the start.
+  // Instead: remember where we were, pause, and resume there on foreground.
+  // The iframe stays alive, so nothing has to be reconstructed.
+  let embedBg = null;   // { videoId, at, wasPlaying } while backgrounded in embed mode
+
   window.nativeOnBackground = function () {
     try {
       if (typeof state === 'undefined' || !state.watch?.active) {
@@ -75,7 +84,22 @@
       console.log('BGDBG onBackground server=' + !!state.watch.server
         + ' audio=' + inAudioMode() + ' audioAuto=' + !!state.watch.audioAuto);
       if (inAudioMode()) return;
-      // Both transports end up in the same place: hand over to <audio>, which
+      if (!state.watch.server) {
+        // Chromium has usually already frozen the iframe by now (~70ms after
+        // the window hides); the YT API's cached time is still accurate.
+        const p = (typeof watchPlayer !== 'undefined') ? watchPlayer : null;
+        let at = 0, st = -1;
+        try { at = p?.getCurrentTime?.() || 0; st = p?.getPlayerState?.(); } catch (e) {}
+        // A second onStop without an onStart in between must not overwrite
+        // the real state with "paused" (we paused it ourselves).
+        if (!embedBg || embedBg.videoId !== state.watch.currentVideoId) {
+          embedBg = { videoId: state.watch.currentVideoId, at: at, wasPlaying: st === 1 || st === 3 };
+        }
+        try { p?.pauseVideo?.(); } catch (e) {}
+        console.log('BGDBG onBackground embed: saved t=' + at.toFixed(1) + ' playing=' + embedBg.wasPlaying);
+        return;
+      }
+      // Server video: hand over to <audio>, which
       // Chromium lets run in the background. Trying to keep a <video> alive
       // here was measured and abandoned: Chromium re-pauses a backgrounded
       // <video> every ~6s indefinitely, so a keep-alive is a permanent fight.
@@ -89,8 +113,24 @@
   // chose audio mode themselves, leave it alone.
   window.nativeOnForeground = function () {
     try {
+      const saved = embedBg;
+      embedBg = null;
       if (typeof state === 'undefined' || !state.watch?.active) return;
-      console.log('BGDBG onForeground audioAuto=' + !!state.watch.audioAuto);
+      console.log('BGDBG onForeground audioAuto=' + !!state.watch.audioAuto
+        + ' embedSaved=' + (saved ? saved.at.toFixed(1) : 'none'));
+      if (saved) {
+        // Only if we're still on the same video in the same embed player —
+        // the user may have skipped from the notification while away.
+        if (saved.videoId !== state.watch.currentVideoId || state.watch.server || inAudioMode()) return;
+        const p = (typeof watchPlayer !== 'undefined') ? watchPlayer : null;
+        if (!p) return;
+        try {
+          const now = p.getCurrentTime?.() || 0;
+          if (saved.at > 0 && Math.abs(now - saved.at) > 2) p.seekTo(saved.at, true);
+          if (saved.wasPlaying) p.playVideo();
+        } catch (e) {}
+        return;
+      }
       if (!state.watch.audioAuto) return;
       if (typeof watchSetAudioMode === 'function') {
         watchSetAudioMode(false, { persist: false });

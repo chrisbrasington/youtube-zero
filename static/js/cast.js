@@ -32,6 +32,7 @@ let castLastStatusKey = '';
 let castLastListSig = '';         // last jump-list signature sent in a status poll
 let castCcOn = false;            // captions toggle (YT API has no getter — we track it)
 let castLocalScreen = false;     // is a "play here" on / currently registered as a screen?
+let castFeedScreen = false;      // is this / tab registered as a screen for its whole life (idle too)?
 
 // Kiosk mode (set via ?kiosk=1, e.g. the Android WebView wrapper): the host has
 // already allowed autoplay-with-sound, so start unmuted and skip the tap hint.
@@ -106,9 +107,8 @@ function castRename(name) {
   const clean = (name || '').slice(0, 40) || ('Screen ' + castGetScreenId().slice(0, 4));
   localStorage.setItem('castScreenName', clean);
   // If we're currently registered as a screen, reconnect so the server (and
-  // remotes) pick up the new name. If not — e.g. editing from / settings while
-  // nothing is playing — just persist; the next registration uses it. (Always
-  // reconnecting here would turn an idle / page into a phantom screen.)
+  // remotes) pick up the new name. If not, just persist; the next registration
+  // uses it. (An idle / page is registered from boot — see castFeedScreenStart.)
   if (castReceiverES) {
     castReceiverES.close();
     castReceiverES = null;
@@ -140,7 +140,25 @@ function castReturnToIdle() {
 // else is needed. /tv and the bare /watch receiver own their own channel, so
 // this only fires for a true in-page play on /.
 
+// ── Receiver: an idle / page as a screen ─────────────────────────────────────
+//
+// The feed page registers as a screen from boot, so a PC left sitting on / can
+// be found and driven from a phone without anything playing first. Same
+// channel and status poll as /tv; incoming casts take over the page via
+// castOnPlayCommand and castReturnToIdle puts the feed back afterwards.
+// Supersedes castLocalScreenStart/Stop below for this tab: the connection
+// stays up across local plays and exits instead of following them.
+
+function castFeedScreenStart() {
+  if (castReceiverES || castIsTv()) return;
+  castScreenId = castGetScreenId();
+  castFeedScreen = true;
+  castConnectReceiver();
+  if (!castStatusTimer) castStatusTimer = setInterval(castPollStatus, 1000);
+}
+
 function castLocalScreenStart() {
+  if (castFeedScreen) return;                            // already a screen from boot
   if (castReceiverES || castIsTv()) return;              // already a receiver / TV screen
   const w = state.watch;
   if (!w?.active || w.mode === 'cast' || !w.inPage) return;
@@ -151,7 +169,7 @@ function castLocalScreenStart() {
 }
 
 function castLocalScreenStop() {
-  if (!castLocalScreen) return;
+  if (castFeedScreen || !castLocalScreen) return;   // a feed screen stays up while idle
   castLocalScreen = false;
   if (castReceiverES) { castReceiverES.close(); castReceiverES = null; }
   if (castStatusTimer) { clearInterval(castStatusTimer); castStatusTimer = null; }
@@ -178,7 +196,7 @@ function castConnectReceiver() {
     es.close();
     if (castReceiverES === es) castReceiverES = null;
     setTimeout(() => {
-      const stillReceiving = document.body.classList.contains('route-cast') || castIsTv() || castLocalScreen;
+      const stillReceiving = document.body.classList.contains('route-cast') || castIsTv() || castLocalScreen || castFeedScreen;
       if (stillReceiving && !castReceiverES) {
         castConnectReceiver();
       }
@@ -200,7 +218,9 @@ function castOnPlayCommand(payload) {
   watchEnter({
     mode: 'cast',
     inPage: true,
-    mutedStart: !(castUserActivated || castKiosk),   // kiosk/gesture → unmuted; else muted (+ banner)
+    // kiosk/gesture → unmuted; else muted (+ banner). userActivation covers an
+    // idle / tab, which has no idle overlay to tap but has usually been clicked.
+    mutedStart: !(castUserActivated || castKiosk || navigator.userActivation?.hasBeenActive),
     list,
     startId: payload.start_id || null,
     startSeconds: payload.start_seconds || 0,   // resume offset (transfer)

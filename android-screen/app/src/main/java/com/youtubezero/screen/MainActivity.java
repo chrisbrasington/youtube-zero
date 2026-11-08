@@ -354,8 +354,10 @@ public class MainActivity extends Activity {
         if (web != null) web.onResume();
     }
 
-    // Backgrounded or screen locked → hand playback to the <audio> element,
-    // because Chromium suspends the YouTube iframe within ~70ms of this.
+    // Backgrounded or screen locked. Chromium suspends the YouTube iframe
+    // within ~70ms of this, so the page (native.js) either remembers the embed's
+    // position and pauses it for a resume in place, or — under server video —
+    // hands playback to the <audio> element.
     //
     // onStop, deliberately, not View visibility: entering fullscreen sets the
     // WebView to GONE, which is indistinguishable from backgrounding at the

@@ -301,6 +301,12 @@ function watchMediaEl()  { return watchIsAudio() ? watchAudioEl() : watchIsServe
  * the cast status poll and transfer-to-screen. */
 let watchServerBase = 0;
 
+/* Where the <audio> element is *about* to start. currentTime set before
+ * metadata lands is discarded, so until then the element reports 0 — and any
+ * switch back to video in that window (foreground return, stream error) used
+ * to read that 0 and restart the video from the top. */
+let watchAudioPendingStart = null;
+
 /**
  * Destroy the YT player and swap in a fresh blank iframe.
  *
@@ -328,7 +334,10 @@ function watchResetFrame() {
 
 function watchTime() {
   if (watchIsServer()) return watchServerBase + (watchVideoEl()?.currentTime || 0);
-  if (watchIsAudio())  return watchAudioEl()?.currentTime || 0;
+  if (watchIsAudio()) {
+    if (watchAudioPendingStart !== null) return watchAudioPendingStart;
+    return watchAudioEl()?.currentTime || 0;
+  }
   try { return watchPlayer?.getCurrentTime?.() || 0; } catch { return 0; }
 }
 
@@ -526,10 +535,14 @@ function watchLoadAudio(videoId, startSeconds = 0) {
   if (!a) return;
   watchBindAudio();
   a.src = `/api/audio/${encodeURIComponent(videoId)}`;
+  watchAudioPendingStart = startSeconds > 0 ? startSeconds : null;
   if (startSeconds > 0) {
     // currentTime before metadata lands is discarded, so wait for the duration.
+    const src = a.src;
     a.addEventListener('loadedmetadata', () => {
+      if (a.src !== src) return;   // replaced before it loaded
       try { a.currentTime = startSeconds; } catch {}
+      watchAudioPendingStart = null;
     }, { once: true });
   }
   a.play().then(() => console.log('BGDBG audio play() ok t=' + a.currentTime.toFixed(1)))
@@ -567,6 +580,7 @@ function watchSetAudioMode(on, opts = {}) {
     // Stop the audio element hard. A half-stopped element playing underneath
     // the video would sound exactly like an A/V sync fault, so leave nothing
     // to chance: pause, drop the source, reset, then confirm in the log.
+    watchAudioPendingStart = null;   // `at` was read above; drop it now
     const a = watchAudioEl();
     if (a) {
       try {
@@ -596,8 +610,9 @@ function watchSetAudioMode(on, opts = {}) {
 /** Warm the resolver so a 1-3s yt-dlp lookup never lands in a gap.
  *
  *  In audio mode that means the next item, for the transition between tracks.
- *  In video mode inside the Android app it means the *current* item, because
- *  backgrounding hands playback to <audio> and that swap should be instant.
+ *  Under server video inside the Android app it means the *current* item,
+ *  because backgrounding hands playback to <audio> and that swap should be
+ *  instant. (Embed mode no longer swaps — it pauses and resumes in place.)
  *
  *  Skipped entirely in a plain browser playing video — nothing there will ever
  *  need the audio stream, and resolving costs a YouTube round-trip. */
@@ -608,7 +623,7 @@ function watchPrefetchAudio() {
   const targets = [];
   if (watchIsAudio()) {
     if (i >= 0 && list[i + 1]) targets.push(list[i + 1].video_id);
-  } else if (window.AndroidMedia && state.watch.currentVideoId) {
+  } else if (window.AndroidMedia && watchIsServer() && state.watch.currentVideoId) {
     targets.push(state.watch.currentVideoId);
   }
   for (const id of targets) api.post(`/api/audio/${id}/prefetch`).catch(() => {});
