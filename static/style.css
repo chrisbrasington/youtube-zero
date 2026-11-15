@@ -2890,7 +2890,8 @@ body.route-tv [data-action="clear-deep-queue"] { display: none !important; }
   text-align: center;
   padding: 24px;
 }
-.cast-idle-icon { font-size: 72px; line-height: 1; opacity: .85; }
+/* Sized off the viewport so it reads from across the room on a low-res CRT. */
+.cast-idle-icon { font-size: clamp(72px, 35vmin, 480px); line-height: 1; opacity: .85; }
 .cast-name-input {
   background: transparent;
   border: none;
@@ -2903,7 +2904,7 @@ body.route-tv [data-action="clear-deep-queue"] { display: none !important; }
   max-width: 80vw;
 }
 .cast-name-input:focus { outline: none; border-bottom-color: var(--green); }
-.cast-idle-status { font-size: 18px; color: var(--green); }
+.cast-idle-status { font-size: clamp(18px, 9vmin, 120px); font-weight: 700; color: var(--green); }
 .cast-idle-hint { font-size: 14px; color: var(--muted); }
 .cast-idle-hint.hidden { display: none; }
 
