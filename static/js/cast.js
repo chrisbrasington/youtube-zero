@@ -41,23 +41,37 @@ const castKiosk = (() => {
 })();
 
 
+// Screen identity lives in localStorage, which every tab on the origin shares.
+// A ?name= URL (e.g. /watch?name=trash-tv on a second monitor, or the Android
+// kiosk) therefore gets its OWN id + name keys, scoped by that name — otherwise
+// two tabs on one machine register under the same screen id, the newer stream
+// supersedes the older on the server, and / hides the other tab as "self".
+function castUrlName() {
+  try { return (new URLSearchParams(location.search).get('name') || '').trim().slice(0, 40); }
+  catch { return ''; }
+}
+
+function castStorageKey(base) {
+  const n = castUrlName();
+  return n ? `${base}:${n}` : base;
+}
+
 function castGetScreenId() {
-  let id = localStorage.getItem('castScreenId');
+  const key = castStorageKey('castScreenId');
+  let id = localStorage.getItem(key);
   if (!id) {
     id = (crypto && crypto.randomUUID)
       ? crypto.randomUUID()
       : 'scr-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('castScreenId', id);
+    localStorage.setItem(key, id);
   }
   return id;
 }
 
 function castGetScreenName() {
-  try {
-    const fromUrl = new URLSearchParams(location.search).get('name');
-    if (fromUrl) { localStorage.setItem('castScreenName', fromUrl); return fromUrl; }
-  } catch {}
-  return localStorage.getItem('castScreenName') || ('Screen ' + castGetScreenId().slice(0, 4));
+  return localStorage.getItem(castStorageKey('castScreenName'))
+      || castUrlName()
+      || ('Screen ' + castGetScreenId().slice(0, 4));
 }
 
 
@@ -104,8 +118,8 @@ function castRenderIdle() {
 
 
 function castRename(name) {
-  const clean = (name || '').slice(0, 40) || ('Screen ' + castGetScreenId().slice(0, 4));
-  localStorage.setItem('castScreenName', clean);
+  const clean = (name || '').slice(0, 40) || castUrlName() || ('Screen ' + castGetScreenId().slice(0, 4));
+  localStorage.setItem(castStorageKey('castScreenName'), clean);
   // If we're currently registered as a screen, reconnect so the server (and
   // remotes) pick up the new name. If not, just persist; the next registration
   // uses it. (An idle / page is registered from boot — see castFeedScreenStart.)

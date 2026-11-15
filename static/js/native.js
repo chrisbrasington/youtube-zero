@@ -126,7 +126,15 @@
         if (!p) return;
         try {
           const now = p.getCurrentTime?.() || 0;
-          if (saved.at > 0 && Math.abs(now - saved.at) > 2) p.seekTo(saved.at, true);
+          // The seek + play is load-bearing: after audio ran in the background
+          // the iframe's picture is typically frozen, and a seek forces it to
+          // rebuffer. But the target must be the LATER of the two positions —
+          // seeking to saved.at when the user played on from the notification
+          // was the jump-back. Behind (player reset) → saved.at, as before.
+          const target = Math.max(now, saved.at);
+          console.log('BGDBG onForeground embed: now=' + now.toFixed(1)
+            + ' saved=' + saved.at.toFixed(1) + ' seek=' + target.toFixed(1));
+          if (saved.at > 0 && Math.abs(now - saved.at) > 2) p.seekTo(target, true);
           if (saved.wasPlaying) p.playVideo();
         } catch (e) {}
         return;
