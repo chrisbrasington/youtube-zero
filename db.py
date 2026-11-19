@@ -95,6 +95,26 @@ _SCHEMA = """
     -- re-resolved everything, and that volume of identical requests from one IP
     -- is what gets you "Sign in to confirm you're not a bot" from YouTube.
     -- Rows are disposable — delete the table and it refills.
+    -- One row per "nuke" (mark-everything-read). nuke_videos snapshots what was
+    -- unread at that moment, with denormalized metadata so the record survives
+    -- the video/channel later being removed from the catalog.
+    CREATE TABLE IF NOT EXISTS nukes (
+        id          INTEGER PRIMARY KEY,
+        nuked_at    TEXT NOT NULL,
+        source      TEXT,                    -- 'web' | 'signal'
+        video_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS nuke_videos (
+        nuke_id       INTEGER NOT NULL REFERENCES nukes(id) ON DELETE CASCADE,
+        video_id      TEXT NOT NULL,
+        channel_id    TEXT,
+        channel_name  TEXT,
+        title         TEXT,
+        thumbnail_url TEXT,
+        published_at  TEXT,
+        duration      TEXT,
+        PRIMARY KEY (nuke_id, video_id)
+    );
     CREATE TABLE IF NOT EXISTS stream_cache (
         video_id   TEXT PRIMARY KEY,
         expires_at REAL NOT NULL,          -- unix time; googlevideo URLs last ~6h

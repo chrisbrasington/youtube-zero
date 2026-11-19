@@ -262,7 +262,9 @@ def get_history(search: str = "", limit: int = 50, offset: int = 0, folder_id=No
     whole table (or whole folder), not just one page."""
     clause, params = _history_filter(search, folder_id)
     sql = (
-        "SELECT h.*, v.duration AS duration, v.is_live AS is_live "
+        "SELECT h.*, v.duration AS duration, v.is_live AS is_live, "
+        "  EXISTS(SELECT 1 FROM queue q WHERE q.video_id = h.video_id "
+        "         AND q.watched_at IS NULL) AS in_queue "
         "FROM watch_history h "
         "LEFT JOIN videos v ON v.video_id = h.video_id "
         "LEFT JOIN channels ch ON ch.channel_id = h.channel_id "
@@ -360,3 +362,41 @@ def clear_video_status_for_channel(channel_id: str) -> None:
     with db() as c:
         c.execute("DELETE FROM video_status WHERE channel_id = ?", (channel_id,))
         c.commit()
+
+
+# ── Nuke history ─────────────────────────────────────────────────────────────
+
+def list_nukes(limit: int = 50, offset: int = 0) -> list[dict]:
+    """Past nukes, newest first."""
+    with db() as c:
+        rows = c.execute(
+            "SELECT * FROM nukes ORDER BY nuked_at DESC, id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_nukes() -> int:
+    with db() as c:
+        return int(c.execute("SELECT COUNT(*) FROM nukes").fetchone()[0])
+
+
+def get_nuke(nuke_id: int) -> Optional[dict]:
+    """One nuke with every video it swept, newest-published first. Each video
+    carries `in_queue` so the UI can show which ones are already queued."""
+    with db() as c:
+        n = c.execute("SELECT * FROM nukes WHERE id=?", (nuke_id,)).fetchone()
+        if not n:
+            return None
+        vids = c.execute(
+            "SELECT nv.*, COALESCE(v.duration, nv.duration) AS duration, v.is_live AS is_live, "
+            "  EXISTS(SELECT 1 FROM queue q WHERE q.video_id = nv.video_id "
+            "         AND q.watched_at IS NULL) AS in_queue "
+            "FROM nuke_videos nv LEFT JOIN videos v ON v.video_id = nv.video_id "
+            "WHERE nv.nuke_id=? "
+            "ORDER BY nv.channel_name COLLATE NOCASE, nv.published_at DESC",
+            (nuke_id,),
+        ).fetchall()
+    out = dict(n)
+    out["videos"] = [dict(v) | {"in_queue": bool(v["in_queue"])} for v in vids]
+    return out

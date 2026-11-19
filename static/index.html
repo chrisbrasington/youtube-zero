@@ -184,7 +184,12 @@
     <div class="history-header">
       <button class="btn-icon" id="btn-history-back" title="Back">←</button>
       <span class="history-title">Watch History</span>
+      <div class="history-tabs">
+        <button class="btn-ghost history-tab active" data-history-tab="watched">📜 Watched</button>
+        <button class="btn-ghost history-tab" data-history-tab="nukes">☢ Nukes</button>
+      </div>
     </div>
+    <div id="history-watched-view" class="history-view">
     <div class="history-search-row">
       <select id="history-folder" title="Filter by folder">
         <option value="">All folders</option>
@@ -196,6 +201,10 @@
       <button class="btn-ghost" id="btn-history-prev">← Prev</button>
       <span id="history-range" class="settings-hint"></span>
       <button class="btn-ghost" id="btn-history-next">Next →</button>
+    </div>
+    </div>
+    <div id="history-nukes-view" class="history-view hidden">
+      <div id="nuke-list" class="queue-list history-list"></div>
     </div>
   </div>
 

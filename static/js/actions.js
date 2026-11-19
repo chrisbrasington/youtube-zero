@@ -251,15 +251,15 @@ function refreshAll() {
 }
 
 async function clearAll() {
-  if (!confirm('☢ Nuclear clear: mark ALL channels as read?\n\nYour queue is unaffected.')) return;
+  if (!confirm('☢ Nuclear clear: mark ALL channels as read?\n\nYour queue and deep queue are unaffected.\nEverything swept is saved under History → Nukes.')) return;
   try {
-    await api.post('/api/clear-all');
+    const res = await api.post('/api/clear-all');
     state.feed = await api.get('/api/feed');
     state.manualExpand.clear();
     state.folderView.clear();
     state.folderChannelFilter.clear();
     render();
-    status('All cleared', 'ok');
+    status(`Nuked ${res && res.count != null ? res.count : 'all'} — see History → Nukes`, 'ok');
     setTimeout(() => status(''), 3000);
   } catch (e) {
     status('Error: ' + e.message, 'err');

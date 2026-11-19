@@ -41,7 +41,8 @@ def fresh_db(main_module):
     """Wipe all tables between tests that need isolation."""
     with main_module.db() as c:
         for table in ("settings", "channels", "folders", "videos",
-                      "queue", "video_status", "quota_log"):
+                      "queue", "video_status", "quota_log",
+                      "nuke_videos", "nukes", "watch_history"):
             c.execute(f"DELETE FROM {table}")
         c.commit()
     yield main_module

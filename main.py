@@ -59,6 +59,9 @@ from queries import (
     delete_setting,
     get_all_settings,
     get_history,
+    get_nuke,
+    list_nukes,
+    count_nukes,
     get_queue,
     get_quota_today_units,
     get_setting,
@@ -489,13 +492,9 @@ async def _handle_signal_command(cmd: str, number: str):
         await _broadcast("refreshed")
         await _signal_send_plain(number, f"dumped {len(items)} back to unread ✓")
     elif cmd == "/nuke":
-        now = datetime.now(timezone.utc).isoformat()
-        with db() as c:
-            c.execute("UPDATE channels SET read_before=?", (now,))
-            c.execute("DELETE FROM video_status")
-            c.commit()
+        n = _nuke("signal")
         await _broadcast("refreshed")
-        await _signal_send_plain(number, "nuked ✓")
+        await _signal_send_plain(number, f"nuked {n} ✓ (queue untouched)")
     elif cmd == "/refresh":
         api_key = get_api_key()
         if not api_key:
@@ -1818,15 +1817,68 @@ async def refresh_all():
     return {"ok": True, "results": results}
 
 
-@app.post("/api/clear-all")
-def clear_all(background_tasks: BackgroundTasks):
+def _nuke(source: str) -> int:
+    """Mark every channel read ("nuke") and snapshot what it swept.
+
+    Records a `nukes` row plus one `nuke_videos` row per video that was unread
+    in the feed at that moment, so /history can show past nukes and send any
+    of them back to the queue.
+
+    The queue — main and deep — is deliberately never touched: no statement
+    here writes to `queue`, and queued videos are excluded from the snapshot
+    since they weren't swept away. Returns the number of videos recorded.
+    """
     now = datetime.now(timezone.utc).isoformat()
     with db() as c:
+        queued_ids = {
+            r["video_id"] for r in c.execute(
+                "SELECT video_id FROM queue WHERE watched_at IS NULL"
+            ).fetchall()
+        }
+        swept = []
+        for ch in c.execute("SELECT channel_id, name, read_before FROM channels").fetchall():
+            for v in _channel_videos(c, ch["channel_id"], ch["read_before"], queued_ids):
+                if not v["is_read"] and not v["in_queue"]:
+                    swept.append((v, ch["name"]))
+        cur = c.execute(
+            "INSERT INTO nukes (nuked_at, source, video_count) VALUES (?, ?, ?)",
+            (now, source, len(swept)),
+        )
+        nuke_id = cur.lastrowid
+        c.executemany(
+            "INSERT OR IGNORE INTO nuke_videos (nuke_id, video_id, channel_id, channel_name, "
+            "title, thumbnail_url, published_at, duration) VALUES (?,?,?,?,?,?,?,?)",
+            [(nuke_id, v["video_id"], v["channel_id"], name, v["title"],
+              v.get("thumbnail_url") or "", v["published_at"], v.get("duration"))
+             for v, name in swept],
+        )
         c.execute("UPDATE channels SET read_before=?", (now,))
         c.execute("DELETE FROM video_status")
         c.commit()
+    return len(swept)
+
+
+@app.post("/api/clear-all")
+def clear_all(background_tasks: BackgroundTasks):
+    n = _nuke("web")
     background_tasks.add_task(_broadcast, "refreshed")
-    return {"ok": True}
+    return {"ok": True, "count": n}
+
+
+@app.get("/api/nukes")
+def nukes_list(limit: int = 50, offset: int = 0):
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return {"items": list_nukes(limit, offset), "total": count_nukes(),
+            "offset": offset, "limit": limit}
+
+
+@app.get("/api/nukes/{nuke_id}")
+def nuke_detail(nuke_id: int):
+    n = get_nuke(nuke_id)
+    if not n:
+        raise HTTPException(404, "Nuke not found")
+    return n
 
 
 @app.get("/api/queue")

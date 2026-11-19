@@ -2626,6 +2626,33 @@ body.route-history #settings-panel { display: none; }
 
 .q-item[data-history-play] { cursor: pointer; }
 
+.history-tabs { display: flex; gap: 6px; margin-left: auto; }
+.history-tab.active { background: var(--bg3, var(--border)); font-weight: 600; }
+.history-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.history-view.hidden { display: none; }
+
+.nuke-group { border-bottom: 1px solid var(--border); }
+.nuke-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 10px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nuke-head:hover { background: var(--bg2); }
+.nuke-when { font-weight: 500; }
+.nuke-meta { font-size: 12px; opacity: .7; margin-left: auto; white-space: nowrap; }
+.nuke-caret { transition: transform .15s; }
+.nuke-group.open .nuke-caret { transform: rotate(90deg); }
+.nuke-videos { padding-left: 8px; }
+.history-actions .btn-ghost.queued { opacity: .55; cursor: default; }
+
 .watch-layout.theater .watch-queue-pane { display: none; }
 
 /* Cast "cover" mode — remote-triggered, gesture-free fill-the-viewport view.
