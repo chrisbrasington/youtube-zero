@@ -2981,8 +2981,21 @@ body.route-retro .cast-idle.hidden { display: none; }
    exactly those bars. Done here rather than with UltraWideo, which only zooms
    when YouTube's own player is fullscreen — something only a click or key
    inside the iframe can do, every video. Costs the ends of YouTube's control
-   bar and title overlay. */
+   bar and title overlay.
+   At 640px the page is also narrow-ui, whose phone layout pins the frame to a
+   16:9 box at the top; the pane and wrap rules here undo that so the frame
+   area is the whole screen. */
+body.route-retro.cast-cover .watch-video-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
 body.route-retro.cast-cover .watch-frame-wrap {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: auto;
   overflow: hidden;
   justify-content: center;
 }

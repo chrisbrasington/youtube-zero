@@ -98,7 +98,10 @@ function openActionSheet(ctx) {
   btnT.style.display = state.tvConfigured ? '' : 'none';
   const castOk = (typeof castAvailable === 'function' && castAvailable());
   const btnScr = document.querySelector('[data-action="sheet-play-screen"]');
-  if (btnScr) btnScr.style.display = castOk ? '' : 'none';
+  if (btnScr) {
+    btnScr.style.display = castOk ? '' : 'none';
+    if (castOk) btnScr.textContent = `📺 Play on ${castTargetName()}`;   // the screen's name when there's just one
+  }
   const btnNear = document.querySelector('[data-action="sheet-play-nearest"]');
   if (btnNear) btnNear.style.display = (castOk && typeof ble !== 'undefined' && ble.canScan()) ? '' : 'none';
   const btnC = document.querySelector('[data-action="sheet-copy"]');

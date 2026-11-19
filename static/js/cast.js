@@ -693,6 +693,18 @@ function castOtherScreens() {
 
 function castAvailable() { return castOtherScreens().length > 0; }
 
+// What "Play on …" buttons call the destination: the screen's own name when
+// there's only one to send to ("Play on trash-tv"), else the generic word.
+function castTargetName(generic = 'Screen') {
+  const s = castOtherScreens();
+  return s.length === 1 ? (s[0].name || generic) : generic;
+}
+
+// "trash-tv" for a toast once a play went out to `screenId`.
+function castScreenName(screenId) {
+  return castScreens.find(s => s.id === screenId)?.name || 'screen';
+}
+
 
 async function castRefreshScreens() {
   try { castScreens = await api.get('/api/cast/screens'); }
@@ -794,7 +806,7 @@ async function castTransferLocal(targetId) {
     watchExit();              // close the local player → back to the browse page
     castActiveScreen = sid;
     castOpenRemote();         // hand over to the screen's remote panel
-    status('Playing on screen ✓', 'ok'); setTimeout(() => status(''), 2500);
+    status(`Playing on ${castScreenName(sid)} ✓`, 'ok'); setTimeout(() => status(''), 2500);
   } catch (e) {
     status('Transfer failed: ' + e.message, 'err'); setTimeout(() => status(''), 3000);
   }
@@ -1233,7 +1245,7 @@ async function castOrWatchQueue() {
   if (!castAvailable()) { watchStartQueue(); return; }
   const dest = await castShowPick('Play queue', [
     { label: '▶ Play Here', value: 'here' },
-    { label: '📺 Play on Screen', value: 'screen' },
+    { label: `📺 Play on ${castTargetName()}`, value: 'screen' },
   ]);
   if (dest === 'here') { watchStartQueue(); return; }
   if (dest === 'screen') {
@@ -1253,11 +1265,12 @@ async function castOrWatchFolder(folderId, order = 'oldest') {
   if (!strip.length) { status('Folder has no videos to watch', 'err'); setTimeout(() => status(''), 2000); return; }
   if (!castAvailable()) { watchStartFolder(folderId, order); return; }
 
+  const on = castTargetName('screen');
   const choice = await castShowPick(`Play 📁 ${folder.name}`, [
     { label: '▶ Play here — oldest first',      value: 'here:oldest'   },
     { label: '▶ Play here — newest first',      value: 'here:newest'   },
-    { label: '📺 Play on screen — oldest first', value: 'screen:oldest' },
-    { label: '📺 Play on screen — newest first', value: 'screen:newest' },
+    { label: `📺 Play on ${on} — oldest first`, value: 'screen:oldest' },
+    { label: `📺 Play on ${on} — newest first`, value: 'screen:newest' },
   ]);
   if (!choice) return;
   const [dest, pickedOrder] = choice.split(':');
@@ -1283,7 +1296,7 @@ async function castSendPlay(screenId, videos, markMode, startId = null) {
     await api.post(`/api/cast/${screenId}/play`, { videos, mark_mode: markMode, start_id: startId });
     castActiveScreen = screenId;
     castOpenRemote();
-    status('Playing on screen ✓', 'ok'); setTimeout(() => status(''), 2000);
+    status(`Playing on ${castScreenName(screenId)} ✓`, 'ok'); setTimeout(() => status(''), 2000);
   } catch (e) {
     if (String(e.message).includes('not connected')) {
       status('Screen disconnected', 'err'); castRefreshScreens();
