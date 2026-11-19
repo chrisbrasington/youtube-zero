@@ -319,8 +319,17 @@ function castOnPlayCommand(payload) {
 
 function castMakeMark(mode) {
   if (mode === 'none') return null;
-  const url = (id) => mode === 'read' ? `/api/videos/${id}/read` : `/api/queue/${id}/watched`;
-  return async (id) => { try { await api.post(url(id)); } catch {} };
+  if (mode === 'queue') {
+    return async (id) => { try { await api.post(`/api/queue/${id}/watched`); } catch {} };
+  }
+  // 'read' (single video / folder): mark it read AND take it off the queue,
+  // like watchReadMark does in-page. A screen has no state.queue to check, and
+  // the phone that sent it may be closed by now, so the screen does it itself.
+  // The queue call is a no-op UPDATE when the video isn't queued.
+  return async (id) => {
+    try { await api.post(`/api/videos/${id}/read`); } catch {}
+    try { await api.post(`/api/queue/${id}/watched`); } catch {}
+  };
 }
 
 
@@ -876,13 +885,7 @@ function castLocalMark(mode) {
       if (typeof setInQueue === 'function') setInQueue(id, false);
     };
   }
-  return async (id) => {   // 'read'
-    try { await api.post(`/api/videos/${id}/read`); } catch {}
-    for (const ch of allChannels()) {
-      const v = (ch.videos || []).find(x => x.video_id === id);
-      if (v) v.is_read = true;
-    }
-  };
+  return watchReadMark;   // 'read' — marks read, and drops it from the queue if there
 }
 
 // Pull a screen's playback down to THIS browser (play-here) at the same spot,
