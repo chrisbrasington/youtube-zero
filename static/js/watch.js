@@ -23,6 +23,7 @@ function watchRouteFor(path) {
   if (p === '/tv')           return { mode: 'tv' };             // browse feed + cast receiver
   if (p === '/phone')        return { mode: 'phone' };          // /tv for a handset: no auto-fullscreen, queue-below-video
   if (p === '/watch')        return { mode: 'cast-receiver' };  // idle screen, waits for casts
+  if (p === '/retro')        return { mode: 'cast-receiver', retro: true };  // /watch for a CRT: idle screen keeps moving (burn-in)
   if (p === '/watch/queue')  return { mode: 'queue' };          // local binge of the queue
   if (p === '/watch/test')   return { mode: 'queue-test' };
   if (p === '/watch/folder') return { mode: 'folder' };

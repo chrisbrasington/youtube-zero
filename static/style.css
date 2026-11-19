@@ -2909,6 +2909,46 @@ body.route-tv [data-action="clear-deep-queue"] { display: none !important; }
 .cast-idle-hint.hidden { display: none; }
 
 
+/* ── Cast: /retro idle screen (CRT) ─────────────────────────────────────────
+   /watch with a moving idle card so nothing burns into the tube. Pure black
+   background; the card bounces (cast.js castRetroStart) and glows in --retro-c. */
+
+body.route-retro { background: #000; }
+body.route-retro .cast-idle {
+  display: block;
+  background: #000;
+  overflow: hidden;
+}
+body.route-retro .cast-idle.hidden { display: none; }
+.retro-bouncer {
+  --retro-c: #4ade80;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1vmin;
+  padding: 2vmin 4vmin;
+  text-align: center;
+  color: var(--retro-c);
+  text-shadow: 0 0 1.5vmin var(--retro-c);
+  transition: color .4s, text-shadow .4s;
+  will-change: transform;
+}
+.retro-bouncer .cast-idle-icon { font-size: 22vmin; opacity: 1; text-shadow: none; }
+.retro-bouncer .cast-idle-status { font-size: 8vmin; color: inherit; }
+.retro-bouncer .cast-name-input {
+  font-size: 6vmin;
+  color: inherit;
+  width: 70vmin;
+  border-bottom-color: transparent;
+}
+.retro-bouncer .cast-name-input:focus { border-bottom-color: var(--retro-c); }
+.retro-clock { font-size: 7vmin; font-variant-numeric: tabular-nums; opacity: .8; }
+.retro-bouncer .cast-idle-hint { font-size: 3.5vmin; color: inherit; opacity: .6; text-shadow: none; }
+
+
 /* ── Cast: phone remote control panel ────────────────────────────────────── */
 
 .cast-remote {

@@ -44,7 +44,7 @@
       if (shared) await openSheetForVideoId(shared);
       return;
     }
-    if (route.mode === 'cast-receiver') { castReceiverEnter(); return; }
+    if (route.mode === 'cast-receiver') { castReceiverEnter(!!route.retro); return; }
     await watchBootUrl(route);
     return;
   }

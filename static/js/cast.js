@@ -77,9 +77,10 @@ function castGetScreenName() {
 
 // ── Receiver: idle screen ────────────────────────────────────────────────────
 
-function castReceiverEnter() {
+function castReceiverEnter(retro = false) {
   castScreenId = castGetScreenId();
   document.body.classList.add('route-cast');
+  if (retro) document.body.classList.add('route-retro');
   castRenderIdle();
   $('cast-idle').classList.remove('hidden');
   castConnectReceiver();
@@ -90,7 +91,8 @@ function castReceiverEnter() {
 let castIdleBound = false;
 function castRenderIdle() {
   const el = $('cast-idle');
-  el.innerHTML = `
+  if (document.body.classList.contains('route-retro')) castRenderRetroIdle(el);
+  else el.innerHTML = `
     <div class="cast-idle-inner">
       <div class="cast-idle-icon">📺</div>
       <input id="cast-name-input" class="cast-name-input" value="${escAttr(castGetScreenName())}"
@@ -114,6 +116,76 @@ function castRenderIdle() {
     if (!input) return;
     castRename(input.value.trim());
   });
+}
+
+
+// ── Receiver: /retro idle screen (CRT burn-in saver) ─────────────────────────
+//
+// Same receiver as /watch, but nothing on the idle screen ever sits still: the
+// whole card (icon, name, status, clock) drifts around the screen and bounces
+// off the edges, swapping phosphor color on every wall hit. The background is
+// pure black so the tube isn't lit where the card isn't.
+
+const RETRO_COLORS = ['#4ade80', '#fbbf24', '#38bdf8', '#f472b6', '#f87171', '#a78bfa', '#e5e7eb'];
+const RETRO_SPEED = 70;   // px per second, each axis
+
+function castRenderRetroIdle(el) {
+  el.innerHTML = `
+    <div id="retro-bouncer" class="retro-bouncer">
+      <div class="cast-idle-icon">📺</div>
+      <input id="cast-name-input" class="cast-name-input" value="${escAttr(castGetScreenName())}"
+             autocomplete="off" spellcheck="false" aria-label="Screen name">
+      <div class="cast-idle-status">Ready to receive</div>
+      <div id="retro-clock" class="retro-clock"></div>
+      <div id="cast-idle-hint" class="cast-idle-hint${castKiosk ? ' hidden' : ''}">Tap anywhere to enable sound</div>
+    </div>`;
+  castRetroStart();
+}
+
+let castRetroRaf = 0;
+function castRetroStart() {
+  if (castRetroRaf) cancelAnimationFrame(castRetroRaf);
+  const box = $('retro-bouncer');
+  const clock = $('retro-clock');
+  // Start somewhere random so a reboot doesn't always trace the same path.
+  let x = Math.random() * Math.max(0, innerWidth - box.offsetWidth);
+  let y = Math.random() * Math.max(0, innerHeight - box.offsetHeight);
+  let dx = Math.random() < .5 ? -1 : 1;
+  let dy = Math.random() < .5 ? -1 : 1;
+  let color = 0;
+  let last = performance.now();
+  let lastClock = '';
+  box.style.setProperty('--retro-c', RETRO_COLORS[0]);
+
+  const bump = () => {
+    color = (color + 1 + Math.floor(Math.random() * (RETRO_COLORS.length - 1))) % RETRO_COLORS.length;
+    box.style.setProperty('--retro-c', RETRO_COLORS[color]);
+  };
+
+  const frame = (now) => {
+    castRetroRaf = requestAnimationFrame(frame);
+    const dt = Math.min(0.1, (now - last) / 1000);   // cap: a background tab resumes without a jump
+    last = now;
+
+    const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (t !== lastClock) { clock.textContent = t; lastClock = t; }
+
+    if ($('cast-idle').classList.contains('hidden')) return;   // playing: nothing to move
+    if (document.activeElement?.id === 'cast-name-input') return;  // hold still while renaming
+
+    const maxX = Math.max(0, innerWidth - box.offsetWidth);
+    const maxY = Math.max(0, innerHeight - box.offsetHeight);
+    x += dx * RETRO_SPEED * dt;
+    y += dy * RETRO_SPEED * dt;
+    let hit = false;
+    if (x <= 0)    { x = 0;    dx = 1;  hit = true; }
+    if (x >= maxX) { x = maxX; dx = -1; hit = true; }
+    if (y <= 0)    { y = 0;    dy = 1;  hit = true; }
+    if (y >= maxY) { y = maxY; dy = -1; hit = true; }
+    if (hit) bump();
+    box.style.transform = `translate(${x}px, ${y}px)`;
+  };
+  castRetroRaf = requestAnimationFrame(frame);
 }
 
 
