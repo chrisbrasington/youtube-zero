@@ -2975,6 +2975,24 @@ body.route-retro .cast-idle.hidden { display: none; }
 .retro-clock { font-size: 7vmin; font-variant-numeric: tabular-nums; opacity: .8; }
 .retro-bouncer .cast-idle-hint { font-size: 3.5vmin; color: inherit; opacity: .6; text-shadow: none; }
 
+/* Playing on the CRT (4:3): the YouTube iframe becomes a full-height 16:9 box,
+   centered, with the sides cut off by the screen. A 16:9 video fills the tube;
+   a 4:3 one is pillarboxed by YouTube inside that box, and the crop removes
+   exactly those bars. Done here rather than with UltraWideo, which only zooms
+   when YouTube's own player is fullscreen — something only a click or key
+   inside the iframe can do, every video. Costs the ends of YouTube's control
+   bar and title overlay. */
+body.route-retro.cast-cover .watch-frame-wrap {
+  overflow: hidden;
+  justify-content: center;
+}
+body.route-retro.cast-cover .watch-frame {
+  flex: none;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 16 / 9;
+}
+
 
 /* ── Cast: phone remote control panel ────────────────────────────────────── */
 
