@@ -724,8 +724,12 @@ function watchPlay(videoId, startSeconds = 0) {
     const origin = encodeURIComponent(location.origin);
     const mute   = state.watch.mutedStart ? '&mute=1' : '';
     const start  = startSeconds > 0 ? `&start=${Math.floor(startSeconds)}` : '';
+    // /retro (the CRT): no YouTube control bar at all — it's driven from a phone,
+    // and the 16:9 crop cuts the bar's ends off anyway. Set at iframe creation, so
+    // it holds for every video loaded into this player afterwards.
+    const ctl    = document.body.classList.contains('route-retro') ? '&controls=0' : '';
     const frame  = $('watch-frame');
-    frame.src = `${window.YT_EMBED_HOST}/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}${start}`;
+    frame.src = `${window.YT_EMBED_HOST}/embed/${videoId}?autoplay=1${mute}&rel=0&enablejsapi=1&origin=${origin}${start}${ctl}`;
     frame.addEventListener('load', () => {
       watchSetupYT();
       if (state.watch?.mutedStart) watchArmUnmute();
